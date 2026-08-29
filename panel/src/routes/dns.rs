@@ -5,6 +5,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use sqlx::Row;
+use std::str::FromStr;
 
 use crate::db::AppState;
 use crate::error::{internal_error, ApiError};
@@ -433,6 +434,42 @@ fn validate_record(rtype: &str, name: Option<&str>, value: &str, ttl: Option<i64
         if !(1..=604800).contains(&t) {
             return Err(ApiError::new(StatusCode::BAD_REQUEST, "TTL must be between 1 and 604800"));
         }
+    }
+    if v.contains(['\n', '\r', ';', '$', '(', ')']) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Record value contains invalid characters",
+        ));
+    }
+    let hostname_ok = |s: &str| s.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_');
+    match rt.as_str() {
+        "A" => {
+            if std::net::Ipv4Addr::from_str(v).is_err() {
+                return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid IPv4 address for A record"));
+            }
+        }
+        "AAAA" => {
+            if std::net::Ipv6Addr::from_str(v).is_err() {
+                return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid IPv6 address for AAAA record"));
+            }
+        }
+        "TXT" => {
+            if v.len() > 255 || v.chars().any(|c| !c.is_ascii() || c.is_control()) {
+                return Err(ApiError::new(
+                    StatusCode::BAD_REQUEST,
+                    "TXT value must be printable ASCII up to 255 characters",
+                ));
+            }
+        }
+        "MX" | "SRV" | "CNAME" | "NS" | "ANAME" | "CAA" => {
+            if !hostname_ok(v) {
+                return Err(ApiError::new(
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid target for {rt} record"),
+                ));
+            }
+        }
+        _ => {}
     }
     Ok(())
 }

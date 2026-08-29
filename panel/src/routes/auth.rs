@@ -3,10 +3,56 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::auth::{create_token, hash_password, verify_and_get_claims_with_state, verify_password};
 use crate::db::AppState;
 use crate::error::{internal_error, ApiError};
+
+const MAX_LOGIN_ATTEMPTS: u32 = 5;
+const RATE_WINDOW: Duration = Duration::from_secs(60);
+
+fn login_guard() -> &'static Mutex<HashMap<String, (u32, Instant)>> {
+    static G: OnceLock<Mutex<HashMap<String, (u32, Instant)>>> = OnceLock::new();
+    G.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub(crate) fn check_login_rate(key: &str) -> Result<(), ApiError> {
+    let mut m = login_guard().lock().unwrap();
+    if let Some((count, until)) = m.get(key) {
+        if *count >= MAX_LOGIN_ATTEMPTS && *until > Instant::now() {
+            let wait = until.saturating_duration_since(Instant::now()).as_secs();
+            return Err(ApiError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                format!("Too many failed login attempts. Try again in {wait}s."),
+            ));
+        }
+        if *until <= Instant::now() {
+            m.remove(key);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn record_login_failure(key: &str) {
+    let mut m = login_guard().lock().unwrap();
+    let (count, until) = m
+        .get(key)
+        .copied()
+        .unwrap_or((0, Instant::now() + RATE_WINDOW));
+    let until = if until <= Instant::now() {
+        Instant::now() + RATE_WINDOW
+    } else {
+        until
+    };
+    m.insert(key.to_string(), (count + 1, until));
+}
+
+pub(crate) fn clear_login_failures(key: &str) {
+    login_guard().lock().unwrap().remove(key);
+}
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct User {
@@ -40,6 +86,9 @@ pub async fn login(
     State(state): State<AppState>,
     Json(input): Json<LoginReq>,
 ) -> Result<Json<AuthRes>, ApiError> {
+    let key = format!("admin:{}", input.username.trim().to_lowercase());
+    check_login_rate(&key)?;
+
     let row = sqlx::query_as::<_, (i64, String, String, String)>(
         "SELECT id, username, password_hash, role FROM users WHERE username = ?",
     )
@@ -52,6 +101,7 @@ pub async fn login(
     let (id, username, password_hash, role) = row;
 
     if !verify_password(&input.password, &password_hash) {
+        record_login_failure(&key);
         return Err(ApiError::new(
             StatusCode::UNAUTHORIZED,
             "Invalid username or password",
@@ -76,6 +126,7 @@ pub async fn login(
                 ));
             }
             if !crate::totp::verify_code(&secret, &code, 1) {
+                record_login_failure(&key);
                 return Err(ApiError::new(
                     StatusCode::UNAUTHORIZED,
                     "Invalid two-factor authentication code",
@@ -83,6 +134,8 @@ pub async fn login(
             }
         }
     }
+
+    clear_login_failures(&key);
 
     let (token, sess) = create_token(&state.jwt_secret, id, &username, &role).map_err(|_| {
         ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Failed to create token")
@@ -99,6 +152,17 @@ pub async fn register(
     State(state): State<AppState>,
     Json(input): Json<RegisterReq>,
 ) -> Result<(StatusCode, Json<AuthRes>), ApiError> {
+    let existing_users = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    if existing_users > 0 {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Registration is closed. The admin account already exists.",
+        ));
+    }
+
     if input.username.trim().len() < 3 || input.password.len() < 6 {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,

@@ -67,6 +67,9 @@ pub async fn login(
     State(state): State<AppState>,
     Json(input): Json<ClientLoginReq>,
 ) -> Result<Json<ClientLoginRes>, ApiError> {
+    let key = format!("client:{}", input.username.trim().to_lowercase());
+    crate::routes::auth::check_login_rate(&key)?;
+
     let account = sqlx::query_as::<_, ClientAccount>(
         "SELECT * FROM accounts WHERE username = ? AND status = 'active'",
     )
@@ -92,11 +95,14 @@ pub async fn login(
     };
 
     if !crate::auth::verify_password(&input.password, &hash) {
+        crate::routes::auth::record_login_failure(&key);
         return Err(ApiError::new(
             StatusCode::UNAUTHORIZED,
             "Invalid username or password",
         ));
     }
+
+    crate::routes::auth::clear_login_failures(&key);
 
     let (token, sess) = create_token(&state.jwt_secret, account.id, &account.username, "client")
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Failed to create token"))?;
