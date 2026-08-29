@@ -1,6 +1,6 @@
 # FPanel
 
-Self-hosted hosting control panel (cPanel-style) backed by Rust. Blue theme, Lucide icons.
+Self-hosted hosting control panel backed by Rust. Blue theme, Lucide icons.
 
 ## Layout
 
@@ -55,8 +55,8 @@ curl -X POST http://localhost:8181/api/auth/register \
 ```
 
 `{sess}` is a per-login session token. All protected endpoints are reached via
-`/api/s/{sess}/...` — mirroring the cPanel session-URL model. Requests with a
-missing or mismatched session are rejected (401/404).
+`/api/s/{sess}/...` — a session-URL model where each login gets its own URL.
+Requests with a missing or mismatched session are rejected (401/404).
 
 ## Environment
 

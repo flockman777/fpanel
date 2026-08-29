@@ -22,27 +22,27 @@ import Backups from "./pages/Backups";
 import Usage from "./pages/Usage";
 
 export function getToken() {
-  return localStorage.getItem("cpanel_token");
+  return localStorage.getItem("fpanel_token");
 }
 
 export function getSess() {
-  return localStorage.getItem("cpanel_sess");
+  return localStorage.getItem("fpanel_sess");
 }
 
 export function getAccountName() {
-  return localStorage.getItem("cpanel_name");
+  return localStorage.getItem("fpanel_name");
 }
 
 export function setAuth(token: string, sess?: string, name?: string) {
-  localStorage.setItem("cpanel_token", token);
-  if (sess) localStorage.setItem("cpanel_sess", sess);
-  if (name) localStorage.setItem("cpanel_name", name);
+  localStorage.setItem("fpanel_token", token);
+  if (sess) localStorage.setItem("fpanel_sess", sess);
+  if (name) localStorage.setItem("fpanel_name", name);
 }
 
 export function clearAuth() {
-  localStorage.removeItem("cpanel_token");
-  localStorage.removeItem("cpanel_sess");
-  localStorage.removeItem("cpanel_name");
+  localStorage.removeItem("fpanel_token");
+  localStorage.removeItem("fpanel_sess");
+  localStorage.removeItem("fpanel_name");
 }
 
 export async function api<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
