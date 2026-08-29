@@ -70,8 +70,8 @@ export default function FileManager() {
   }, []);
 
   const readAsText = async (filePath: string) => {
-    const sess = localStorage.getItem("cpanel_sess");
-    const token = localStorage.getItem("cpanel_token");
+    const sess = localStorage.getItem("fpanel_sess");
+    const token = localStorage.getItem("fpanel_token");
     const res = await fetch(
       `/api/s/${sess}/client/files/read?path=${encodeURIComponent(filePath)}`,
       { headers: { Authorization: `Bearer ${token}` } }
@@ -167,8 +167,8 @@ export default function FileManager() {
 
   const download = async (e: Entry) => {
     try {
-      const sess = localStorage.getItem("cpanel_sess");
-      const token = localStorage.getItem("cpanel_token");
+      const sess = localStorage.getItem("fpanel_sess");
+      const token = localStorage.getItem("fpanel_token");
       const res = await fetch(
         `/api/s/${sess}/client/files/download?path=${encodeURIComponent(joinPath(path, e.name))}`,
         { headers: { Authorization: `Bearer ${token}` } }
