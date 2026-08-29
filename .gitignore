@@ -1,0 +1,21 @@
+# build artifacts
+target/
+node_modules/
+dist/
+*.log
+
+# runtime data (may contain credentials, keys, sites)
+panel/data/
+panel/vhosts/
+server/data/
+
+# databases & keys
+*.db
+*.db-journal
+.env
+*secret*
+*.pem
+*.key
+
+# OS
+.DS_Store

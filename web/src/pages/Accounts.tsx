@@ -1,0 +1,280 @@
+import { KeyRound, Plus, Trash2, UserPlus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { api } from "../App";
+
+interface Account {
+  id: number;
+  username: string;
+  email: string;
+  package_id: number;
+  status: string;
+  name: string | null;
+}
+
+interface Package {
+  id: number;
+  name: string;
+}
+
+export default function Accounts() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [error, setError] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    username: "",
+    email: "",
+    password: "",
+    package_id: "",
+    name: "",
+  });
+
+  const load = async () => {
+    setError("");
+    try {
+      const res = await api<Account[]>("/accounts");
+      if (Array.isArray(res)) setAccounts(res);
+    } catch (e: any) {
+      setError(String(e.message || e));
+    }
+  };
+
+  useEffect(() => {
+    api<Package[]>("/packages")
+      .then(setPackages)
+      .catch((e: any) => setError(String(e.message || e)));
+    load();
+  }, []);
+
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    try {
+      await api("/accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          username: form.username,
+          email: form.email,
+          password: form.password || null,
+          package_id: Number(form.package_id),
+          name: form.name || null,
+        }),
+      });
+      setForm({ username: "", email: "", password: "", package_id: "", name: "" });
+      setShowForm(false);
+      load();
+    } catch (err: any) {
+      setError(err.message || "Failed to create account");
+    }
+  };
+
+  const remove = async (id: number) => {
+    if (!confirm("Delete this account?")) return;
+    await api(`/accounts/${id}`, { method: "DELETE" });
+    load();
+  };
+
+  const setPassword = async (id: number) => {
+    const pw = prompt("New password for this account (min 6 chars):");
+    if (!pw) return;
+    if (pw.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    try {
+      await api(`/accounts/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ password: pw }),
+      });
+      setError("");
+    } catch (e: any) {
+      setError(String(e.message || e));
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">Hosting Accounts</h2>
+          <p className="text-sm text-gray-500">
+            Manage customer accounts and hosting packages
+          </p>
+        </div>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700"
+        >
+          <Plus className="h-4 w-4" />
+          Create Account
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {showForm && (
+        <form
+          onSubmit={create}
+          className="rounded-xl border border-brand-200 bg-brand-50 p-6"
+        >
+          <div className="mb-4 flex items-center gap-2 text-brand-700">
+            <UserPlus className="h-5 w-5" />
+            <span className="font-semibold">New Account</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Username
+              </label>
+              <input
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Email
+              </label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Password (min 6 chars)
+              </label>
+              <input
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                placeholder="Used for client login"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Package
+              </label>
+              <select
+                value={form.package_id}
+                onChange={(e) =>
+                  setForm({ ...form, package_id: e.target.value })
+                }
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                required
+              >
+                <option value="">Select package...</option>
+                {packages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                Full Name
+              </label>
+              <input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="mt-5 flex gap-3">
+            <button
+              type="submit"
+              className="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+            <tr>
+              <th className="px-5 py-3.5">Username</th>
+              <th className="px-5 py-3.5">Name</th>
+              <th className="px-5 py-3.5">Email</th>
+              <th className="px-5 py-3.5">Package</th>
+              <th className="px-5 py-3.5">Status</th>
+              <th className="px-5 py-3.5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {accounts.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-10 text-center text-gray-400">
+                  No accounts yet
+                </td>
+              </tr>
+            ) : (
+              accounts.map((a) => (
+                <tr key={a.id} className="hover:bg-gray-50">
+                  <td className="px-5 py-3.5 font-medium text-gray-800">
+                    {a.username}
+                  </td>
+                  <td className="px-5 py-3.5 text-gray-600">{a.name || "-"}</td>
+                  <td className="px-5 py-3.5 text-gray-600">{a.email}</td>
+                  <td className="px-5 py-3.5 text-gray-600">
+                    {packages.find((p) => p.id === a.package_id)?.name ||
+                      "No package"}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        a.status === "active"
+                          ? "bg-green-50 text-green-700"
+                          : "bg-red-50 text-red-700"
+                      }`}
+                    >
+                      {a.status}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => setPassword(a.id)}
+                        className="rounded-lg p-2 text-gray-400 transition hover:bg-brand-50 hover:text-brand-600"
+                        title="Set password"
+                      >
+                        <KeyRound className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => remove(a.id)}
+                        className="rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
