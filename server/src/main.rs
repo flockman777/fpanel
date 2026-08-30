@@ -8,8 +8,10 @@ use pingora_http::ResponseHeader;
 use pingora_proxy::{ProxyHttp, Session};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
+use std::process::Stdio;
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -324,19 +326,32 @@ fn is_php(path: &std::path::Path) -> bool {
     path.extension().and_then(|e| e.to_str()) == Some("php")
 }
 
+struct PhpOut {
+    status: u16,
+    location: Option<String>,
+    content_type: Option<String>,
+    body: Vec<u8>,
+}
+
 fn run_php_cgi(
     root: std::path::PathBuf,
     file: std::path::PathBuf,
     host: String,
     uri: String,
     query: String,
+    method: String,
+    body: Option<Vec<u8>>,
+    content_type: Option<String>,
     log_dir: std::path::PathBuf,
-) -> Option<Vec<u8>> {
+) -> Option<PhpOut> {
     let script = uri.split('?').next().unwrap_or("").to_string();
     let mut cmd = Command::new("php-cgi");
     cmd.arg("-q")
         .arg(&file)
         .current_dir(&root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .env("REDIRECT_STATUS", "1")
         .env("SCRIPT_FILENAME", &file)
         .env("SCRIPT_NAME", &script)
@@ -345,12 +360,21 @@ fn run_php_cgi(
         .env("SERVER_ADDR", "127.0.0.1")
         .env("SERVER_PORT", "8080")
         .env("SERVER_PROTOCOL", "HTTP/1.1")
-        .env("REQUEST_METHOD", "GET")
+        .env("REQUEST_METHOD", &method)
         .env("REQUEST_URI", &uri)
         .env("QUERY_STRING", &query)
         .env("HTTP_HOST", &host)
         .env("REMOTE_ADDR", "127.0.0.1");
-    let out = cmd.output().ok()?;
+    if let Some(ct) = &content_type {
+        cmd.env("CONTENT_TYPE", ct).env("HTTP_CONTENT_TYPE", ct);
+    }
+    let mut child = cmd.spawn().ok()?;
+    if let Some(b) = body {
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(&b);
+        }
+    }
+    let out = child.wait_with_output().ok()?;
     if !out.stderr.is_empty() {
         let msg = String::from_utf8_lossy(&out.stderr);
         for line in msg.lines() {
@@ -358,12 +382,30 @@ fn run_php_cgi(
         }
     }
     let mut raw = out.stdout;
-    if let Some(i) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
-        raw.drain(..i + 4);
-    } else if let Some(i) = raw.windows(2).position(|w| w == b"\n\n") {
-        raw.drain(..i + 2);
+    let head_end = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|i| i + 4)
+        .or_else(|| raw.windows(2).position(|w| w == b"\n\n").map(|i| i + 2))
+        .unwrap_or(0);
+    let head = String::from_utf8_lossy(&raw[..head_end.min(raw.len())]).into_owned();
+    let mut status = 200u16;
+    let mut location: Option<String> = None;
+    let mut ctype: Option<String> = None;
+    for line in head.lines() {
+        let l = line.trim_end_matches('\r');
+        if let Some(rest) = l.strip_prefix("Status:") {
+            if let Some(code) = rest.trim().split(' ').next().and_then(|c| c.parse::<u16>().ok()) {
+                status = code;
+            }
+        } else if let Some(rest) = l.strip_prefix("Location:") {
+            location = Some(rest.trim().to_string());
+        } else if let Some(rest) = l.strip_prefix("Content-type:") {
+            ctype = Some(rest.trim().to_string());
+        }
     }
-    Some(raw)
+    raw.drain(..head_end);
+    Some(PhpOut { status, location, content_type: ctype, body: raw })
 }
 
 async fn send_status(session: &mut Session, status: u16, body: &str) -> Result<bool> {
@@ -551,32 +593,61 @@ impl ProxyHttp for FS {
         let root = std::path::PathBuf::from(&vhost.root);
         match resolve(&root, &uri_path) {
             Some(file) => {
-                if is_php(&file) && session.req_header().method.as_str() == "GET" {
+                if is_php(&file) && (method == "GET" || method == "POST") {
                     let mime = "text/html; charset=utf-8";
+                    let body = if method == "POST" {
+                        session.read_request_body().await.ok().flatten().map(|b| b.to_vec())
+                    } else {
+                        None
+                    };
+                    let content_type = session
+                        .req_header()
+                        .headers
+                        .get("content-type")
+                        .and_then(|h| h.to_str().ok())
+                        .map(|s| s.to_string());
                     let block_root = root.clone();
                     let block_file = file.clone();
                     let block_host = host.clone();
                     let block_uri = decoded.clone();
                     let block_query = uri_path.split('?').nth(1).unwrap_or("").to_string();
+                    let block_method = method.clone();
+                    let block_body = body.clone();
+                    let block_ct = content_type.clone();
                     let block_log = self.log_dir.clone();
-                    let body = tokio::task::spawn_blocking(move || {
-                        run_php_cgi(block_root, block_file, block_host, block_uri, block_query, block_log)
+                    let result = tokio::task::spawn_blocking(move || {
+                        run_php_cgi(block_root, block_file, block_host, block_uri, block_query, block_method, block_body, block_ct, block_log)
                     })
                     .await
                     .ok()
                     .flatten()
-                    .unwrap_or_default();
-                    access_line(&self.log_dir, &host, &client_ip, &method, &uri_path, 200, body.len() as u64);
-                    let mut resp = ResponseHeader::build(200, None).unwrap();
+                    .unwrap_or(PhpOut {
+                        status: 500,
+                        location: None,
+                        content_type: None,
+                        body: Vec::new(),
+                    });
+                    let status = result.status;
+                    let body = result.body;
+                    let mime = result.content_type.as_deref().unwrap_or(mime);
+                    access_line(&self.log_dir, &host, &client_ip, &method, &uri_path, status, body.len() as u64);
+                    let mut resp = ResponseHeader::build(status, None).unwrap();
                     resp.insert_header("Content-Type", mime).unwrap();
+                    if let Some(loc) = result.location {
+                        resp.insert_header("Location", loc.as_str()).unwrap();
+                    }
                     resp.insert_header("X-FPanel-Vhost", &vhost.domain).unwrap();
                     session.write_response_header_ref(&resp, false).await?;
-                    session
-                        .write_response_body(
-                            Some(bytes::Bytes::from(body)),
-                            true,
-                        )
-                        .await?;
+                    if !body.is_empty() {
+                        session
+                            .write_response_body(
+                                Some(bytes::Bytes::from(body)),
+                                true,
+                            )
+                            .await?;
+                    } else {
+                        session.write_response_body(None, true).await?;
+                    }
                     return Ok(true);
                 }
                 let mime = mime_for(&file);

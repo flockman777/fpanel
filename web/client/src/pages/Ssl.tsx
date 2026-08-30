@@ -58,13 +58,16 @@ export default function Ssl() {
   }, []);
 
   const generate = async (r: SslRow) => {
-    if (!await askConfirm(`Generate a self-signed certificate for "${r.domain}"?`)) return;
+    if (!await askConfirm(`Request a free Let's Encrypt certificate for "${r.domain}"?\n\nThis requires ${r.domain} to point at this server and port 80 open for the challenge.`)) return;
     try {
-      await api("/client/ssl/generate", {
+      const res = await api<
+        { domain: string; ok: boolean; message: string }[]
+      >("/client/ssl/autossl", {
         method: "POST",
         body: JSON.stringify({ domain_id: r.domain_id }),
       });
-      notify("Certificate generated");
+      const r0 = res && res[0];
+      notify(r0 && r0.ok ? `Certificate issued for ${r0.domain}` : String((r0 && r0.message) || "AutoSSL failed"), r0 && r0.ok ? "ok" : "err");
       load();
     } catch (e: any) {
       notify(String(e.message || e), "err");
@@ -268,7 +271,8 @@ export default function Ssl() {
             certificates for all your active domains and renews them.
           </li>
           <li>
-            <span className="font-medium">Generate</span> creates a self-signed certificate — good
+            <span className="font-medium">Generate</span> requests a free Let's Encrypt certificate
+            for the domain (requires DNS pointing here and port 80 open).
             for testing or internal services.
           </li>
           <li>

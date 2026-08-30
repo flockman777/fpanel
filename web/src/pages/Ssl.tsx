@@ -95,13 +95,16 @@ export default function Ssl() {
   }, [accountId, allDomains]);
 
   const generate = async (r: SslRow) => {
-    if (!await askConfirm(`Generate a self-signed certificate for "${r.domain}"?`)) return;
+    if (!await askConfirm(`Request a free Let's Encrypt certificate for "${r.domain}"?\n\nThis requires ${r.domain} to point at this server (DNS verified), and port 80 open for the challenge.`)) return;
     try {
-      await api("/ssl/generate", {
+      const res = await api<
+        { domain: string; ok: boolean; message: string }[]
+      >("/ssl/autossl", {
         method: "POST",
         body: JSON.stringify({ account_id: Number(accountId), domain_id: r.domain_id }),
       });
-      notify("Certificate generated");
+      const r0 = res && res[0];
+      notify(r0 && r0.ok ? `Certificate issued for ${r0.domain}` : String((r0 && r0.message) || "AutoSSL failed"), r0 && r0.ok ? "ok" : "err");
       load();
     } catch (e: any) {
       notify(String(e.message || e), "err");
@@ -330,8 +333,8 @@ export default function Ssl() {
             certificates for all active domains and renews them.
           </li>
           <li>
-            <span className="font-medium">Generate</span> creates a self-signed certificate — good
-            for testing or internal services.
+            <span className="font-medium">Generate</span> requests a free Let's Encrypt certificate
+            for the domain (equivalent to AutoSSL, requires DNS pointing here and port 80 open).
           </li>
           <li>
             <span className="font-medium">Import</span> accepts certificates from any CA

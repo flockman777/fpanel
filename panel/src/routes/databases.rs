@@ -15,6 +15,7 @@ pub struct Database {
     pub id: i64,
     pub account_id: i64,
     pub name: String,
+    pub display: String,
     pub db_user: String,
     pub status: String,
     pub created_at: String,
@@ -34,6 +35,7 @@ pub struct DatabaseAdmin {
     pub account_id: i64,
     pub username: String,
     pub name: String,
+    pub display: String,
     pub db_user: String,
     pub status: String,
     pub created_at: String,
@@ -45,6 +47,7 @@ pub struct DbUser {
     pub id: i64,
     pub account_id: i64,
     pub username: String,
+    pub display: String,
     pub status: String,
     pub created_at: String,
 }
@@ -54,6 +57,7 @@ pub struct DbUserAdmin {
     pub id: i64,
     pub account_id: i64,
     pub username: String,
+    pub display: String,
     pub name: String,
     pub status: String,
     pub created_at: String,
@@ -208,6 +212,7 @@ async fn list_admin(State(state): State<AppState>, Query(q): Query<AdminPathQ>) 
             account_id: aid,
             id: d.id,
             name: d.name,
+            display: d.display,
             db_user: d.db_user,
             status: d.status,
             created_at: d.created_at,
@@ -249,6 +254,7 @@ async fn users_admin(State(state): State<AppState>, Query(q): Query<AdminPathQ>)
             username: username.clone(),
             id: u.id,
             name: u.username,
+            display: u.display,
             status: u.status,
             created_at: u.created_at,
         })
@@ -270,6 +276,7 @@ async fn create_user_admin(
             username,
             id: u.id,
             name: u.username,
+            display: u.display,
             status: u.status,
             created_at: u.created_at,
         }),
@@ -354,6 +361,7 @@ fn to_admin(aid: i64, username: String, d: Database) -> DatabaseAdmin {
         account_id: aid,
         id: d.id,
         name: d.name,
+        display: d.display,
         db_user: d.db_user,
         status: d.status,
         created_at: d.created_at,
@@ -381,6 +389,174 @@ fn actual_user(username: &str, uname: &str) -> String {
     format!("{username}_{uname}")
 }
 
+fn display_name(username: &str, full: &str) -> String {
+    let app = format!("fp_{username}_");
+    if let Some(rest) = full.strip_prefix(&app) {
+        return rest.to_string();
+    }
+    let own = format!("{username}_");
+    if let Some(rest) = full.strip_prefix(&own) {
+        return rest.to_string();
+    }
+    full.to_string()
+}
+
+fn maria_patterns(username: &str) -> (String, String) {
+    (format!(r"{}\_%", username), format!(r"fp\_{}\_%", username))
+}
+
+async fn sync_from_mysql(state: &AppState, aid: i64, username: &str) {
+    let Ok(db) = pool(state) else { return; };
+    let (p1, p2) = maria_patterns(username);
+
+    let schemas: Vec<String> = match sqlx::query_scalar(
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA \
+         WHERE SCHEMA_NAME LIKE ? ESCAPE '\\\\' OR SCHEMA_NAME LIKE ? ESCAPE '\\\\'",
+    )
+    .bind(&p1)
+    .bind(&p2)
+    .fetch_all(&db)
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("[mysql-sync] read schemas: {e}");
+            return;
+        }
+    };
+
+    let my_users: Vec<String> = match sqlx::query_scalar(
+        "SELECT DISTINCT CAST(User AS CHAR) FROM mysql.user \
+         WHERE (User LIKE ? ESCAPE '\\\\' OR User LIKE ? ESCAPE '\\\\') \
+         AND Host IN ('localhost','127.0.0.1','%')",
+    )
+    .bind(&p1)
+    .bind(&p2)
+    .fetch_all(&db)
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("[mysql-sync] read users: {e}");
+            return;
+        }
+    };
+
+    const PRIV_COLS: [&str; 12] = [
+        "SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP",
+        "INDEX", "ALTER", "REFERENCES", "CREATE TEMPORARY TABLES",
+        "LOCK TABLES", "EXECUTE",
+    ];
+
+    let grant_rows = match sqlx::query(
+        "SELECT CAST(Db AS CHAR), CAST(User AS CHAR), \
+         COALESCE(MAX(Select_priv),'N'), COALESCE(MAX(Insert_priv),'N'), \
+         COALESCE(MAX(Update_priv),'N'), COALESCE(MAX(Delete_priv),'N'), \
+         COALESCE(MAX(Create_priv),'N'), COALESCE(MAX(Drop_priv),'N'), \
+         COALESCE(MAX(Index_priv),'N'), COALESCE(MAX(Alter_priv),'N'), \
+         COALESCE(MAX(References_priv),'N'), COALESCE(MAX(Create_tmp_table_priv),'N'), \
+         COALESCE(MAX(Lock_tables_priv),'N'), COALESCE(MAX(Execute_priv),'N') \
+         FROM mysql.db \
+         WHERE (Db LIKE ? ESCAPE '\\\\' OR Db LIKE ? ESCAPE '\\\\') \
+         AND (User LIKE ? ESCAPE '\\\\' OR User LIKE ? ESCAPE '\\\\') \
+         GROUP BY Db, User",
+    )
+    .bind(&p1)
+    .bind(&p2)
+    .bind(&p1)
+    .bind(&p2)
+    .fetch_all(&db)
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("[mysql-sync] read grants: {e}");
+            return;
+        }
+    };
+    let mut grants: Vec<(String, String, String)> = Vec::with_capacity(grant_rows.len());
+    for r in &grant_rows {
+        let dn: String = r.get(0);
+        let un: String = r.get(1);
+        let mut present: Vec<String> = Vec::with_capacity(12);
+        for (i, name) in PRIV_COLS.iter().enumerate() {
+            let v: String = r.get(2 + i);
+            if v.eq_ignore_ascii_case("Y") {
+                present.push(name.to_string());
+            }
+        }
+        let privs = if present.len() == PRIV_COLS.len() {
+            "ALL PRIVILEGES".to_string()
+        } else {
+            present.join(", ")
+        };
+        grants.push((dn, un, privs));
+    }
+
+    let existing_dbs: Vec<String> = sqlx::query_scalar("SELECT name FROM databases WHERE account_id = ?")
+        .bind(aid)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+    for name in &existing_dbs {
+        if !schemas.iter().any(|s| s == name) {
+            let _ = sqlx::query("DELETE FROM db_privileges WHERE db_id IN (SELECT id FROM databases WHERE account_id = ? AND name = ?)")
+                .bind(aid).bind(name).execute(&state.db).await;
+            let _ = sqlx::query("DELETE FROM databases WHERE account_id = ? AND name = ?")
+                .bind(aid).bind(name).execute(&state.db).await;
+        }
+    }
+    for name in &schemas {
+        let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM databases WHERE account_id = ? AND name = ?")
+            .bind(aid).bind(name).fetch_one(&state.db).await.unwrap_or(0);
+        if exists == 0 {
+            let _ = sqlx::query("INSERT INTO databases (account_id, name, db_user, status) VALUES (?, ?, '', 'active')")
+                .bind(aid).bind(name).execute(&state.db).await;
+        }
+    }
+
+    let existing_users: Vec<String> = sqlx::query_scalar("SELECT username FROM db_users WHERE account_id = ?")
+        .bind(aid)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+    for un in &existing_users {
+        if !my_users.iter().any(|u| u == un) {
+            let _ = sqlx::query("DELETE FROM db_privileges WHERE user_id IN (SELECT id FROM db_users WHERE account_id = ? AND username = ?)")
+                .bind(aid).bind(un).execute(&state.db).await;
+            let _ = sqlx::query("DELETE FROM db_users WHERE account_id = ? AND username = ?")
+                .bind(aid).bind(un).execute(&state.db).await;
+        }
+    }
+    for un in &my_users {
+        let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM db_users WHERE account_id = ? AND username = ?")
+            .bind(aid).bind(un).fetch_one(&state.db).await.unwrap_or(0);
+        if exists == 0 {
+            let _ = sqlx::query("INSERT INTO db_users (account_id, username, password, status) VALUES (?, ?, '', 'active')")
+                .bind(aid).bind(un).execute(&state.db).await;
+        }
+    }
+
+    let _ = sqlx::query(
+        "DELETE FROM db_privileges WHERE db_id IN (SELECT id FROM databases WHERE account_id = ?) \
+         OR user_id IN (SELECT id FROM db_users WHERE account_id = ?)",
+    )
+    .bind(aid).bind(aid).execute(&state.db).await;
+
+    for (dn, un, privs) in &grants {
+        let db_id: Option<i64> = sqlx::query_scalar("SELECT id FROM databases WHERE account_id = ? AND name = ?")
+            .bind(aid).bind(dn).fetch_optional(&state.db).await.unwrap_or(None);
+        let user_id: Option<i64> = sqlx::query_scalar("SELECT id FROM db_users WHERE account_id = ? AND username = ?")
+            .bind(aid).bind(un).fetch_optional(&state.db).await.unwrap_or(None);
+        if let (Some(db_id), Some(user_id)) = (db_id, user_id) {
+            let _ = sqlx::query(
+                "INSERT INTO db_privileges (db_id, user_id, privileges) VALUES (?, ?, ?)",
+            )
+            .bind(db_id).bind(user_id).bind(privs).execute(&state.db).await;
+        }
+    }
+}
+
 async fn bound_users(state: &AppState, db_id: i64) -> Vec<BoundUser> {
     match sqlx::query(
         "SELECT u.id, u.username, p.privileges FROM db_users u \
@@ -403,6 +579,8 @@ async fn bound_users(state: &AppState, db_id: i64) -> Vec<BoundUser> {
 }
 
 async fn list_dbs(state: &AppState, aid: i64) -> Result<Vec<Database>, ApiError> {
+    let username = account_username(state, aid).await?;
+    sync_from_mysql(state, aid, &username).await;
     let rows = sqlx::query("SELECT * FROM databases WHERE account_id = ? ORDER BY name")
         .bind(aid)
         .fetch_all(&state.db)
@@ -411,10 +589,12 @@ async fn list_dbs(state: &AppState, aid: i64) -> Result<Vec<Database>, ApiError>
     let mut out = Vec::with_capacity(rows.len());
     for r in rows {
         let id: i64 = r.get(0);
+        let name: String = r.get(2);
         out.push(Database {
             id,
             account_id: r.get(1),
-            name: r.get(2),
+            display: display_name(&username, &name),
+            name,
             db_user: r.get(3),
             status: r.get(4),
             created_at: r.get(5),
@@ -425,11 +605,26 @@ async fn list_dbs(state: &AppState, aid: i64) -> Result<Vec<Database>, ApiError>
 }
 
 async fn list_users(state: &AppState, aid: i64) -> Result<Vec<DbUser>, ApiError> {
-    sqlx::query_as::<_, DbUser>("SELECT * FROM db_users WHERE account_id = ? ORDER BY username")
+    let username = account_username(state, aid).await?;
+    sync_from_mysql(state, aid, &username).await;
+    let rows = sqlx::query("SELECT * FROM db_users WHERE account_id = ? ORDER BY username")
         .bind(aid)
         .fetch_all(&state.db)
         .await
-        .map_err(|e| internal_error(e.into()))
+        .map_err(|e| internal_error(e.into()))?;
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let un: String = r.get(2);
+        out.push(DbUser {
+            id: r.get(0),
+            account_id: r.get(1),
+            display: display_name(&username, &un),
+            username: un,
+            status: r.get(4),
+            created_at: r.get(5),
+        });
+    }
+    Ok(out)
 }
 
 async fn create_db(state: &AppState, aid: i64, username: &str, name: &str) -> Result<Database, ApiError> {
@@ -439,7 +634,7 @@ async fn create_db(state: &AppState, aid: i64, username: &str, name: &str) -> Re
 
     let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM databases WHERE account_id = ? AND name = ?")
         .bind(aid)
-        .bind(&name)
+        .bind(&actual)
         .fetch_one(&state.db)
         .await
         .map_err(|e| internal_error(e.into()))?;
@@ -456,7 +651,7 @@ async fn create_db(state: &AppState, aid: i64, username: &str, name: &str) -> Re
 
     let result = sqlx::query("INSERT INTO databases (account_id, name, db_user) VALUES (?, ?, '')")
         .bind(aid)
-        .bind(&name)
+        .bind(&actual)
         .execute(&state.db)
         .await
         .map_err(|e| internal_error(e.into()))?;
@@ -465,7 +660,8 @@ async fn create_db(state: &AppState, aid: i64, username: &str, name: &str) -> Re
     Ok(Database {
         id,
         account_id: aid,
-        name,
+        display: name.clone(),
+        name: actual,
         db_user: String::new(),
         status: "active".into(),
         created_at: String::new(),
@@ -473,7 +669,7 @@ async fn create_db(state: &AppState, aid: i64, username: &str, name: &str) -> Re
     })
 }
 
-async fn drop_db(state: &AppState, aid: i64, username: &str, id: i64) -> Result<(), ApiError> {
+async fn drop_db(state: &AppState, aid: i64, _username: &str, id: i64) -> Result<(), ApiError> {
     let row = sqlx::query("SELECT name FROM databases WHERE id = ? AND account_id = ?")
         .bind(id)
         .bind(aid)
@@ -486,8 +682,7 @@ async fn drop_db(state: &AppState, aid: i64, username: &str, id: i64) -> Result<
     let name: String = row.get(0);
 
     if let Ok(db) = pool(state) {
-        let actual = actual_db(username, &name);
-        sqlx::query(&format!("DROP DATABASE IF EXISTS `{actual}`"))
+        sqlx::query(&format!("DROP DATABASE IF EXISTS `{name}`"))
             .execute(&db)
             .await
             .map_err(|e| internal_error(e.into()))?;
@@ -516,7 +711,7 @@ async fn create_user(state: &AppState, aid: i64, username: &str, uname: &str, pa
 
     let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM db_users WHERE account_id = ? AND username = ?")
         .bind(aid)
-        .bind(&uname)
+        .bind(&actual)
         .fetch_one(&state.db)
         .await
         .map_err(|e| internal_error(e.into()))?;
@@ -534,7 +729,7 @@ async fn create_user(state: &AppState, aid: i64, username: &str, uname: &str, pa
 
     let result = sqlx::query("INSERT INTO db_users (account_id, username, password) VALUES (?, ?, ?)")
         .bind(aid)
-        .bind(&uname)
+        .bind(&actual)
         .bind(password)
         .execute(&state.db)
         .await
@@ -544,7 +739,8 @@ async fn create_user(state: &AppState, aid: i64, username: &str, uname: &str, pa
     Ok(DbUser {
         id,
         account_id: aid,
-        username: uname,
+        display: uname,
+        username: actual,
         status: "active".into(),
         created_at: String::new(),
     })
@@ -562,20 +758,12 @@ async fn drop_user(state: &AppState, aid: i64, id: i64) -> Result<(), ApiError> 
     };
     let uname: String = row.get(0);
 
-    let acc: String = sqlx::query_scalar(
-        "SELECT username FROM accounts WHERE id = ?",
-    )
-    .bind(aid)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| internal_error(e.into()))?;
-
     if let Ok(db) = pool(state) {
-        let actual = actual_user(&acc, &uname);
-        sqlx::query(&format!("DROP USER IF EXISTS `{actual}`@'localhost'"))
-            .execute(&db)
-            .await
-            .map_err(|e| internal_error(e.into()))?;
+        for host in ["localhost", "127.0.0.1", "%"] {
+            let _ = sqlx::query(&format!("DROP USER IF EXISTS `{uname}`@'{host}'"))
+                .execute(&db)
+                .await;
+        }
     }
 
     sqlx::query("DELETE FROM db_privileges WHERE user_id = ?")
@@ -649,7 +837,7 @@ async fn grant_db(
     .fetch_optional(&state.db)
     .await
     .map_err(|e| internal_error(e.into()))?;
-    let Some((db_name, uname, acc, d_acc)) = info else {
+    let Some((db_name, uname, _acc, d_acc)) = info else {
         return Err(ApiError::new(StatusCode::NOT_FOUND, "Database or user not found"));
     };
     if d_acc != aid {
@@ -677,8 +865,8 @@ async fn grant_db(
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "No valid privileges provided"));
     }
 
-    let actual_db = actual_db(&acc, &db_name);
-    let actual_user = actual_user(&acc, &uname);
+    let actual_db = db_name;
+    let actual_user = uname;
     let grant = format!(
         "GRANT {} ON `{actual_db}`.* TO `{actual_user}`@'localhost'",
         clean.join(", ")
@@ -736,7 +924,7 @@ async fn revoke(state: &AppState, aid: i64, priv_id: i64) -> Result<(), ApiError
     .fetch_optional(&state.db)
     .await
     .map_err(|e| internal_error(e.into()))?;
-    let Some((uname, acc, db_name, d_acc)) = info else {
+    let Some((uname, _acc, db_name, d_acc)) = info else {
         return Err(ApiError::new(StatusCode::NOT_FOUND, "Grant not found"));
     };
     if d_acc != aid {
@@ -744,8 +932,8 @@ async fn revoke(state: &AppState, aid: i64, priv_id: i64) -> Result<(), ApiError
     }
 
     if let Ok(db) = pool(state) {
-        let actual_user = actual_user(&acc, &uname);
-        let actual_db = actual_db(&acc, &db_name);
+        let actual_user = uname;
+        let actual_db = db_name;
         sqlx::query(&format!(
             "REVOKE ALL PRIVILEGES ON `{actual_db}`.* FROM `{actual_user}`@'localhost'"
         ))

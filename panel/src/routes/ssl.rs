@@ -369,6 +369,9 @@ async fn issue_and_store(
         None => crate::provision::account_htdocs(username).to_string_lossy().into_owned(),
     };
     std::fs::create_dir_all(&webroot).map_err(|e| internal_error(e.into()))?;
+    if let Err(e) = crate::nginx::ensure_http_vhost(domain, &webroot) {
+        tracing::warn!("[autossl] http vhost for {domain}: {e}");
+    }
 
     let email = acme_email();
     let domain_owned_arg = domain.to_string();

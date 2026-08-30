@@ -161,6 +161,7 @@ async fn create(
         .execute(&state.db)
         .await
         .map_err(|e| internal_error(e.into()))?;
+    let _ = provision::ensure_web_dirs(&account.username);
     provision::write_vhost(&domain, &account.username, "main");
     crate::routes::dns::seed_domain_dns(&state, insert.last_insert_rowid()).await?;
 

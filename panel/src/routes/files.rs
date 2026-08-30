@@ -302,7 +302,7 @@ async fn extract_client(
 
 async fn client_root(state: &AppState, headers: &HeaderMap) -> Result<PathBuf, ApiError> {
     let (_account_id, username) = super::domains::bearer_account(state, headers).await?;
-    Ok(provision::account_htdocs(&username))
+    Ok(provision::account_home(&username))
 }
 
 async fn admin_root(state: &AppState, account_id: Option<i64>) -> Result<PathBuf, ApiError> {
@@ -318,7 +318,7 @@ async fn admin_root(state: &AppState, account_id: Option<i64>) -> Result<PathBuf
         .await
         .map_err(|e| internal_error(e.into()))?
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Account not found"))?;
-    Ok(provision::account_htdocs(&username))
+    Ok(provision::account_home(&username))
 }
 
 // ---------- core ----------

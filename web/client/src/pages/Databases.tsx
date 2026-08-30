@@ -23,6 +23,7 @@ interface DatabaseRow {
   id: number;
   account_id: number;
   name: string;
+  display: string;
   db_user: string;
   status: string;
   created_at: string;
@@ -33,6 +34,7 @@ interface DbUser {
   id: number;
   account_id: number;
   username: string;
+  display: string;
   status: string;
   created_at: string;
 }
@@ -422,10 +424,10 @@ export default function Databases() {
             ) : (
               dbs.map((d) => (
                 <tr key={d.id} className="hover:bg-gray-50">
-                  <td className="px-5 py-3.5 font-medium text-gray-800">{d.name}</td>
+                  <td className="px-5 py-3.5 font-medium text-gray-800">{d.display || d.name}</td>
                   <td className="px-5 py-3.5">
                     <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700">
-                      {myUser ? `${myUser}_${d.name}` : d.name}
+                      {d.name}
                     </code>
                   </td>
                   <td className="px-5 py-3.5">
@@ -526,10 +528,10 @@ export default function Databases() {
             ) : (
               users.map((u) => (
                 <tr key={u.id} className="hover:bg-gray-50">
-                  <td className="px-5 py-3.5 font-medium text-gray-800">{u.username}</td>
+                  <td className="px-5 py-3.5 font-medium text-gray-800">{u.display || u.username}</td>
                   <td className="px-5 py-3.5">
                     <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700">
-                      {myUser ? `${myUser}_${u.username}` : u.username}
+                      {u.username}
                     </code>
                   </td>
                   <td className="px-5 py-3.5">
@@ -559,7 +561,7 @@ export default function Databases() {
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2 font-semibold text-gray-800">
                 <Database className="h-5 w-5 text-brand-600" />
-                Manage: {myUser ? `${myUser}_` : ""}{manage.name}
+                Manage: {manage.name}
               </div>
               <button
                 onClick={() => setManage(null)}

@@ -29,6 +29,7 @@ interface DatabaseAdmin {
   account_id: number;
   username: string;
   name: string;
+  display: string;
   db_user: string;
   status: string;
   created_at: string;
@@ -40,6 +41,7 @@ interface DbUserAdmin {
   account_id: number;
   username: string;
   name: string;
+  display: string;
   status: string;
   created_at: string;
 }
@@ -480,14 +482,14 @@ export default function Databases() {
               dbs.map((d) => (
                 <tr key={d.id} className="hover:bg-gray-50">
                   <td className="px-5 py-3.5 font-medium text-gray-800">
-                    {d.name}
+                    {d.display || d.name}
                     <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
                       {d.username}
                     </span>
                   </td>
                   <td className="px-5 py-3.5">
                     <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700">
-                      {d.username}_{d.name}
+                      {d.name}
                     </code>
                   </td>
                   <td className="px-5 py-3.5">
@@ -587,14 +589,14 @@ export default function Databases() {
               users.map((u) => (
                 <tr key={u.id} className="hover:bg-gray-50">
                   <td className="px-5 py-3.5 font-medium text-gray-800">
-                    {u.name}
+                    {u.display || u.name}
                     <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
                       {u.username}
                     </span>
                   </td>
                   <td className="px-5 py-3.5">
                     <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700">
-                      {u.username}_{u.name}
+                      {u.name}
                     </code>
                   </td>
                   <td className="px-5 py-3.5">
@@ -624,7 +626,7 @@ export default function Databases() {
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2 font-semibold text-gray-800">
                 <Database className="h-5 w-5 text-brand-600" />
-                Manage: {manage.username}_{manage.name}
+                Manage: {manage.name}
               </div>
               <button
                 onClick={() => setManage(null)}
@@ -711,7 +713,7 @@ export default function Databases() {
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2 font-semibold text-gray-800">
                 <KeyRound className="h-5 w-5 text-brand-600" />
-                Edit privileges: {edit.bu.username} on {edit.d.username}_{edit.d.name}
+                Edit privileges: {edit.bu.username} on {edit.d.name}
               </div>
               <button
                 onClick={() => setEdit(null)}

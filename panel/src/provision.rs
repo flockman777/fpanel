@@ -2,6 +2,21 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+const DEFAULT_INDEX: &str = r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Welcome to FPanel</title>
+</head>
+<body style="font-family: system-ui, sans-serif; background:#f6f8fa; display:grid; place-items:center; height:100vh; margin:0">
+  <main style="text-align:center">
+    <h1 style="color:#0f172a">Your website is ready</h1>
+    <p style="color:#475569">This is the default page for this domain. Upload your files or install an application to replace it.</p>
+  </main>
+</body>
+</html>
+"#;
+
 #[derive(Debug, Serialize)]
 pub struct Vhost {
     pub domain: String,
@@ -199,6 +214,70 @@ pub fn vhost_root(username: &str, kind: &str, domain: &str) -> PathBuf {
         "sub" | "addon" => account_home(username).join(domain.trim_matches('.')),
         _ => account_htdocs(username),
     }
+}
+
+/// Creates the cPanel-style account home skeleton (public_html, cgi-bin) and
+/// replaces the default page if it is still the placeholder. Returns the home path.
+pub fn ensure_web_dirs(username: &str) -> std::io::Result<PathBuf> {
+    let home = account_home(username);
+    std::fs::create_dir_all(&home)?;
+    std::fs::create_dir_all(home.join("cgi-bin"))?;
+
+    let htdocs = home.join("public_html");
+    std::fs::create_dir_all(&htdocs)?;
+    write_placeholder_if_missing(&htdocs.join("index.html"))?;
+
+    let _ = run_chown(&home, "-R", "www-data:www-data");
+    Ok(home)
+}
+
+/// Ensures the document root for a domain exists with a welcome page if new.
+pub fn ensure_doc_root(username: &str, kind: &str, domain: &str) -> std::io::Result<PathBuf> {
+    let root = vhost_root(username, kind, domain);
+    std::fs::create_dir_all(&root)?;
+    write_placeholder_if_missing(&root.join("index.html"))?;
+    let _ = run_chown(&root, "-R", "www-data:www-data");
+    Ok(root)
+}
+
+/// Removes the default welcome page at `root/index.html` so application
+/// installers (WordPress, Laravel, OJS) do not ship an extra index.html that
+/// would shadow their real index.php.
+pub fn remove_placeholder(root: &std::path::Path) {
+    let idx = root.join("index.html");
+    let _ = std::fs::remove_file(&idx);
+}
+
+/// Points an existing vhost to a different document root and persists it so
+/// the web server reloads it (used after installing Laravel, which serves
+/// from the `public/` subdirectory).
+pub fn set_vhost_root(name: &str, root: &str) -> Result<(), String> {
+    let path = vhost_path(name);
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut val: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    val["root"] = serde_json::Value::String(root.to_string());
+    let bytes = serde_json::to_vec_pretty(&val).map_err(|e| e.to_string())?;
+    atomic_write(&path, &bytes).map_err(|e| e.to_string())?;
+    let _ = std::fs::create_dir_all(root);
+    tracing::info!("[provision] vhost {name} root -> {root}");
+    Ok(())
+}
+
+fn write_placeholder_if_missing(path: &std::path::Path) -> std::io::Result<()> {
+    if !path.exists() {
+        std::fs::write(path, DEFAULT_INDEX)
+    } else {
+        Ok(())
+    }
+}
+
+fn run_chown(path: &std::path::Path, flags: &str, owner: &str) -> std::io::Result<()> {
+    std::process::Command::new("chown")
+        .arg(flags)
+        .arg(owner)
+        .arg(path)
+        .status()
+        .map(|_| ())
 }
 
 fn vhost_path(name: &str) -> PathBuf {

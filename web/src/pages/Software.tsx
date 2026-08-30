@@ -1,5 +1,5 @@
 import { askConfirm } from "../askConfirm";
-import { Boxes, CheckCircle2, ExternalLink, PackageOpen, Plus, Trash2, Users } from "lucide-react";
+import { Boxes, CheckCircle2, ExternalLink, PackageOpen, Plus, RefreshCw, Trash2, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../App";
 
@@ -35,15 +35,23 @@ interface AppRow {
   version: string | null;
   db_name: string | null;
   db_user: string | null;
+  db_pass: string | null;
   admin_user: string | null;
   admin_email: string | null;
   status: string;
   created_at: string;
 }
 
+interface AppVersions {
+  wordpress: string[];
+  laravel: string[];
+  ojs: string[];
+}
+
 interface AppsResp {
   rows: AppRow[];
   tools: ToolsInfo;
+  versions: AppVersions;
 }
 
 const APPS = [
@@ -61,17 +69,23 @@ export default function Software() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [rows, setRows] = useState<AppRow[]>([]);
   const [tools, setTools] = useState<ToolsInfo | null>(null);
+  const [versions, setVersions] = useState<AppVersions | null>(null);
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const toastTimer = useRef<number>();
 
   const [showInstall, setShowInstall] = useState(false);
   const [domainId, setDomainId] = useState("");
   const [app, setApp] = useState("wordpress");
+  const [ver, setVer] = useState("");
   const [siteTitle, setSiteTitle] = useState("");
   const [adminUser, setAdminUser] = useState("admin");
   const [adminPass, setAdminPass] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [busy, setBusy] = useState(false);
+  const [credRow, setCredRow] = useState<AppRow | null>(null);
+  const [upRow, setUpRow] = useState<AppRow | null>(null);
+  const [upTarget, setUpTarget] = useState("");
+  const [upBusy, setUpBusy] = useState(false);
 
   const notify = (msg: string, type: "ok" | "err" = "ok") => {
     setToast({ type, msg });
@@ -97,6 +111,7 @@ export default function Software() {
       const r = await api<AppsResp>(`/apps?account_id=${accountId}`);
       setRows(r.rows);
       setTools(r.tools);
+      setVersions(r.versions || null);
     } catch (e: any) {
       notify(String(e.message || e), "err");
     }
@@ -110,6 +125,7 @@ export default function Software() {
 
   const openInstall = () => {
     setShowInstall(true);
+    setVer("");
     setSiteTitle("");
     setAdminUser("admin");
     setAdminPass("");
@@ -120,11 +136,12 @@ export default function Software() {
     e.preventDefault();
     setBusy(true);
     try {
-      await api(`/apps?account_id=${accountId}`, {
+      const row = await api<AppRow>(`/apps?account_id=${accountId}`, {
         method: "POST",
         body: JSON.stringify({
           domain_id: Number(domainId),
           app,
+          version: ver || null,
           site_title: siteTitle || null,
           admin_user: adminUser || null,
           admin_password: adminPass || null,
@@ -133,6 +150,7 @@ export default function Software() {
       });
       notify("Application installed");
       setShowInstall(false);
+      setCredRow(row);
       load();
     } catch (err: any) {
       notify(String((err as any).message || err), "err");
@@ -149,6 +167,31 @@ export default function Software() {
       load();
     } catch (e: any) {
       notify(String(e.message || e), "err");
+    }
+  };
+
+  const openUpgrade = (r: AppRow) => {
+    setUpRow(r);
+    setUpTarget(r.version || "");
+  };
+
+  const versionsListFor = (id: string) => (versions ? versions[id as keyof AppVersions] || [] : []);
+
+  const upgrade = async () => {
+    if (!upRow) return;
+    setUpBusy(true);
+    try {
+      await api(`/apps/${upRow.id}/upgrade?account_id=${accountId}`, {
+        method: "POST",
+        body: JSON.stringify({ version: upTarget || null }),
+      });
+      notify("Application updated");
+      setUpRow(null);
+      load();
+    } catch (e: any) {
+      notify(String(e.message || e), "err");
+    } finally {
+      setUpBusy(false);
     }
   };
 
@@ -272,6 +315,13 @@ export default function Software() {
                             </span>
                           </a>
                           <button
+                            onClick={() => openUpgrade(r)}
+                            className="rounded-lg p-1.5 text-gray-500 transition hover:bg-green-50 hover:text-green-600"
+                            title="Update"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </button>
+                          <button
                             onClick={() => uninstall(r)}
                             className="rounded-lg p-1.5 text-gray-500 transition hover:bg-red-50 hover:text-red-600"
                             title="Uninstall"
@@ -339,6 +389,19 @@ export default function Software() {
                   })}
                 </div>
               </div>
+              {versionsListFor(app).length > 0 && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Version</label>
+                  <select value={ver} onChange={(e) => setVer(e.target.value)} className={base}>
+                    <option value="">Latest ({versionsListFor(app)[0]})</option>
+                    {versionsListFor(app).map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Site title {app === "wordpress" ? "" : "(optional)"}</label>
                 <input value={siteTitle} onChange={(e) => setSiteTitle(e.target.value)} className={base} placeholder={app === "wordpress" ? "My Awesome Site" : "Optional"} />
@@ -370,6 +433,88 @@ export default function Software() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {credRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <h3 className="text-lg font-semibold text-gray-800">Installation complete</h3>
+            </div>
+            <p className="mb-4 text-sm text-gray-500">
+              {appMeta(credRow.app).label} was installed on <span className="font-medium text-gray-700">{credRow.domain}</span>. Save the database credentials now — they are shown only once.
+            </p>
+            <div className="space-y-2 rounded-lg bg-gray-50 p-3 font-mono text-xs">
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-500">Database</span>
+                <span className="font-medium text-gray-800">{credRow.db_name}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-500">DB user</span>
+                <span className="font-medium text-gray-800">{credRow.db_user}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-500">DB password</span>
+                <span className="font-medium text-gray-800">{credRow.db_pass}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-gray-500">Version</span>
+                <span className="font-medium text-gray-800">{credRow.version || "-"}</span>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <a
+                href={`http://${credRow.domain}/`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Open site
+              </a>
+              <button onClick={() => setCredRow(null)} className={btn}>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {upRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 text-brand-600" />
+              <h3 className="text-lg font-semibold text-gray-800">Update {appMeta(upRow.app).label}</h3>
+            </div>
+            <p className="mb-4 text-sm text-gray-500">
+              <span className="font-medium text-gray-700">{upRow.domain}</span> is currently on version{" "}
+              <span className="font-medium text-gray-700">{upRow.version || "-"}</span>.
+            </p>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Target version</label>
+            <select value={upTarget} onChange={(e) => setUpTarget(e.target.value)} className={base}>
+              <option value="">Latest ({versionsListFor(upRow.app)[0] || "-"})</option>
+              {versionsListFor(upRow.app).map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setUpRow(null)}
+                disabled={upBusy}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button onClick={upgrade} disabled={upBusy} className={btn + " disabled:opacity-60"}>
+                {upBusy ? "Updating..." : "Update"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
