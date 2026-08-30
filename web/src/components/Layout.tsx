@@ -27,6 +27,7 @@ import { NavLink, Outlet } from "react-router-dom";
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/domains", label: "Domains", icon: Globe },
+  { to: "/dns", label: "DNS Zone", icon: Network, sub: true },
   { to: "/redirects", label: "Redirects", icon: ArrowRightLeft },
   { to: "/files", label: "File Manager", icon: FolderOpen },
   { to: "/databases", label: "Databases", icon: Database },
@@ -40,7 +41,6 @@ const navItems = [
   { to: "/waf", label: "WAF", icon: Flame },
   { to: "/ssh", label: "SSH", icon: Terminal },
   { to: "/totp", label: "2FA", icon: KeyRound },
-  { to: "/dns", label: "DNS Zone", icon: Network },
   { to: "/cron", label: "Cron Jobs", icon: Clock },
   { to: "/backups", label: "Backups", icon: Archive },
   { to: "/metrics", label: "Metrics", icon: BarChart3 },
@@ -77,13 +77,19 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
               end={item.to === "/"}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                  item.sub ? "ml-6 border-l border-brand-700 pl-8 py-2 text-[13px]" : ""
+                } ${
                   isActive
                     ? "bg-brand-700 text-white"
                     : "text-brand-200 hover:bg-brand-800 hover:text-white"
                 }`
               }
             >
-              <item.icon className="h-5 w-5" />
+              {item.sub ? (
+                <item.icon className="h-4 w-4 text-brand-400" />
+              ) : (
+                <item.icon className="h-5 w-5" />
+              )}
               {item.label}
             </NavLink>
           ))}
