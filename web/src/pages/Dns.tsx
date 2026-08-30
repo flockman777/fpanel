@@ -33,6 +33,7 @@ export default function Dns() {
   const [form, setForm] = useState({ name: "@", rtype: "A", value: "", ttl: "3600", priority: "" });
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [confirmDel, setConfirmDel] = useState<Record | null>(null);
   const toastTimer = useRef<number>();
 
   const notify = (msg: string, type: "ok" | "err" = "ok") => {
@@ -111,13 +112,16 @@ export default function Dns() {
   };
 
   const remove = async (r: Record) => {
-    if (!confirm(`Delete ${r.rtype} record "${r.name}"?`)) return;
+    setConfirmDel(null);
+    setBusy(true);
     try {
       await api(`/dns/${r.id}`, { method: "DELETE" });
       notify("Record deleted");
       loadRecords();
     } catch (e: any) {
       notify(String(e.message || e), "err");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -142,6 +146,29 @@ export default function Dns() {
       {toast && (
         <div className={`fixed top-4 right-4 z-[60] rounded-lg px-4 py-3 text-sm font-medium text-white shadow-lg ${toast.type === "ok" ? "bg-green-600" : "bg-red-600"}`}>
           {toast.msg}
+        </div>
+      )}
+
+      {confirmDel && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-2xl">
+            <div className="mb-2 flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              <h3 className="text-base font-semibold text-gray-800">Delete record</h3>
+            </div>
+            <p className="mb-5 text-sm text-gray-600">
+              Delete {confirmDel.rtype} record <span className="font-mono font-semibold text-gray-800">"{confirmDel.name}"</span> from{" "}
+              <span className="font-mono text-gray-800">{confirmDel.domain}</span>? This will also update the live NSD zone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmDel(null)} disabled={busy} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={() => remove(confirmDel)} disabled={busy} className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+                <Trash2 className="h-4 w-4" /> {busy ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -241,8 +268,8 @@ export default function Dns() {
                           <button onClick={() => edit(r)} className="rounded-lg p-1.5 text-gray-500 transition hover:bg-brand-50 hover:text-brand-700" title="Edit">
                             <Pencil className="h-4 w-4" />
                           </button>
-                          <button onClick={() => remove(r)} className="rounded-lg p-1.5 text-gray-500 transition hover:bg-red-50 hover:text-red-600" title="Delete">
-                            <Trash2 className="h-4 w-4" />
+<button onClick={() => setConfirmDel(r)} className="rounded-lg p-1.5 text-gray-500 transition hover:bg-red-50 hover:text-red-600" title="Delete">
+                              <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
