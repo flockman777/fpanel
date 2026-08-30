@@ -19,6 +19,7 @@ import {
   ShieldOff,
   Table2,
   Terminal,
+  Zap,
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getAccountName } from "../App";
@@ -78,6 +79,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
     title: "CONFIGURATION",
     items: [
       { to: "/cron", label: "Cron Jobs", icon: Clock },
+      { to: "/cache", label: "Cache Manager", icon: Zap },
       { to: "/backups", label: "Backups", icon: Archive },
       { to: "/usage", label: "Usage", icon: BarChart3 },
     ],

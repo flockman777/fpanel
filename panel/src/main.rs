@@ -89,6 +89,7 @@ fn build_api(state: db::AppState) -> Router<db::AppState> {
                 .nest("/backups", routes::backups::client_router())
                 .nest("/logs", routes::logs::client_router())
                 .nest("/stats", routes::stats::client_router())
+                .nest("/cache", routes::cache::client_router())
                 .nest("/redirects", routes::redirects::client_router())
                 .nest("/files", routes::files::client_router())
                 .nest("/databases", routes::databases::client_router())

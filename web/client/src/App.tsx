@@ -20,6 +20,7 @@ import Dns from "./pages/Dns";
 import Cron from "./pages/Cron";
 import Backups from "./pages/Backups";
 import Usage from "./pages/Usage";
+import Cache from "./pages/Cache";
 
 export function getToken() {
   return localStorage.getItem("fpanel_token");
@@ -143,6 +144,7 @@ export default function App() {
         <Route path="/cron" element={<Cron />} />
         <Route path="/backups" element={<Backups />} />
         <Route path="/usage" element={<Usage />} />
+        <Route path="/cache" element={<Cache />} />
       </Route>
     </Routes>
   );

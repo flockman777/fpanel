@@ -301,3 +301,7 @@ pub fn router() -> Router<AppState> {
         .route("/flush", post(flush))
         .route("/maxmemory", post(set_maxmemory))
 }
+
+pub fn client_router() -> Router<AppState> {
+    Router::new().route("/info", get(info))
+}
