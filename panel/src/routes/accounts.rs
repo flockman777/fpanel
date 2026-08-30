@@ -187,6 +187,19 @@ async fn remove(
         .await
         .map_err(|e| internal_error(e.into()))?;
 
+    // db_privileges links databases <-> db_users (no account_id column), so it
+    // must go first to satisfy the FK from databases/db_users (and vice versa).
+    sqlx::query(
+        "DELETE FROM db_privileges \
+         WHERE user_id IN (SELECT id FROM db_users WHERE account_id = ?) \
+            OR db_id IN (SELECT id FROM databases WHERE account_id = ?)",
+    )
+    .bind(id)
+    .bind(id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
+
     // Delete child rows first (FK-safe order, leaves -> parents -> account).
     for table in [
         // reference domains / databases / db_users
@@ -215,17 +228,6 @@ async fn remove(
             .await
             .map_err(|e| internal_error(e.into()))?;
     }
-    // db_privileges links databases <-> db_users (no account_id column).
-    sqlx::query(
-        "DELETE FROM db_privileges \
-         WHERE user_id IN (SELECT id FROM db_users WHERE account_id = ?) \
-            OR db_id IN (SELECT id FROM databases WHERE account_id = ?)",
-    )
-    .bind(id)
-    .bind(id)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| internal_error(e.into()))?;
     sqlx::query("DELETE FROM domains WHERE account_id = ?")
         .bind(id)
         .execute(&mut *tx)
