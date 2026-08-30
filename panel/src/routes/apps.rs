@@ -363,9 +363,10 @@ async fn ensure_no_app(state: &AppState, domain_id: i64) -> Result<(), ApiError>
 }
 
 fn db_ident(username: &str, app: &str, suffix: u32) -> (String, String) {
+    // cPanel-style: `<username>_<app>` (same prefix as the Databases UI).
     let tag = sanitize(username);
     let app = app.chars().take(3).collect::<String>();
-    let mut base = format!("fp_{tag}_{app}");
+    let mut base = format!("{tag}_{app}");
     if suffix > 0 {
         base.push_str(&suffix.to_string());
     }
@@ -848,6 +849,17 @@ async fn run_install(
         }
     };
     make_web_owned(&root);
+
+    // Laravel serves from public/, so persist the docroot override in the DB:
+    // provisioning rewrites vhost descriptors at boot and would otherwise
+    // reset the root back to the bare web directory.
+    if app == "laravel" && root.join("public").is_dir() {
+        let _ = sqlx::query("UPDATE domains SET docroot = ? WHERE name = ?")
+            .bind(root.join("public").to_string_lossy().into_owned())
+            .bind(&domain)
+            .execute(&state.db)
+            .await;
+    }
 
     let now = chrono::Utc::now().to_rfc3339();
     let result = sqlx::query(

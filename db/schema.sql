@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS domains (
     name TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'main',
     status TEXT NOT NULL DEFAULT 'active',
+    docroot TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(name)
 );

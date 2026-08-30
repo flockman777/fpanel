@@ -70,7 +70,7 @@ pub fn client_router() -> Router<AppState> {
 
 async fn list(State(state): State<AppState>) -> Result<Json<Vec<DomainAdmin>>, ApiError> {
     let rows = sqlx::query(
-        "SELECT d.id, d.account_id, a.username, d.name, d.kind, d.status, d.created_at \
+        "SELECT d.id, d.account_id, a.username, d.name, d.kind, d.status, d.created_at, d.docroot \
          FROM domains d JOIN accounts a ON a.id = d.account_id ORDER BY d.name",
     )
     .fetch_all(&state.db)
@@ -82,6 +82,7 @@ async fn list(State(state): State<AppState>) -> Result<Json<Vec<DomainAdmin>>, A
         let username: String = r.get(2);
         let kind: String = r.get(4);
         let name: String = r.get(3);
+        let docroot: Option<String> = r.get(7);
         out.push(DomainAdmin {
             id: r.get(0),
             account_id: r.get(1),
@@ -90,9 +91,13 @@ async fn list(State(state): State<AppState>) -> Result<Json<Vec<DomainAdmin>>, A
             kind: kind.clone(),
             status: r.get(5),
             created_at: r.get(6),
-            docroot: provision::vhost_root(&username, &kind, &name)
-                .to_string_lossy()
-                .into_owned(),
+            docroot: docroot
+                .filter(|ro| !ro.is_empty())
+                .unwrap_or_else(|| {
+                    provision::vhost_root(&username, &kind, &name)
+                        .to_string_lossy()
+                        .into_owned()
+                }),
         });
     }
     Ok(Json(out))
@@ -128,7 +133,7 @@ pub async fn create(
         .await?;
     let _ = provision::ensure_web_dirs(&username);
     let _ = provision::ensure_doc_root(&username, &domain.kind, &domain.name);
-    provision::write_vhost(&domain.name, &username, &domain.kind);
+    provision::write_vhost(&domain.name, &username, &domain.kind, None);
     crate::routes::dns::seed_domain_dns(&state, domain.id).await?;
     Ok((StatusCode::CREATED, Json(domain)))
 }
@@ -143,8 +148,9 @@ async fn remove(
 
 async fn client_list(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Result<Json<Vec<DomainClient>>, ApiError> {
     let (account_id, username) = bearer_account(&state, &headers).await?;
-    let rows = sqlx::query_as::<_, Domain>(
-        "SELECT * FROM domains WHERE account_id = ? ORDER BY kind, name",
+    let rows = sqlx::query(
+        "SELECT d.id, d.account_id, d.name, d.kind, d.status, d.created_at, d.docroot \
+         FROM domains d WHERE d.account_id = ? ORDER BY d.kind, d.name",
     )
     .bind(account_id)
     .fetch_all(&state.db)
@@ -152,16 +158,23 @@ async fn client_list(State(state): State<AppState>, headers: axum::http::HeaderM
     .map_err(|e| internal_error(e.into()))?;
     let out = rows
         .into_iter()
-        .map(|d| DomainClient {
-            id: d.id,
-            account_id: d.account_id,
-            name: d.name.clone(),
-            kind: d.kind.clone(),
-            status: d.status,
-            created_at: d.created_at,
-            docroot: provision::vhost_root(&username, &d.kind, &d.name)
-                .to_string_lossy()
-                .into_owned(),
+        .map(|r| {
+            let docroot: Option<String> = r.get(6);
+            DomainClient {
+                id: r.get(0),
+                account_id: r.get(1),
+                name: r.get(2),
+                kind: r.get(3),
+                status: r.get(4),
+                created_at: r.get(5),
+                docroot: docroot
+                    .filter(|ro| !ro.is_empty())
+                    .unwrap_or_else(|| {
+                        provision::vhost_root(&username, &r.get::<String, _>(3), &r.get::<String, _>(2))
+                            .to_string_lossy()
+                            .into_owned()
+                    }),
+            }
         })
         .collect();
     Ok(Json(out))
@@ -187,7 +200,7 @@ async fn client_create(
     let domain = insert_domain(&state, account_id, &input.name, kind).await?;
     let _ = provision::ensure_web_dirs(&username);
     let _ = provision::ensure_doc_root(&username, &domain.kind, &domain.name);
-    provision::write_vhost(&domain.name, &username, kind);
+    provision::write_vhost(&domain.name, &username, kind, None);
     crate::routes::dns::seed_domain_dns(&state, domain.id).await?;
     Ok((StatusCode::CREATED, Json(domain)))
 }

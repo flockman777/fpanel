@@ -301,9 +301,17 @@ fn safe_join(root: &std::path::Path, uri_path: &str) -> Option<PathBuf> {
     Some(base)
 }
 
-fn resolve(root: &std::path::Path, uri_path: &str) -> Option<PathBuf> {
+struct Resolved {
+    file: std::path::PathBuf,
+    script: String,
+    path_info: String,
+}
+
+fn resolve(root: &std::path::Path, uri_path: &str) -> Option<Resolved> {
     let candidate = safe_join(root, uri_path)?;
     let mut out = candidate.clone();
+
+    // Trailing slash: serve the directory's index file.
     if candidate.is_dir() {
         for index in ["index.html", "index.htm", "index.php"] {
             let idx = candidate.join(index);
@@ -315,11 +323,75 @@ fn resolve(root: &std::path::Path, uri_path: &str) -> Option<PathBuf> {
         if out == candidate {
             return None;
         }
+        return Some(Resolved {
+            file: out,
+            script: uri_path.trim_end_matches('/').to_string(),
+            path_info: String::new(),
+        });
     }
-    if !out.is_file() {
+
+    if candidate.is_file() {
+        return Some(Resolved {
+            file: candidate,
+            script: uri_path.to_string(),
+            path_info: String::new(),
+        });
+    }
+
+    // Not an existing file/dir. A missing path whose last segment looks like a
+    // filename is a genuine 404 (missing static asset); clean URLs must not
+    // fall through, otherwise every typo would render the application 200.
+    let last = uri_path.rsplit('/').next().unwrap_or("");
+    if last.contains('.') {
         return None;
     }
-    Some(out)
+
+    // Front controller / PATH_INFO fallback (what .htaccess rewrites do):
+    //  - `/index.php/index/install`  -> script `index.php`, PATH_INFO `/index/install`
+    //  - `/some/clean/url`           -> nearest directory index.php (Laravel/WP/OJS)
+    let segments: Vec<&str> = uri_path.split('/').filter(|s| !s.is_empty()).collect();
+    for len in (1..=segments.len()).rev() {
+        let prefix = format!("/{}", segments[..len].join("/"));
+        let rest = &segments[len..];
+        let joined = safe_join(root, &prefix)?;
+        if joined.is_file() {
+            return Some(Resolved {
+                file: joined,
+                script: prefix,
+                path_info: if rest.is_empty() {
+                    String::new()
+                } else {
+                    format!("/{}", rest.join("/"))
+                },
+            });
+        }
+        if joined.is_dir() {
+            let idx = joined.join("index.php");
+            if idx.is_file() {
+                return Some(Resolved {
+                    file: idx,
+                    script: prefix,
+                    path_info: if rest.is_empty() {
+                        String::new()
+                    } else {
+                        format!("/{}", rest.join("/"))
+                    },
+                });
+            }
+        }
+    }
+
+    // Root-level front controller: the document root's index.php receives the
+    // whole path (WordPress /, Laravel /public, OJS clean URLs).
+    let root_index = root.join("index.php");
+    if root_index.is_file() {
+        return Some(Resolved {
+            file: root_index,
+            script: "/index.php".to_string(),
+            path_info: format!("/{}", segments.join("/")),
+        });
+    }
+    None
 }
 
 fn is_php(path: &std::path::Path) -> bool {
@@ -338,13 +410,14 @@ fn run_php_cgi(
     file: std::path::PathBuf,
     host: String,
     uri: String,
+    script: String,
+    path_info: String,
     query: String,
     method: String,
     body: Option<Vec<u8>>,
     content_type: Option<String>,
     log_dir: std::path::PathBuf,
 ) -> Option<PhpOut> {
-    let script = uri.split('?').next().unwrap_or("").to_string();
     let mut cmd = Command::new("php-cgi");
     cmd.arg("-q")
         .arg(&file)
@@ -355,6 +428,7 @@ fn run_php_cgi(
         .env("REDIRECT_STATUS", "1")
         .env("SCRIPT_FILENAME", &file)
         .env("SCRIPT_NAME", &script)
+        .env("PATH_INFO", &path_info)
         .env("DOCUMENT_ROOT", &root)
         .env("SERVER_NAME", &host)
         .env("SERVER_ADDR", "127.0.0.1")
@@ -365,6 +439,9 @@ fn run_php_cgi(
         .env("QUERY_STRING", &query)
         .env("HTTP_HOST", &host)
         .env("REMOTE_ADDR", "127.0.0.1");
+    if !path_info.is_empty() {
+        cmd.env("ORIG_PATH_INFO", &path_info);
+    }
     if let Some(ct) = &content_type {
         cmd.env("CONTENT_TYPE", ct).env("HTTP_CONTENT_TYPE", ct);
     }
@@ -591,9 +668,9 @@ impl ProxyHttp for FS {
         }
 
         let root = std::path::PathBuf::from(&vhost.root);
-        match resolve(&root, &uri_path) {
-            Some(file) => {
-                if is_php(&file) && (method == "GET" || method == "POST") {
+        match resolve(&root, &decoded) {
+            Some(res) => {
+                if is_php(&res.file) && (method == "GET" || method == "POST") {
                     let mime = "text/html; charset=utf-8";
                     let body = if method == "POST" {
                         session.read_request_body().await.ok().flatten().map(|b| b.to_vec())
@@ -607,16 +684,18 @@ impl ProxyHttp for FS {
                         .and_then(|h| h.to_str().ok())
                         .map(|s| s.to_string());
                     let block_root = root.clone();
-                    let block_file = file.clone();
+                    let block_file = res.file.clone();
                     let block_host = host.clone();
                     let block_uri = decoded.clone();
+                    let block_script = res.script.clone();
+                    let block_pi = res.path_info.clone();
                     let block_query = uri_path.split('?').nth(1).unwrap_or("").to_string();
                     let block_method = method.clone();
                     let block_body = body.clone();
                     let block_ct = content_type.clone();
                     let block_log = self.log_dir.clone();
                     let result = tokio::task::spawn_blocking(move || {
-                        run_php_cgi(block_root, block_file, block_host, block_uri, block_query, block_method, block_body, block_ct, block_log)
+                        run_php_cgi(block_root, block_file, block_host, block_uri, block_script, block_pi, block_query, block_method, block_body, block_ct, block_log)
                     })
                     .await
                     .ok()
@@ -650,11 +729,11 @@ impl ProxyHttp for FS {
                     }
                     return Ok(true);
                 }
-                let mime = mime_for(&file);
-                let body = match std::fs::read(&file) {
+                let mime = mime_for(&res.file);
+                let body = match std::fs::read(&res.file) {
                     Ok(b) => b,
                     Err(_) => {
-                        warn!("read failed: {}", file.display());
+                        warn!("read failed: {}", res.file.display());
                         access_line(&self.log_dir, &host, &client_ip, &method, &uri_path, 500, 0);
                         return send_status(session, 500, "<h1>500 Internal Server Error</h1>").await;
                     }

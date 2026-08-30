@@ -162,7 +162,7 @@ async fn create(
         .await
         .map_err(|e| internal_error(e.into()))?;
     let _ = provision::ensure_web_dirs(&account.username);
-    provision::write_vhost(&domain, &account.username, "main");
+    provision::write_vhost(&domain, &account.username, "main", None);
     crate::routes::dns::seed_domain_dns(&state, insert.last_insert_rowid()).await?;
 
     trace::log_provision(&format!("create account {}", account.username));

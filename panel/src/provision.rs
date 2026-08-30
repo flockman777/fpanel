@@ -587,12 +587,15 @@ pub fn remove_ssh(account: &str) {
     }
 }
 
-pub fn write_vhost(name: &str, username: &str, kind: &str) {
+pub fn write_vhost(name: &str, username: &str, kind: &str, docroot_override: Option<&str>) {
     let path = vhost_path(name);
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let root = vhost_root(username, kind, name);
+    let root = docroot_override
+        .filter(|r| !r.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| vhost_root(username, kind, name));
     let vhost = Vhost {
         domain: name.to_string(),
         account: username.to_string(),

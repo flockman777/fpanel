@@ -46,16 +46,16 @@ async fn main() {
 
     // Keep fserver vhost descriptors in sync with the DB on every boot so
     // layout changes (e.g. the cPanel-style docroot scheme) apply at once.
-    if let Ok(domains) = sqlx::query_as::<_, (String, String, String)>(
-        "SELECT a.username, d.name, d.kind \
+    if let Ok(domains) = sqlx::query_as::<_, (String, String, String, Option<String>)>(
+        "SELECT a.username, d.name, d.kind, d.docroot \
          FROM domains d JOIN accounts a ON a.id = d.account_id \
          WHERE d.status = 'active'",
     )
     .fetch_all(&state.db)
     .await
     {
-        for (username, name, kind) in domains {
-            provision::write_vhost(&name, &username, &kind);
+        for (username, name, kind, docroot) in domains {
+            provision::write_vhost(&name, &username, &kind, docroot.as_deref());
         }
     }
 
