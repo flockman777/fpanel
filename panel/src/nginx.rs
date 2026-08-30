@@ -19,6 +19,28 @@ fn reload_nginx() {
     let _ = Command::new("nginx").args(["-s", "reload"]).output();
 }
 
+fn server_name_conflict(domain: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir("/etc/nginx/sites-enabled") else {
+        return false;
+    };
+    for ent in entries.flatten() {
+        let name = ent.file_name().to_string_lossy().to_string();
+        if name.starts_with("fpssl-") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(ent.path()) else {
+            continue;
+        };
+        for line in content.lines() {
+            let l = line.trim();
+            if l.starts_with("server_name") && l.contains(domain) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub fn ensure_https_vhost(domain: &str) -> Result<(), String> {
     if !nginx_present() {
         return Ok(());
@@ -29,14 +51,8 @@ pub fn ensure_https_vhost(domain: &str) -> Result<(), String> {
         return Err(format!("ssl files missing for {domain}"));
     }
 
-    let enabled = "/etc/nginx/sites-enabled";
-    if let Ok(out) = Command::new("grep")
-        .args(["-rls", &format!("server_name {domain};"), enabled])
-        .output()
-    {
-        if out.status.success() {
-            return Ok(());
-        }
+    if server_name_conflict(domain) {
+        return Ok(());
     }
 
     let conf_path = format!("/etc/nginx/sites-available/fpssl-{domain}.conf");
@@ -66,7 +82,7 @@ pub fn ensure_https_vhost(domain: &str) -> Result<(), String> {
     }
     std::fs::write(&conf_path, content).map_err(|e| format!("write {conf_path}: {e}"))?;
 
-    let link = format!("{enabled}/fpssl-{domain}.conf");
+    let link = format!("/etc/nginx/sites-enabled/fpssl-{domain}.conf");
     if !Path::new(&link).exists() {
         if let Some(parent) = Path::new(link.as_str()).parent() {
             let _ = std::fs::create_dir_all(parent);
