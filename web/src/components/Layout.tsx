@@ -100,8 +100,8 @@ export default function Layout({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside className="flex w-64 flex-col bg-brand-900 text-brand-100">
-        <div className="flex items-center gap-3 border-b border-brand-800 px-5 py-5">
-          <div className="flex h-11 w-16 items-center justify-center overflow-hidden rounded-lg bg-white px-1 py-1">
+        <div className="flex items-center gap-3 border-b border-brand-800 px-4 py-3">
+          <div className="flex h-16 w-24 items-center justify-center overflow-hidden rounded-lg bg-white">
             <img
               src="/fpanel-logo.png"
               alt="FPanel"

@@ -43,15 +43,17 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-700 via-brand-600 to-brand-900 p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-white">
-          <div className="flex h-20 w-32 items-center justify-center rounded-2xl bg-white shadow-lg">
+          <div className="flex h-28 w-44 items-center justify-center rounded-2xl bg-white shadow-lg">
             <img
               src="/fpanel-logo.png"
               alt="FPanel"
-              className="max-h-14 w-auto object-contain px-2"
+              className="max-h-20 w-auto object-contain px-3"
             />
           </div>
-          <h1 className="mt-4 text-3xl font-bold">FPanel</h1>
-          <p className="mt-1 text-sm text-brand-100">Server Admin</p>
+          <h1 className="mt-5 text-3xl font-bold">FPanel</h1>
+          <p className="mt-1.5 text-base font-medium text-brand-100">
+            Welcome — Manage your servers
+          </p>
         </div>
 
         <form

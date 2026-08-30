@@ -36,14 +36,17 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-700 via-brand-600 to-brand-900 p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-white">
-          <img
-            src="/fpanel-logo.png"
-            alt="FPanel"
-            className="h-24 w-auto rounded-xl bg-white p-1 shadow-lg"
-          />
-          <h1 className="mt-4 text-lg font-semibold text-white">
-            Hosting Control Panel
-          </h1>
+          <div className="flex h-32 w-auto items-center justify-center rounded-2xl bg-white p-2 shadow-lg">
+            <img
+              src="/fpanel-logo.png"
+              alt="FPanel"
+              className="h-28 w-auto object-contain"
+            />
+          </div>
+          <h1 className="mt-5 text-2xl font-bold text-white">Welcome</h1>
+          <p className="mt-1 text-sm text-brand-100">
+            Sign in to manage your hosting
+          </p>
         </div>
 
         <form onSubmit={submit} className="rounded-2xl bg-white p-8 shadow-2xl">
