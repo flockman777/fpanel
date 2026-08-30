@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Key, Plus, RefreshCw, Terminal, Trash2, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../App";
@@ -87,7 +88,7 @@ export default function Ssh() {
   };
 
   const regenerate = async (r: Row) => {
-    if (!confirm(`Regenerate the key pair for "${r.username}"? Put the new public key in authorized_keys.`)) return;
+    if (!await askConfirm(`Regenerate the key pair for "${r.username}"? Put the new public key in authorized_keys.`)) return;
     setRegenerating(r.id);
     try {
       const res = await api<{ username: string; private_key: string; public_key: string }>(`/ssh/${r.id}/keys?account_id=${accountId}`, {
@@ -104,7 +105,7 @@ export default function Ssh() {
   };
 
   const remove = async (r: Row) => {
-    if (!confirm(`Remove SSH access for "${r.username}"?`)) return;
+    if (!await askConfirm(`Remove SSH access for "${r.username}"?`)) return;
     try {
       await api(`/ssh/${r.id}?account_id=${accountId}`, { method: "DELETE" });
       notify("SSH access removed");

@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import {
   Play,
   Plus,
@@ -174,7 +175,7 @@ export default function Runtime() {
   };
 
   const drop = async (app: RunApp) => {
-    if (!confirm(`Delete the runtime app for "${app.domain}"?`)) return;
+    if (!await askConfirm(`Delete the runtime app for "${app.domain}"?`)) return;
     try {
       await api(`/runtime/${app.id}?account_id=${accountId}`, { method: "DELETE" });
       notify("App deleted");

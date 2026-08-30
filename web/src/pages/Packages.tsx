@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../App";
@@ -70,7 +71,7 @@ export default function Packages() {
   };
 
   const remove = async (id: number) => {
-    if (!confirm("Delete this package?")) return;
+    if (!await askConfirm("Delete this package?")) return;
     try {
       await api(`/packages/${id}`, { method: "DELETE" });
       load();

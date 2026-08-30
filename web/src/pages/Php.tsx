@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Braces, Pencil, RotateCcw, Layers, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../App";
@@ -124,7 +125,7 @@ export default function Php() {
   };
 
   const reset = async (r: PhpRow) => {
-    if (!confirm(`Reset PHP for "${r.domain}" to server defaults?`)) return;
+    if (!await askConfirm(`Reset PHP for "${r.domain}" to server defaults?`)) return;
     try {
       await api(`/php/${r.domain_id}?account_id=${accountId}`, { method: "DELETE" });
       notify("Reset to server defaults");

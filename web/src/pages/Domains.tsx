@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Globe, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../App";
@@ -62,7 +63,7 @@ export default function Domains() {
   };
 
   const remove = async (id: number) => {
-    if (!confirm("Delete this domain and remove its vhost?")) return;
+    if (!await askConfirm("Delete this domain and remove its vhost?")) return;
     try {
       await api(`/domains/${id}`, { method: "DELETE" });
       load();

@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Plus, Trash2, ArrowRightLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../App";
@@ -91,7 +92,7 @@ export default function Redirects() {
   };
 
   const remove = async (id: number) => {
-    if (!confirm("Delete this redirect?")) return;
+    if (!await askConfirm("Delete this redirect?")) return;
     try {
       await api(`/redirects/${id}`, { method: "DELETE" });
       load();

@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { KeyRound, Plus, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../App";
@@ -69,7 +70,7 @@ export default function Accounts() {
   };
 
   const remove = async (id: number) => {
-    if (!confirm("Delete this account?")) return;
+    if (!await askConfirm("Delete this account?")) return;
     await api(`/accounts/${id}`, { method: "DELETE" });
     load();
   };

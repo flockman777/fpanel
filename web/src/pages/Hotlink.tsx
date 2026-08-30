@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Link2Off, RotateCcw, Save, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../App";
@@ -90,7 +91,7 @@ export default function Hotlink() {
   };
 
   const remove = async (row: Row) => {
-    if (!confirm(`Disable hotlink protection for "${row.domain}"?`)) return;
+    if (!await askConfirm(`Disable hotlink protection for "${row.domain}"?`)) return;
     try {
       await api(`/hotlink/${row.id}?account_id=${accountId}`, { method: "DELETE" });
       notify("Hotlink protection disabled");
