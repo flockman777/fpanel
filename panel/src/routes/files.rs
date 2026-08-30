@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::os::unix::fs::PermissionsExt;
+use std::io::{Cursor, Read, Seek, Write};
+use std::fs;
 
 use axum::extract::{Multipart, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
@@ -7,6 +9,8 @@ use axum::response::IntoResponse;
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde::Serialize;
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::db::AppState;
 use crate::error::{internal_error, ApiError};
@@ -15,6 +19,13 @@ use crate::provision;
 #[derive(Debug, Deserialize)]
 pub struct PathQ {
     pub path: Option<String>,
+    pub account_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DownloadQ {
+    #[serde(default)]
+    pub path: Vec<String>,
     pub account_id: Option<i64>,
 }
 
@@ -41,6 +52,13 @@ pub struct MoveBody {
 
 #[derive(Debug, Deserialize)]
 pub struct DeleteBody {
+    pub path: Option<String>,
+    pub paths: Option<Vec<String>>,
+    pub account_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OnePathBody {
     pub path: String,
     pub account_id: Option<i64>,
 }
@@ -86,6 +104,8 @@ pub fn router() -> Router<AppState> {
         .route("/delete", axum::routing::post(delete_admin))
         .route("/chmod", axum::routing::post(chmod_admin))
         .route("/upload", axum::routing::post(upload_admin))
+        .route("/compress", axum::routing::post(compress_admin))
+        .route("/extract", axum::routing::post(extract_admin))
 }
 
 pub fn client_router() -> Router<AppState> {
@@ -101,6 +121,8 @@ pub fn client_router() -> Router<AppState> {
         .route("/delete", axum::routing::post(delete_client))
         .route("/chmod", axum::routing::post(chmod_client))
         .route("/upload", axum::routing::post(upload_client))
+        .route("/compress", axum::routing::post(compress_client))
+        .route("/extract", axum::routing::post(extract_client))
 }
 
 // ---------- admin ----------
@@ -115,9 +137,9 @@ async fn read_admin(State(state): State<AppState>, Query(q): Query<PathQ>) -> Re
     read_file(&root, q.path.as_deref())
 }
 
-async fn download_admin(State(state): State<AppState>, Query(q): Query<PathQ>) -> Result<impl IntoResponse, ApiError> {
+async fn download_admin(State(state): State<AppState>, Query(q): Query<DownloadQ>) -> Result<impl IntoResponse, ApiError> {
     let root = admin_root(&state, q.account_id).await?;
-    download_file(&root, q.path.as_deref())
+    download_many(&root, &q.path)
 }
 
 async fn write_admin(State(state): State<AppState>, Json(body): Json<WriteBody>) -> Result<StatusCode, ApiError> {
@@ -147,7 +169,15 @@ async fn copy_admin(State(state): State<AppState>, Json(body): Json<MoveBody>) -
 
 async fn delete_admin(State(state): State<AppState>, Json(body): Json<DeleteBody>) -> Result<StatusCode, ApiError> {
     let root = admin_root(&state, body.account_id).await?;
-    delete_entry(&root, &body.path)
+    match body.paths {
+        Some(paths) if !paths.is_empty() => {
+            for p in paths {
+                delete_entry(&root, &p)?;
+            }
+            Ok(StatusCode::NO_CONTENT)
+        }
+        _ => delete_entry(&root, body.path.as_deref().unwrap_or("")),
+    }
 }
 
 async fn chmod_admin(State(state): State<AppState>, Json(body): Json<ChmodBody>) -> Result<StatusCode, ApiError> {
@@ -164,6 +194,22 @@ async fn upload_admin(
     Ok(Json(handle_upload(&root, q.path.as_deref(), &mut multipart).await?))
 }
 
+async fn compress_admin(
+    State(state): State<AppState>,
+    Json(body): Json<OnePathBody>,
+) -> Result<StatusCode, ApiError> {
+    let root = admin_root(&state, body.account_id).await?;
+    compress_entry(&root, &body.path)
+}
+
+async fn extract_admin(
+    State(state): State<AppState>,
+    Json(body): Json<OnePathBody>,
+) -> Result<StatusCode, ApiError> {
+    let root = admin_root(&state, body.account_id).await?;
+    extract_archive(&root, &body.path)
+}
+
 // ---------- client ----------
 
 async fn list_client(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<PathQ>) -> Result<Json<ListResponse>, ApiError> {
@@ -176,9 +222,9 @@ async fn read_client(State(state): State<AppState>, headers: HeaderMap, Query(q)
     read_file(&root, q.path.as_deref())
 }
 
-async fn download_client(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<PathQ>) -> Result<impl IntoResponse, ApiError> {
+async fn download_client(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<DownloadQ>) -> Result<impl IntoResponse, ApiError> {
     let root = client_root(&state, &headers).await?;
-    download_file(&root, q.path.as_deref())
+    download_many(&root, &q.path)
 }
 
 async fn write_client(State(state): State<AppState>, headers: HeaderMap, Json(body): Json<WriteBody>) -> Result<StatusCode, ApiError> {
@@ -208,7 +254,15 @@ async fn copy_client(State(state): State<AppState>, headers: HeaderMap, Json(bod
 
 async fn delete_client(State(state): State<AppState>, headers: HeaderMap, Json(body): Json<DeleteBody>) -> Result<StatusCode, ApiError> {
     let root = client_root(&state, &headers).await?;
-    delete_entry(&root, &body.path)
+    match body.paths {
+        Some(paths) if !paths.is_empty() => {
+            for p in paths {
+                delete_entry(&root, &p)?;
+            }
+            Ok(StatusCode::NO_CONTENT)
+        }
+        _ => delete_entry(&root, body.path.as_deref().unwrap_or("")),
+    }
 }
 
 async fn chmod_client(State(state): State<AppState>, headers: HeaderMap, Json(body): Json<ChmodBody>) -> Result<StatusCode, ApiError> {
@@ -224,6 +278,24 @@ async fn upload_client(
 ) -> Result<Json<UploadResult>, ApiError> {
     let root = client_root(&state, &headers).await?;
     Ok(Json(handle_upload(&root, q.path.as_deref(), &mut multipart).await?))
+}
+
+async fn compress_client(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<OnePathBody>,
+) -> Result<StatusCode, ApiError> {
+    let root = client_root(&state, &headers).await?;
+    compress_entry(&root, &body.path)
+}
+
+async fn extract_client(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<OnePathBody>,
+) -> Result<StatusCode, ApiError> {
+    let root = client_root(&state, &headers).await?;
+    extract_archive(&root, &body.path)
 }
 
 // ---------- owners ----------
@@ -346,15 +418,51 @@ fn read_file(root: &Path, rel: Option<&str>) -> Result<String, ApiError> {
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Binary file (cannot edit as text)"))
 }
 
-fn download_file(root: &Path, rel: Option<&str>) -> Result<impl IntoResponse, ApiError> {
-    let rel = rel.unwrap_or("");
-    let path = safe_resolve(root, rel)?;
-    if path.is_dir() {
-        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Is a directory"));
+fn download_many(root: &Path, paths: &[String]) -> Result<impl IntoResponse, ApiError> {
+    let rels: Vec<&str> = paths.iter().map(String::as_str).collect();
+    let cleaned: Vec<&str> = if rels.is_empty() { vec![""] } else { rels };
+    let spaths: Vec<PathBuf> = cleaned
+        .iter()
+        .map(|r| safe_resolve(root, r))
+        .collect::<Result<_, _>>()?;
+    for p in &spaths {
+        if !p.exists() {
+            return Err(ApiError::new(StatusCode::NOT_FOUND, "File not found"));
+        }
     }
-    let bytes = std::fs::read(&path)
-        .map_err(|e| ApiError::new(StatusCode::NOT_FOUND, format!("File not found: {e}")))?;
-    let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("download");
+    let single_file = spaths.len() == 1 && !spaths[0].is_dir();
+    let bytes: Vec<u8> = if single_file {
+        std::fs::read(&spaths[0])
+            .map_err(|e| ApiError::new(StatusCode::NOT_FOUND, format!("File not found: {e}")))?
+    } else {
+        // cPanel-style: downloading a folder or a multi-selection zips it.
+        let mut buf: Vec<u8> = Vec::new();
+        {
+            let mut w = ZipWriter::new(Cursor::new(&mut buf));
+            for (p, r) in spaths.iter().zip(cleaned.iter()) {
+                let base = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("download")
+                    .trim_end_matches('/');
+                if spaths.len() == 1 {
+                    zip_tree(&mut w, p, base)?;
+                } else {
+                    let rel = r.trim_start_matches('/');
+                    let prefix = format!("{base}/{}", rel);
+                    zip_tree(&mut w, p, &prefix)?;
+                }
+            }
+            w.finish().map_err(|e| internal_error(e.into()))?;
+        }
+        buf
+    };
+    let first = spaths[0].file_name().and_then(|n| n.to_str()).unwrap_or("download");
+    let out_name = if single_file {
+        first.to_string()
+    } else {
+        format!("{}.zip", first.trim_end_matches('/'))
+    };
     let mut hm = axum::http::HeaderMap::new();
     hm.insert(
         header::CONTENT_TYPE,
@@ -362,7 +470,7 @@ fn download_file(root: &Path, rel: Option<&str>) -> Result<impl IntoResponse, Ap
     );
     hm.insert(
         header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{fname}\"")
+        format!("attachment; filename=\"{out_name}\"")
             .parse()
             .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "header error"))?,
     );
@@ -477,6 +585,123 @@ fn chmod_entry(root: &Path, rel: &str, mode: &str) -> Result<StatusCode, ApiErro
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
         .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Chmod failed: {e}")))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------- zip ----------
+
+fn zip_tree<W: Write + Seek>(
+    w: &mut ZipWriter<W>,
+    base: &Path,
+    prefix: &str,
+) -> Result<(), ApiError> {
+    let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    if base.is_dir() {
+        let dirname = prefix.trim_end_matches('/').to_string();
+        if !dirname.is_empty() {
+            w.add_directory(&dirname, opts)
+                .map_err(|e| internal_error(e.into()))?;
+        }
+        for e in fs::read_dir(base)
+            .map_err(|e| internal_error(e.into()))
+            .map(|i| i.filter_map(Result::ok))?
+        {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let child = if dirname.is_empty() {
+                name.clone()
+            } else {
+                format!("{dirname}/{name}")
+            };
+            zip_tree(w, &e.path(), &child)?;
+        }
+    } else {
+        let name = prefix.trim_start_matches('/').to_string();
+        w.start_file(name, opts)
+            .map_err(|e| internal_error(e.into()))?;
+        let mut f = fs::File::open(base).map_err(|e| internal_error(e.into()))?;
+        let mut buf = vec![0u8; 65536];
+        loop {
+            let n = f.read(&mut buf).map_err(|e| internal_error(e.into()))?;
+            if n == 0 {
+                break;
+            }
+            w.write_all(&buf[..n]).map_err(|e| internal_error(e.into()))?;
+        }
+    }
+    Ok(())
+}
+
+fn compress_entry(root: &Path, rel: &str) -> Result<StatusCode, ApiError> {
+    let src = safe_resolve(root, rel)?;
+    if !src.exists() {
+        return Err(ApiError::new(StatusCode::NOT_FOUND, "Not found"));
+    }
+    let name = src
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Invalid name"))?;
+    let parent = src
+        .parent()
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Invalid path"))?;
+    let zip_path = parent.join(format!("{name}.zip"));
+    if zip_path.exists() {
+        fs::remove_file(&zip_path)
+            .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Zip failed: {e}")))?;
+    }
+    let file = fs::File::create(&zip_path)
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Zip failed: {e}")))?;
+    let mut w = ZipWriter::new(file);
+    // Keep the basename as the top-level entry (cPanel keeps dir contents inside `<name>/`).
+    zip_tree(&mut w, &src, name)?;
+    w.finish().map_err(|e| internal_error(e.into()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn extract_archive(root: &Path, rel: &str) -> Result<StatusCode, ApiError> {
+    let src = safe_resolve(root, rel)?;
+    if !src.exists() || !src.is_file() {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Archive not found"));
+    }
+    let dir = src
+        .parent()
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Invalid path"))?;
+    let file = fs::File::open(&src).map_err(|e| internal_error(e.into()))?;
+    let mut ar = ZipArchive::new(file)
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Not a valid .zip archive"))?;
+    for i in 0..ar.len() {
+        let mut entry = ar.by_index(i).map_err(|e| internal_error(e.into()))?;
+        let rel_name = sanitize_zip_name(entry.name())?;
+        let dest = dir.join(&rel_name);
+        if !dest.starts_with(dir) {
+            return Err(ApiError::new(StatusCode::BAD_REQUEST, "Unsafe archive entry"));
+        }
+        if entry.is_dir() {
+            fs::create_dir_all(&dest).map_err(|e| internal_error(e.into()))?;
+        } else {
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent).map_err(|e| internal_error(e.into()))?;
+            }
+            let mut out = fs::File::create(&dest).map_err(|e| internal_error(e.into()))?;
+            std::io::copy(&mut entry, &mut out).map_err(|e| internal_error(e.into()))?;
+        }
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn sanitize_zip_name(name: &str) -> Result<PathBuf, ApiError> {
+    let mut pb = PathBuf::new();
+    for comp in name.split('/') {
+        if comp.is_empty() || comp == "." {
+            continue;
+        }
+        if comp == ".." || comp.contains('\\') || comp.contains('\0') {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Unsafe archive entry path",
+            ));
+        }
+        pb.push(comp);
+    }
+    Ok(pb)
 }
 
 async fn handle_upload(

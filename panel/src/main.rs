@@ -30,6 +30,21 @@ async fn main() {
         .await
         .expect("failed to init db");
 
+    // Keep fserver vhost descriptors in sync with the DB on every boot so
+    // layout changes (e.g. the cPanel-style docroot scheme) apply at once.
+    if let Ok(domains) = sqlx::query_as::<_, (String, String, String)>(
+        "SELECT a.username, d.name, d.kind \
+         FROM domains d JOIN accounts a ON a.id = d.account_id \
+         WHERE d.status = 'active'",
+    )
+    .fetch_all(&state.db)
+    .await
+    {
+        for (username, name, kind) in domains {
+            provision::write_vhost(&name, &username, &kind);
+        }
+    }
+
     // AutoSSL: renew Let's Encrypt certificates for all accounts every 6 hours.
     {
         let st = state.clone();

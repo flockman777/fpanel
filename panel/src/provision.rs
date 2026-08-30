@@ -173,17 +173,32 @@ pub fn vhosts_dir() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("vhosts"))
 }
 
-pub fn account_htdocs(username: &str) -> PathBuf {
-    data_dir().join("accounts").join(username).join("htdocs")
+/// Base directory holding all account homes (cPanel-style). Default `/home`.
+pub fn home_dir() -> PathBuf {
+    std::env::var("FPANEL_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/home"))
 }
 
-/// cPanel-style layout: main/alias domains map to the account root
-/// (public_html), addon subdomains live in their own subfolder inside it.
+/// cPanel-style account home: `/home/<username>`.
+pub fn account_home(username: &str) -> PathBuf {
+    home_dir().join(username)
+}
+
+/// Document root of the primary domain: `/home/<username>/public_html`.
+pub fn account_htdocs(username: &str) -> PathBuf {
+    account_home(username).join("public_html")
+}
+
+/// cPanel-style layout:
+/// - main (primary) and alias (parked) -> /home/<username>/public_html
+/// - sub (subdomain)                    -> /home/<username>/public_html/<sub>
+/// - addon (extra/added domain)         -> /home/<username>/addondomains/<domain>
 pub fn vhost_root(username: &str, kind: &str, domain: &str) -> PathBuf {
-    if kind == "sub" {
-        account_htdocs(username).join(domain.trim_matches('.'))
-    } else {
-        account_htdocs(username)
+    match kind {
+        "sub" => account_htdocs(username).join(domain.trim_matches('.')),
+        "addon" => account_home(username).join("addondomains").join(domain.trim_matches('.')),
+        _ => account_htdocs(username),
     }
 }
 

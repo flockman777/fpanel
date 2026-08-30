@@ -1,5 +1,5 @@
 import { askConfirm } from "../askConfirm";
-import { KeyRound, Plus, Trash2, UserPlus } from "lucide-react";
+import { KeyRound, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../App";
 
@@ -22,11 +22,13 @@ export default function Accounts() {
   const [packages, setPackages] = useState<Package[]>([]);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [edit, setEdit] = useState<Account | null>(null);
   const [form, setForm] = useState({
     username: "",
     email: "",
     password: "",
     package_id: "",
+    status: "active",
     name: "",
   });
 
@@ -47,25 +49,46 @@ export default function Accounts() {
     load();
   }, []);
 
-  const create = async (e: React.FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     try {
-      await api("/accounts", {
-        method: "POST",
-        body: JSON.stringify({
-          username: form.username,
-          email: form.email,
-          password: form.password || null,
-          package_id: Number(form.package_id),
-          name: form.name || null,
-        }),
+      if (edit) {
+        await api(`/accounts/${edit.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            email: form.email,
+            package_id: Number(form.package_id),
+            status: form.status,
+            name: form.name || null,
+            password: form.password || null,
+          }),
+        });
+      } else {
+        await api("/accounts", {
+          method: "POST",
+          body: JSON.stringify({
+            username: form.username,
+            email: form.email,
+            password: form.password || null,
+            package_id: Number(form.package_id),
+            name: form.name || null,
+          }),
+        });
+      }
+      setForm({
+        username: "",
+        email: "",
+        password: "",
+        package_id: "",
+        status: "active",
+        name: "",
       });
-      setForm({ username: "", email: "", password: "", package_id: "", name: "" });
+      setEdit(null);
       setShowForm(false);
       load();
     } catch (err: any) {
-      setError(err.message || "Failed to create account");
+      setError(err.message || "Failed to save account");
     }
   };
 
@@ -93,6 +116,20 @@ export default function Accounts() {
     }
   };
 
+  const startEdit = (a: Account) => {
+    setEdit(a);
+    setForm({
+      username: a.username,
+      email: a.email,
+      password: "",
+      package_id: String(a.package_id),
+      status: a.status,
+      name: a.name || "",
+    });
+    setShowForm(true);
+    setError("");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -103,7 +140,10 @@ export default function Accounts() {
           </p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            setEdit(null);
+            setShowForm(!showForm);
+          }}
           className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700"
         >
           <Plus className="h-4 w-4" />
@@ -119,12 +159,33 @@ export default function Accounts() {
 
       {showForm && (
         <form
-          onSubmit={create}
+          onSubmit={save}
           className="rounded-xl border border-brand-200 bg-brand-50 p-6"
         >
           <div className="mb-4 flex items-center gap-2 text-brand-700">
-            <UserPlus className="h-5 w-5" />
-            <span className="font-semibold">New Account</span>
+            {edit ? <Pencil className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
+            <span className="font-semibold">
+              {edit ? `Edit Account: ${edit.username}` : "New Account"}
+            </span>
+            {edit && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEdit(null);
+                  setForm({
+                    username: "",
+                    email: "",
+                    password: "",
+                    package_id: "",
+                    status: "active",
+                    name: "",
+                  });
+                }}
+                className="ml-auto text-xs font-medium text-brand-500 hover:text-brand-700"
+              >
+                ✕ cancel edit
+              </button>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -134,8 +195,9 @@ export default function Accounts() {
               <input
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                className="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2.5 text-sm focus:outline-none"
                 required
+                disabled
               />
             </div>
             <div>
@@ -159,9 +221,24 @@ export default function Accounts() {
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-                placeholder="Used for client login"
+                placeholder={edit ? "Leave blank to keep current" : "Used for client login"}
               />
             </div>
+            {edit && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Status
+                </label>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm({ ...form, status: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                >
+                  <option value="active">active</option>
+                  <option value="suspended">suspended</option>
+                </select>
+              </div>
+            )}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">
                 Package
@@ -255,6 +332,13 @@ export default function Accounts() {
                   </td>
                   <td className="px-5 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => startEdit(a)}
+                        className="rounded-lg p-2 text-gray-400 transition hover:bg-brand-50 hover:text-brand-600"
+                        title="Edit account"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={() => setPassword(a.id)}
                         className="rounded-lg p-2 text-gray-400 transition hover:bg-brand-50 hover:text-brand-600"

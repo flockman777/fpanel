@@ -171,13 +171,16 @@ async fn client_create(
     Json(input): Json<ClientCreateDomain>,
 ) -> Result<(StatusCode, Json<Domain>), ApiError> {
     let (account_id, username) = bearer_account(&state, &headers).await?;
-    let kind = input.kind.as_deref().unwrap_or("sub");
-    if !matches!(kind, "sub" | "main") {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Clients can only add subdomains or new domains",
-        ));
-    }
+    let kind = match input.kind.as_deref() {
+        Some("sub") => "sub",
+        Some("main") | Some("addon") | None => "addon",
+        Some(other) => {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!("Unsupported kind: {other}"),
+            ))
+        }
+    };
     check_domain(state.clone(), account_id, &input.name, Some(kind)).await?;
     let domain = insert_domain(&state, account_id, &input.name, kind).await?;
     provision::write_vhost(&domain.name, &username, kind);
@@ -203,11 +206,11 @@ async fn check_domain(
 ) -> Result<(), ApiError> {
     let name = name.trim().to_lowercase();
     match kind.unwrap_or("main") {
-        "main" | "sub" | "alias" => {}
+        "main" | "sub" | "alias" | "addon" => {}
         _ => {
             return Err(ApiError::new(
                 StatusCode::BAD_REQUEST,
-                "Kind must be main, sub or alias",
+                "Kind must be main, sub, alias or addon",
             ))
         }
     }
