@@ -92,17 +92,14 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside className="flex w-64 flex-col bg-brand-900 text-brand-100">
-        <div className="flex items-center gap-3 border-b border-brand-800 px-4 py-3">
-          <div className="flex h-16 w-24 items-center justify-center overflow-hidden rounded-lg bg-white">
-            <img
-              src="/fpanel-logo.png"
-              alt="FPanel"
-              className="h-full w-full object-contain"
-            />
-          </div>
-          <div>
-            <div className="text-xl font-bold text-white">FPanel</div>
-            <div className="text-xs text-brand-300">Client Area</div>
+        <div className="flex flex-col items-center border-b border-brand-800 px-4 pt-4 pb-3">
+          <img
+            src="/fpanel-logo.png"
+            alt="FPanel"
+            className="w-36 rounded-lg object-contain"
+          />
+          <div className="mt-2 text-xs font-semibold uppercase tracking-wider text-brand-300">
+            Client Area
           </div>
         </div>
 

@@ -36,11 +36,11 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-700 via-brand-600 to-brand-900 p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-white">
-          <div className="flex h-32 w-auto items-center justify-center rounded-2xl bg-white p-2 shadow-lg">
+          <div className="flex h-28 w-auto items-center justify-center rounded-2xl bg-white px-3 py-2 shadow-lg">
             <img
               src="/fpanel-logo.png"
               alt="FPanel"
-              className="h-28 w-auto object-contain"
+              className="h-full w-auto object-contain"
             />
           </div>
           <h1 className="mt-5 text-2xl font-bold text-white">Welcome</h1>

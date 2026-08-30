@@ -31,7 +31,7 @@ pub struct CreatePackage {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list).post(create))
-        .route("/{id}", get(get_one).delete(remove))
+        .route("/{id}", get(get_one).patch(update).delete(remove))
 }
 
 async fn create(
@@ -74,6 +74,57 @@ async fn create(
         .map_err(|e| internal_error(e.into()))?;
 
     Ok((axum::http::StatusCode::CREATED, Json(package)))
+}
+
+async fn update(
+    State(state): State<AppState>,
+    Path((_sess, id)): Path<(String, i64)>,
+    Json(input): Json<CreatePackage>,
+) -> Result<Json<Package>, ApiError> {
+    if input.name.trim().is_empty() {
+        return Err(ApiError::new(
+            axum::http::StatusCode::BAD_REQUEST,
+            "Package name cannot be empty",
+        ));
+    }
+
+    let result = sqlx::query(
+        "UPDATE packages SET name = ?, disk_limit_mb = ?, mailbox_limit = ?, database_limit = ?, domain_limit = ?, bandwidth_limit_gb = ? WHERE id = ?",
+    )
+    .bind(input.name.trim())
+    .bind(input.disk_limit_mb)
+    .bind(input.mailbox_limit)
+    .bind(input.database_limit)
+    .bind(input.domain_limit)
+    .bind(input.bandwidth_limit_gb)
+    .bind(id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        if e.to_string().contains("UNIQUE") {
+            ApiError::new(
+                axum::http::StatusCode::CONFLICT,
+                "Package name already exists",
+            )
+        } else {
+            internal_error(e.into())
+        }
+    })?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::new(
+            axum::http::StatusCode::NOT_FOUND,
+            "Package not found",
+        ));
+    }
+
+    let package = sqlx::query_as::<_, Package>("SELECT * FROM packages WHERE id = ?")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
+    Ok(Json(package))
 }
 
 async fn remove(
