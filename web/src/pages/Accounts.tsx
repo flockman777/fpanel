@@ -10,6 +10,7 @@ interface Account {
   package_id: number;
   status: string;
   name: string | null;
+  main_domain?: string | null;
 }
 
 interface Package {
@@ -321,6 +322,7 @@ export default function Accounts() {
             <tr>
               <th className="px-5 py-3.5">Username</th>
               <th className="px-5 py-3.5">Name</th>
+              <th className="px-5 py-3.5">Main Domain</th>
               <th className="px-5 py-3.5">Email</th>
               <th className="px-5 py-3.5">Package</th>
               <th className="px-5 py-3.5">Status</th>
@@ -330,7 +332,7 @@ export default function Accounts() {
           <tbody className="divide-y divide-gray-100">
             {accounts.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-gray-400">
+                <td colSpan={7} className="px-5 py-10 text-center text-gray-400">
                   No accounts yet
                 </td>
               </tr>
@@ -341,6 +343,15 @@ export default function Accounts() {
                     {a.username}
                   </td>
                   <td className="px-5 py-3.5 text-gray-600">{a.name || "-"}</td>
+                  <td className="px-5 py-3.5">
+                    {a.main_domain ? (
+                      <span className="font-mono text-xs font-medium text-brand-600">
+                        {a.main_domain}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3.5 text-gray-600">{a.email}</td>
                   <td className="px-5 py-3.5 text-gray-600">
                     {packages.find((p) => p.id === a.package_id)?.name ||

@@ -19,6 +19,9 @@ pub struct Account {
     pub package_id: i64,
     pub status: String,
     pub name: Option<String>,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub main_domain: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,10 +51,14 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn list(State(state): State<AppState>) -> Result<Json<Vec<Account>>, ApiError> {
-    let accounts = sqlx::query_as::<_, Account>("SELECT * FROM accounts ORDER BY id")
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| internal_error(e.into()))?;
+    let accounts = sqlx::query_as::<_, Account>(
+        "SELECT a.*, \
+         (SELECT name FROM domains WHERE account_id = a.id AND kind = 'main' ORDER BY id LIMIT 1) \
+         AS main_domain FROM accounts a ORDER BY a.id",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
     Ok(Json(accounts))
 }
 
