@@ -474,6 +474,79 @@ fn validate_record(rtype: &str, name: Option<&str>, value: &str, ttl: Option<i64
     Ok(())
 }
 
+fn fqdn(s: &str) -> String {
+    if s.ends_with('.') {
+        s.to_string()
+    } else {
+        format!("{s}.")
+    }
+}
+
+fn nsd_active() -> bool {
+    std::env::var("FPANEL_NSD")
+        .map(|v| v != "0")
+        .unwrap_or_else(|_| provision::nsd_zones_dir().is_dir())
+}
+
+fn nsd_stanza_file(domain: &str) -> std::path::PathBuf {
+    provision::nsd_conf_dir().join(format!("fpanel-{domain}.conf"))
+}
+
+fn nsd_reload() {
+    match std::process::Command::new("nsd-control").arg("reload").status() {
+        Ok(s) if s.success() => tracing::info!("[nsd] zone reload ok"),
+        Ok(_) => tracing::warn!("[nsd] nsd-control reload returned non-zero"),
+        Err(e) => tracing::warn!("[nsd] cannot run nsd-control reload: {e}"),
+    }
+}
+
+fn publish_nsd(domain: &str, content: &str) {
+    if !nsd_active() {
+        return;
+    }
+    let zd = provision::nsd_zones_dir();
+    if let Err(e) = std::fs::create_dir_all(&zd) {
+        tracing::warn!("[nsd] cannot create zones dir {zd:?}: {e}");
+        return;
+    }
+    let zf = zd.join(format!("{domain}.zone"));
+    let tmp = zd.join(format!("{domain}.zone.tmp"));
+    if let Err(e) = std::fs::write(&tmp, content) {
+        tracing::warn!("[nsd] cannot write zone {domain}: {e}");
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp, &zf) {
+        tracing::warn!("[nsd] cannot rename zone {domain}: {e}");
+        return;
+    }
+    let cd = provision::nsd_conf_dir();
+    if let Err(e) = std::fs::create_dir_all(&cd) {
+        tracing::warn!("[nsd] cannot create conf dir {cd:?}: {e}");
+        return;
+    }
+    let stanza = format!(
+        "zone:\n\tname: \"{domain}\"\n\tzonefile: \"{}\"\n",
+        zf.to_string_lossy()
+    );
+    let sf = nsd_stanza_file(domain);
+    let existing = std::fs::read_to_string(&sf).unwrap_or_default();
+    if !existing.contains(&format!("zone:\n\tname: \"{domain}\"")) {
+        if let Err(e) = std::fs::write(&sf, &stanza) {
+            tracing::warn!("[nsd] cannot write stanza {domain}: {e}");
+        }
+    }
+    nsd_reload();
+}
+
+fn unpublish_nsd(domain: &str) {
+    if !nsd_active() {
+        return;
+    }
+    let _ = std::fs::remove_file(provision::nsd_zones_dir().join(format!("{domain}.zone")));
+    let _ = std::fs::remove_file(nsd_stanza_file(domain));
+    nsd_reload();
+}
+
 async fn generate_zone(state: &AppState, domain_id: i64) -> Result<(), ApiError> {
     let Some(domain) = sqlx::query_scalar::<_, String>("SELECT name FROM domains WHERE id = ?")
         .bind(domain_id)
@@ -497,41 +570,198 @@ async fn generate_zone(state: &AppState, domain_id: i64) -> Result<(), ApiError>
         let dir = provision::dns_dir();
         let path = dir.join(format!("{domain}.zone"));
         std::fs::remove_file(&path).ok();
+        unpublish_nsd(&domain);
         return Ok(());
     }
 
-    let serial = chrono::Utc::now().format("%Y%m%d%H%M").to_string();
+    let ns1 = fqdn(&provision::default_ns1());
+    let ns2 = fqdn(&provision::default_ns2());
+    let serial = chrono::Utc::now().format("%Y%m%d%H%M%S").to_string();
     let mut content = format!(
         "; FPanel generated DNS zone for {domain}\n$ORIGIN {domain}.\n$TTL 3600\n\
-         @ IN SOA ns1.{domain}. hostmaster.{domain}. ( {serial} 7200 3600 1209600 300 )\n\
-         @ IN NS ns1.{domain}.\n"
+         @ IN SOA {ns1} hostmaster.{domain}. ( {serial} 7200 3600 1209600 300 )\n"
     );
+
+    let has_ns = rows.iter().any(|r| r.get::<String, _>(1).as_str() == "NS");
+    if !has_ns {
+        content.push_str(&format!("@ IN NS {ns1}\n@ IN NS {ns2}\n"));
+    }
+
+    let mut a_names: Vec<String> = Vec::new();
     for r in &rows {
         let name: String = r.get(0);
         let rtype: String = r.get(1);
         let value: String = r.get(2);
         let ttl: i64 = r.get(3);
         let priority: Option<i64> = r.get(4);
-        let label = if name == "@" { "@" } else { &name };
+        let label = if name == "@" { "@" } else { name.as_str() };
         match rtype.as_str() {
             "MX" | "SRV" => {
-                content.push_str(&format!("{label} {ttl} IN {rtype} {} {value}\n", priority.unwrap_or(10)));
+                content.push_str(&format!(
+                    "{label} {ttl} IN {rtype} {} {}\n",
+                    priority.unwrap_or(10),
+                    fqdn(&value)
+                ));
             }
             "TXT" => {
                 let escaped = value.replace('"', "\\\"");
                 content.push_str(&format!("{label} {ttl} IN TXT \"{escaped}\"\n"));
             }
+            "CNAME" | "NS" => {
+                content.push_str(&format!("{label} {ttl} IN {rtype} {}\n", fqdn(&value)));
+            }
             _ => {
+                if rtype == "A" || rtype == "AAAA" {
+                    a_names.push(name.clone());
+                }
                 content.push_str(&format!("{label} {ttl} IN {rtype} {value}\n"));
             }
         }
+    }
+
+    let ip = provision::public_ip();
+    for ns in [&ns1, &ns2] {
+        let host = ns.trim_end_matches('.');
+        let Some(label) = host.strip_prefix(&format!("{domain}.")) else {
+            continue;
+        };
+        if label.is_empty() || a_names.iter().any(|n| n == label) {
+            continue;
+        }
+        content.push_str(&format!("{label} 3600 IN A {ip}\n"));
     }
 
     let dir = provision::dns_dir();
     std::fs::create_dir_all(&dir).map_err(|e| internal_error(anyhow::Error::new(e)))?;
     let path = dir.join(format!("{domain}.zone"));
     let tmp = dir.join(format!("{domain}.zone.tmp"));
-    std::fs::write(&tmp, content).map_err(|e| internal_error(anyhow::Error::new(e)))?;
+    std::fs::write(&tmp, &content).map_err(|e| internal_error(anyhow::Error::new(e)))?;
     std::fs::rename(&tmp, &path).map_err(|e| internal_error(anyhow::Error::new(e)))?;
+
+    publish_nsd(&domain, &content);
+    Ok(())
+}
+
+async fn try_insert_record(
+    state: &AppState,
+    account_id: i64,
+    domain_id: i64,
+    domain: &str,
+    name: &str,
+    rtype: &str,
+    value: &str,
+) -> Result<(), ApiError> {
+    let exists = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM dns_records WHERE domain_id = ? AND name = ? AND rtype = ? AND value = ?",
+    )
+    .bind(domain_id)
+    .bind(name)
+    .bind(rtype)
+    .bind(value)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
+    if exists > 0 {
+        return Ok(());
+    }
+    sqlx::query(
+        "INSERT INTO dns_records (account_id, domain_id, domain, name, rtype, value, ttl, priority) \
+         VALUES (?, ?, ?, ?, ?, ?, 3600, NULL)",
+    )
+    .bind(account_id)
+    .bind(domain_id)
+    .bind(domain)
+    .bind(name)
+    .bind(rtype)
+    .bind(value)
+    .execute(&state.db)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
+    Ok(())
+}
+
+async fn owned_main_parent(
+    state: &AppState,
+    name: &str,
+) -> Result<Option<(i64, String)>, ApiError> {
+    let mains = sqlx::query("SELECT id, name FROM domains WHERE kind = 'main' AND status = 'active'")
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    for m in mains {
+        let mid: i64 = m.get(0);
+        let mname: String = m.get(1);
+        let suffix = format!(".{mname}");
+        if name.len() > suffix.len() && name.ends_with(&suffix) {
+            return Ok(Some((mid, mname)));
+        }
+    }
+    Ok(None)
+}
+
+pub async fn seed_domain_dns(state: &AppState, domain_id: i64) -> Result<(), ApiError> {
+    let row = sqlx::query(
+        "SELECT account_id, name, kind FROM domains WHERE id = ? AND status = 'active'",
+    )
+    .bind(domain_id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
+    let Some(row) = row else {
+        return Ok(());
+    };
+    let account_id: i64 = row.get(0);
+    let name: String = row.get(1);
+    let kind: String = row.get(2);
+    let ip = provision::public_ip();
+
+    if kind == "main" {
+        try_insert_record(state, account_id, domain_id, &name, "@", "A", &ip).await?;
+        try_insert_record(state, account_id, domain_id, &name, "@", "NS", &fqdn(&provision::default_ns1())).await?;
+        try_insert_record(state, account_id, domain_id, &name, "@", "NS", &fqdn(&provision::default_ns2())).await?;
+        try_insert_record(state, account_id, domain_id, &name, "www", "CNAME", &fqdn(&name)).await?;
+        generate_zone(state, domain_id).await?;
+        return Ok(());
+    }
+
+    if let Some((parent_id, parent_name)) = owned_main_parent(state, &name).await? {
+        let label = name
+            .strip_suffix(&format!(".{parent_name}"))
+            .unwrap_or(&name)
+            .to_string();
+        if kind == "alias" {
+            try_insert_record(state, account_id, parent_id, &parent_name, &label, "CNAME", &fqdn(&parent_name))
+                .await?;
+        } else {
+            try_insert_record(state, account_id, parent_id, &parent_name, &label, "A", &ip).await?;
+        }
+        generate_zone(state, parent_id).await?;
+    }
+    Ok(())
+}
+
+pub async fn cleanup_domain_dns(state: &AppState, domain_id: i64, name: &str, kind: &str) -> Result<(), ApiError> {
+    if kind == "main" {
+        sqlx::query("DELETE FROM dns_records WHERE domain_id = ?")
+            .bind(domain_id)
+            .execute(&state.db)
+            .await
+            .map_err(|e| internal_error(e.into()))?;
+        unpublish_nsd(name);
+        return Ok(());
+    }
+    if let Some((parent_id, parent_name)) = owned_main_parent(state, name).await? {
+        let label = name
+            .strip_suffix(&format!(".{parent_name}"))
+            .unwrap_or(name)
+            .to_string();
+        sqlx::query("DELETE FROM dns_records WHERE domain_id = ? AND name = ?")
+            .bind(parent_id)
+            .bind(&label)
+            .execute(&state.db)
+            .await
+            .map_err(|e| internal_error(e.into()))?;
+        generate_zone(state, parent_id).await?;
+    }
     Ok(())
 }

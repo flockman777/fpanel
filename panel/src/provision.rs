@@ -143,6 +143,30 @@ pub fn dns_dir() -> PathBuf {
         .unwrap_or_else(|_| data_dir().join("dns"))
 }
 
+pub fn public_ip() -> String {
+    std::env::var("FPANEL_PUBLIC_IP").unwrap_or_else(|_| "127.0.0.1".into())
+}
+
+pub fn default_ns1() -> String {
+    std::env::var("FPANEL_NS1").unwrap_or_else(|_| "ns1.fpanel.my.id".into())
+}
+
+pub fn default_ns2() -> String {
+    std::env::var("FPANEL_NS2").unwrap_or_else(|_| "ns2.fpanel.my.id".into())
+}
+
+pub fn nsd_zones_dir() -> PathBuf {
+    std::env::var("FPANEL_NSD_ZONES")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/etc/nsd/zones"))
+}
+
+pub fn nsd_conf_dir() -> PathBuf {
+    std::env::var("FPANEL_NSD_CONF")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/etc/nsd/nsd.conf.d"))
+}
+
 pub fn vhosts_dir() -> PathBuf {
     std::env::var("FPANEL_VHOSTS")
         .map(PathBuf::from)

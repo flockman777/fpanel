@@ -109,6 +109,7 @@ pub async fn create(
     let domain = insert_domain(&state, input.account_id, &input.name, input.kind.as_deref().unwrap_or("main"))
         .await?;
     provision::write_vhost(&domain.name, &username);
+    crate::routes::dns::seed_domain_dns(&state, domain.id).await?;
     Ok((StatusCode::CREATED, Json(domain)))
 }
 
@@ -148,6 +149,7 @@ async fn client_create(
     check_domain(state.clone(), account_id, &input.name, Some(kind)).await?;
     let domain = insert_domain(&state, account_id, &input.name, kind).await?;
     provision::write_vhost(&domain.name, &username);
+    crate::routes::dns::seed_domain_dns(&state, domain.id).await?;
     Ok((StatusCode::CREATED, Json(domain)))
 }
 
@@ -258,9 +260,9 @@ async fn delete_domain(
     remove_vhost: bool,
 ) -> Result<(), ApiError> {
     let q = if account_id.is_some() {
-        "SELECT id, name FROM domains WHERE id = ? AND account_id = ?"
+        "SELECT id, name, kind FROM domains WHERE id = ? AND account_id = ?"
     } else {
-        "SELECT id, name FROM domains WHERE id = ?"
+        "SELECT id, name, kind FROM domains WHERE id = ?"
     };
     let row = sqlx::query(q)
         .bind(id)
@@ -273,6 +275,7 @@ async fn delete_domain(
         return Err(ApiError::new(StatusCode::NOT_FOUND, "Domain not found"));
     };
     let name: String = row.get(1);
+    let kind: String = row.get(2);
 
     sqlx::query("DELETE FROM domains WHERE id = ?")
         .bind(id)
@@ -284,6 +287,7 @@ async fn delete_domain(
         provision::remove_vhost(&name);
         provision::remove_mail(&name);
     }
+    crate::routes::dns::cleanup_domain_dns(&state, id, &name, &kind).await?;
     Ok(())
 }
 
