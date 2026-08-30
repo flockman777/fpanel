@@ -203,7 +203,6 @@ async fn remove(
         "hotlink",
         "waf_rules",
         "run_apps",
-        "db_privileges",
         // reference accounts directly
         "databases",
         "db_users",
@@ -216,6 +215,17 @@ async fn remove(
             .await
             .map_err(|e| internal_error(e.into()))?;
     }
+    // db_privileges links databases <-> db_users (no account_id column).
+    sqlx::query(
+        "DELETE FROM db_privileges \
+         WHERE user_id IN (SELECT id FROM db_users WHERE account_id = ?) \
+            OR db_id IN (SELECT id FROM databases WHERE account_id = ?)",
+    )
+    .bind(id)
+    .bind(id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
     sqlx::query("DELETE FROM domains WHERE account_id = ?")
         .bind(id)
         .execute(&mut *tx)
