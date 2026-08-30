@@ -354,6 +354,9 @@ async fn issue_and_store(
             })
             .unwrap_or(false);
         if !self_signed && s.status == "active" && s.days_left.unwrap_or(0) > 30 {
+            if let Err(e) = crate::nginx::ensure_https_vhost(domain) {
+                tracing::warn!("[autossl] nginx vhost for {domain}: {e}");
+            }
             return Ok(format!(
                 "Certificate valid ({}) days left",
                 s.days_left.unwrap_or(0)
