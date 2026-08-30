@@ -140,10 +140,10 @@ async fn client_create(
 ) -> Result<(StatusCode, Json<Domain>), ApiError> {
     let (account_id, username) = bearer_account(&state, &headers).await?;
     let kind = input.kind.as_deref().unwrap_or("sub");
-    if !matches!(kind, "sub" | "alias") {
+    if !matches!(kind, "sub" | "main") {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "Clients can only add subdomains or aliases",
+            "Clients can only add subdomains or new domains",
         ));
     }
     check_domain(state.clone(), account_id, &input.name, Some(kind)).await?;

@@ -5,6 +5,7 @@ import {
   Lock,
   Plus,
   ShieldAlert,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -33,6 +34,10 @@ export default function Ssl() {
   const [key, setKey] = useState("");
   const [ca, setCa] = useState("");
   const [busy, setBusy] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoResults, setAutoResults] = useState<
+    { domain: string; ok: boolean; message: string }[] | null
+  >(null);
 
   const notify = (msg: string, type: "ok" | "err" = "ok") => {
     setToast({ type, msg });
@@ -104,6 +109,24 @@ export default function Ssl() {
     }
   };
 
+  const runAutoSsl = async () => {
+    if (!await askConfirm("Run AutoSSL? This requests free Let's Encrypt certificates for all your active domains.")) return;
+    setAutoBusy(true);
+    setAutoResults(null);
+    try {
+      const res = await api<
+        { domain: string; ok: boolean; message: string }[]
+      >("/client/ssl/autossl", { method: "POST", body: JSON.stringify({}) });
+      setAutoResults(res);
+      notify(`AutoSSL finished for ${res.length} domain(s)`);
+      load();
+    } catch (e: any) {
+      notify(String(e.message || e), "err");
+    } finally {
+      setAutoBusy(false);
+    }
+  };
+
   const base = "w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none";
   const btn = "flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-700";
   const btnGhost = "flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50";
@@ -146,7 +169,33 @@ export default function Ssl() {
         <div className="mb-3 flex items-center gap-2 text-gray-800">
           <Lock className="h-4 w-4 text-brand-600" />
           <span className="font-semibold">SSL/TLS Status</span>
+          <button
+            onClick={runAutoSsl}
+            disabled={autoBusy}
+            className="ml-auto flex items-center gap-2 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-700 disabled:opacity-60"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {autoBusy ? "AutoSSL..." : "Run AutoSSL"}
+          </button>
         </div>
+        {autoResults && (
+          <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div className="mb-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+              AutoSSL results
+            </div>
+            <ul className="space-y-1">
+              {autoResults.map((r) => (
+                <li key={r.domain} className="flex items-start gap-2 text-sm">
+                  <span className={`font-medium ${r.ok ? "text-green-600" : "text-red-600"}`}>
+                    {r.ok ? "✓" : "✕"}
+                  </span>
+                  <span className="font-medium text-gray-800">{r.domain}</span>
+                  <span className="text-gray-500">{r.message}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {rows.length === 0 ? (
           <p className="text-sm text-gray-500">No domains yet.</p>
         ) : (
@@ -214,6 +263,10 @@ export default function Ssl() {
           About certificates
         </div>
         <ul className="mt-2 list-inside list-disc space-y-1 text-gray-600">
+          <li>
+            <span className="font-medium">AutoSSL</span> automatically requests free Let's Encrypt
+            certificates for all your active domains and renews them.
+          </li>
           <li>
             <span className="font-medium">Generate</span> creates a self-signed certificate — good
             for testing or internal services.

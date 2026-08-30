@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
+use tokio::sync::Mutex as AsyncMutex;
 
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -64,9 +66,23 @@ pub struct AdminPathQ {
     pub account_id: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AutoSsl {
+    pub account_id: Option<i64>,
+    pub domain_id: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AutoResult {
+    pub domain: String,
+    pub ok: bool,
+    pub message: String,
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_admin))
+        .route("/autossl", post(autossl_admin))
         .route("/import", post(import_admin))
         .route("/generate", post(generate_admin))
         .route("/{id}", delete(delete_admin))
@@ -75,6 +91,7 @@ pub fn router() -> Router<AppState> {
 pub fn client_router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_client))
+        .route("/autossl", post(autossl_client))
         .route("/import", post(import_client))
         .route("/generate", post(generate_client))
         .route("/{id}", delete(delete_client))
@@ -205,6 +222,191 @@ fn to_admin(aid: i64, username: String, row: SslRow) -> SslRowAdmin {
         days_left: row.days_left,
         status: row.status,
     }
+}
+
+// ---------- AutoSSL (Let's Encrypt) ----------
+
+fn acme_lock() -> &'static AsyncMutex<()> {
+    static LOCK: OnceLock<AsyncMutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| AsyncMutex::new(()))
+}
+
+fn acme_email() -> String {
+    std::env::var("FPANEL_ACME_EMAIL").unwrap_or_else(|_| "admin@fpanel.my.id".into())
+}
+
+fn acme_live_path(domain: &str) -> PathBuf {
+    std::env::var("FPANEL_ACME_LIVE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/etc/letsencrypt/live"))
+        .join(domain)
+}
+
+fn domain_webroot(domain: &str) -> Option<String> {
+    let path = crate::provision::vhosts_dir().join(format!("{domain}.json"));
+    let content = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|v| v.get("root").and_then(|r| r.as_str()).map(|s| s.to_string()))
+}
+
+async fn autossl_admin(
+    State(state): State<AppState>,
+    Json(body): Json<AutoSsl>,
+) -> Result<Json<Vec<AutoResult>>, ApiError> {
+    if let Some(aid) = body.account_id {
+        return Ok(Json(autossl_account(&state, aid, body.domain_id).await?));
+    }
+    let accounts: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM accounts WHERE status = 'active' ORDER BY id",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
+    let mut all = Vec::new();
+    for aid in accounts {
+        all.extend(autossl_account(&state, aid, body.domain_id).await?);
+    }
+    Ok(Json(all))
+}
+
+async fn autossl_client(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<AutoSsl>,
+) -> Result<Json<Vec<AutoResult>>, ApiError> {
+    let (aid, _) = super::domains::bearer_account(&state, &headers).await?;
+    Ok(Json(autossl_account(&state, aid, body.domain_id).await?))
+}
+
+pub async fn autossl_all(state: &AppState) -> Result<(), String> {
+    let accounts: Vec<i64> = sqlx::query_scalar("SELECT id FROM accounts WHERE status = 'active'")
+        .fetch_all(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    for aid in accounts {
+        match autossl_account(state, aid, None).await {
+            Ok(results) => {
+                for r in results {
+                    tracing::info!("[autossl] {} -> {}", r.domain, if r.ok { "ok" } else { &r.message });
+                }
+            }
+            Err(e) => tracing::warn!("[autossl] account {aid}: {}", e.message),
+        }
+    }
+    Ok(())
+}
+
+async fn autossl_account(
+    state: &AppState,
+    aid: i64,
+    only_domain: Option<i64>,
+) -> Result<Vec<AutoResult>, ApiError> {
+    let username = account_username(state, aid).await?;
+    let mut rows = sqlx::query(
+        "SELECT id, name FROM domains WHERE account_id = ? AND status = 'active' ORDER BY name",
+    )
+    .bind(aid)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
+    if let Some(did) = only_domain {
+        rows.retain(|r| r.get::<i64, _>(0) == did);
+    }
+
+    let _guard = acme_lock().lock().await;
+    let mut results = Vec::with_capacity(rows.len());
+    for r in &rows {
+        let domain: String = r.get(1);
+        match issue_and_store(state, aid, &username, &domain).await {
+            Ok(msg) => results.push(AutoResult {
+                domain: domain.clone(),
+                ok: true,
+                message: msg,
+            }),
+            Err(e) => results.push(AutoResult {
+                domain: domain.clone(),
+                ok: false,
+                message: e.message.clone(),
+            }),
+        }
+    }
+    Ok(results)
+}
+
+async fn issue_and_store(
+    state: &AppState,
+    aid: i64,
+    username: &str,
+    domain: &str,
+) -> Result<String, ApiError> {
+    let current = list(state, aid)
+        .await?
+        .into_iter()
+        .find(|s| s.domain == domain);
+    if let Some(s) = current {
+        if s.status == "active" && s.days_left.unwrap_or(0) > 30 {
+            return Ok(format!("Certificate valid ({}) days left", s.days_left.unwrap_or(0)));
+        }
+    }
+
+    let webroot = match domain_webroot(domain) {
+        Some(w) => w,
+        None => crate::provision::account_htdocs(username).to_string_lossy().into_owned(),
+    };
+    std::fs::create_dir_all(&webroot).map_err(|e| internal_error(e.into()))?;
+
+    let email = acme_email();
+    let domain_owned_arg = domain.to_string();
+    let root_arg = webroot.clone();
+    let out = tokio::task::spawn_blocking(move || {
+        Command::new("certbot")
+            .args([
+                "certonly",
+                "--webroot",
+                "-w",
+                &root_arg,
+                "-d",
+                &domain_owned_arg,
+                "--non-interactive",
+                "--agree-tos",
+                "--no-eff-email",
+                "-m",
+                &email,
+                "--keep-until-expiring",
+                "--preferred-challenges",
+                "http",
+            ])
+            .output()
+    })
+    .await
+    .map_err(|e| internal_error(e.into()))?;
+
+    let out = out.map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, format!("certbot unavailable: {e}")))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let tail = err.lines().rev().take(6).collect::<Vec<_>>().join("\n");
+        return Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            format!("certbot failed for {domain}: {tail}"),
+        ));
+    }
+
+    let live = acme_live_path(domain);
+    let cert_pem = std::fs::read_to_string(live.join("fullchain.pem"))
+        .map_err(|e| internal_error(e.into()))?;
+    let key_pem = std::fs::read_to_string(live.join("privkey.pem"))
+        .map_err(|e| internal_error(e.into()))?;
+
+    let domain_id: i64 = sqlx::query_scalar("SELECT id FROM domains WHERE name = ? AND account_id = ?")
+        .bind(domain)
+        .bind(aid)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
+    store_cert(state, aid, domain_id, domain.to_string(), cert_pem, key_pem, None, true).await?;
+    Ok("Let's Encrypt certificate installed".to_string())
 }
 
 // ---------- helpers ----------
@@ -468,6 +670,7 @@ async fn store_cert(
     cert_pem: String,
     key_pem: String,
     ca_pem: Option<String>,
+    replace: bool,
 ) -> Result<SslRow, ApiError> {
     let meta = parse_meta(&cert_pem)?;
     let names = cert_names(&cert_pem);
@@ -484,35 +687,55 @@ async fn store_cert(
         ));
     }
 
-    let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ssl_certs WHERE domain_id = ?")
-        .bind(domain_id)
-        .fetch_one(&state.db)
+    let existing: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM ssl_certs WHERE domain_id = ?")
+            .bind(domain_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| internal_error(e.into()))?;
+
+    let cert_id = if let Some(existing_id) = existing {
+        if !replace {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "A certificate for this domain already exists",
+            ));
+        }
+        sqlx::query(
+            "UPDATE ssl_certs SET account_id = ?, cert_pem = ?, key_pem = ?, ca_pem = ?, issuer = ?, \
+             valid_from = ?, valid_to = ?, status = 'active' WHERE id = ?",
+        )
+        .bind(aid)
+        .bind(&cert_pem)
+        .bind(&key_pem)
+        .bind(&ca_pem)
+        .bind(&meta.issuer)
+        .bind(&meta.valid_from)
+        .bind(&meta.valid_to)
+        .bind(existing_id)
+        .execute(&state.db)
         .await
         .map_err(|e| internal_error(e.into()))?;
-    if exists > 0 {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "A certificate for this domain already exists",
-        ));
-    }
-
-    let result = sqlx::query(
-        "INSERT INTO ssl_certs (account_id, domain_id, domain, cert_pem, key_pem, ca_pem, issuer, valid_from, valid_to) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(aid)
-    .bind(domain_id)
-    .bind(&domain)
-    .bind(&cert_pem)
-    .bind(&key_pem)
-    .bind(&ca_pem)
-    .bind(&meta.issuer)
-    .bind(&meta.valid_from)
-    .bind(&meta.valid_to)
-    .execute(&state.db)
-    .await
-    .map_err(|e| internal_error(e.into()))?;
-    let cert_id = result.last_insert_rowid();
+        existing_id
+    } else {
+        let result = sqlx::query(
+            "INSERT INTO ssl_certs (account_id, domain_id, domain, cert_pem, key_pem, ca_pem, issuer, valid_from, valid_to) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(aid)
+        .bind(domain_id)
+        .bind(&domain)
+        .bind(&cert_pem)
+        .bind(&key_pem)
+        .bind(&ca_pem)
+        .bind(&meta.issuer)
+        .bind(&meta.valid_from)
+        .bind(&meta.valid_to)
+        .execute(&state.db)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+        result.last_insert_rowid()
+    };
 
     provision::write_ssl(
         &domain,
@@ -526,6 +749,9 @@ async fn store_cert(
             valid_to: meta.valid_to.clone(),
         },
     );
+    if let Err(e) = crate::nginx::ensure_https_vhost(&domain) {
+        tracing::warn!("[ssl] nginx vhost failed for {domain}: {e}");
+    }
 
     let days_left = DateTime::parse_from_rfc3339(&meta.valid_to)
         .ok()
@@ -561,6 +787,7 @@ async fn import_cert(state: &AppState, aid: i64, body: &ImportCert) -> Result<Ss
         body.cert.trim().to_string(),
         body.key.trim().to_string(),
         body.ca.as_deref().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()),
+        false,
     )
     .await
 }
@@ -598,7 +825,7 @@ async fn generate_cert(state: &AppState, aid: i64, body: &GenerateCert) -> Resul
     let key_pem = std::fs::read_to_string(dir.path().join("k.pem"))
         .map_err(|e| internal_error(e.into()))?;
 
-    store_cert(state, aid, body.domain_id, domain, cert_pem, key_pem, None).await
+    store_cert(state, aid, body.domain_id, domain, cert_pem, key_pem, None, false).await
 }
 
 async fn drop_cert(state: &AppState, aid: i64, id: i64) -> Result<(), ApiError> {

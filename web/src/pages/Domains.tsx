@@ -29,7 +29,7 @@ export default function Domains() {
     setError("");
     try {
       const res = await api<Domain[]>("/domains");
-      if (Array.isArray(res)) setDomains(res);
+      if (Array.isArray(res)) setDomains(res.filter((d) => d.kind !== "alias"));
     } catch (e: any) {
       setError(String(e.message || e));
     }
@@ -92,7 +92,7 @@ export default function Domains() {
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Domains</h2>
           <p className="text-sm text-gray-500">
-            Manage domains, subdomains and aliases across accounts
+            Manage main domains and subdomains across accounts
           </p>
         </div>
         <button
@@ -161,7 +161,6 @@ export default function Domains() {
               >
                 <option value="main">Main</option>
                 <option value="sub">Subdomain</option>
-                <option value="alias">Alias</option>
               </select>
             </div>
           </div>

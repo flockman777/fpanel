@@ -2,6 +2,7 @@ mod auth;
 mod db;
 mod error;
 mod middleware;
+mod nginx;
 mod provision;
 mod routes;
 mod totp;
@@ -28,6 +29,19 @@ async fn main() {
     let state = db::init_db(&db_path, jwt_secret)
         .await
         .expect("failed to init db");
+
+    // AutoSSL: renew Let's Encrypt certificates for all accounts every 6 hours.
+    {
+        let st = state.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Err(e) = routes::ssl::autossl_all(&st).await {
+                    tracing::warn!("[autossl] loop error: {e}");
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
+            }
+        });
+    }
 
     let app = Router::new()
         .route("/", get(|| async { "FPanel API v0.1" }))

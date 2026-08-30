@@ -22,7 +22,7 @@ export default function Domains() {
     setError("");
     try {
       const res = await api<Domain[]>("/client/domains");
-      if (Array.isArray(res)) setDomains(res);
+      if (Array.isArray(res)) setDomains(res.filter((d) => d.kind !== "alias"));
     } catch (e: any) {
       setError(String(e.message || e));
     }
@@ -67,7 +67,7 @@ export default function Domains() {
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Domains</h2>
           <p className="text-sm text-gray-500">
-            Create subdomains and aliases for your hosting account
+            Create addon subdomains and new domains for your hosting account
           </p>
         </div>
         <button
@@ -116,8 +116,8 @@ export default function Domains() {
                 onChange={(e) => setForm({ ...form, kind: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
               >
-                <option value="sub">Subdomain</option>
-                <option value="alias">Alias (parked domain)</option>
+                <option value="sub">Addon subdomain</option>
+                <option value="main">New domain</option>
               </select>
             </div>
           </div>
@@ -153,7 +153,7 @@ export default function Domains() {
             {domains.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-5 py-10 text-center text-gray-400">
-                  No domains yet. Create your first subdomain or alias.
+                  No domains yet. Create your first subdomain or new domain.
                 </td>
               </tr>
             ) : (
