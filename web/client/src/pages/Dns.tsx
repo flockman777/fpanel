@@ -1,6 +1,7 @@
 import { askConfirm } from "../askConfirm";
 import { Globe, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../App";
 
 interface Domain {
@@ -26,6 +27,7 @@ export default function Dns() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [records, setRecords] = useState<Record[]>([]);
   const [domainId, setDomainId] = useState("");
+  const [searchParams] = useSearchParams();
   const [editing, setEditing] = useState<Record | null>(null);
   const [form, setForm] = useState({ name: "@", rtype: "A", value: "", ttl: "3600", priority: "" });
   const [busy, setBusy] = useState(false);
@@ -66,7 +68,14 @@ export default function Dns() {
 
   useEffect(() => {
     api<Domain[]>("/client/domains")
-      .then(setDomains)
+      .then((d) => {
+        setDomains(d);
+        const want = searchParams.get("domain");
+        if (want) {
+          const hit = d.find((dom) => dom.name === want);
+          if (hit) setDomainId(String(hit.id));
+        }
+      })
       .catch((e: any) => notify(String(e.message || e), "err"));
   }, []);
 

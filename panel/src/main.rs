@@ -64,6 +64,7 @@ fn build_api(state: db::AppState) -> Router<db::AppState> {
         .nest("/dns", routes::dns::router())
         .nest("/cron", routes::cron::router())
         .nest("/backups", routes::backups::router())
+        .nest("/cache", routes::cache::router())
         .nest("/logs", routes::logs::router())
         .nest("/stats", routes::stats::router())
         .nest("/redirects", routes::redirects::router())

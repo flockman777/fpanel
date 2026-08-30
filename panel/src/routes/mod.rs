@@ -2,6 +2,7 @@ pub mod accounts;
 pub mod apps;
 pub mod auth;
 pub mod backups;
+pub mod cache;
 pub mod client;
 pub mod databases;
 pub mod dns;

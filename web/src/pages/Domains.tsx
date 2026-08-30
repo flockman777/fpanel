@@ -1,6 +1,7 @@
 import { askConfirm } from "../askConfirm";
-import { Globe, Plus, Trash2 } from "lucide-react";
+import { Globe, Plus, Settings2, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../App";
 
 interface Domain {
@@ -11,6 +12,7 @@ interface Domain {
   kind: string;
   status: string;
   created_at: string;
+  docroot: string;
 }
 
 interface Account {
@@ -24,6 +26,7 @@ export default function Domains() {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ account_id: "", name: "", kind: "main" });
+  const navigate = useNavigate();
 
   const load = async () => {
     setError("");
@@ -189,6 +192,7 @@ export default function Domains() {
               <th className="px-5 py-3.5">Domain</th>
               <th className="px-5 py-3.5">Account</th>
               <th className="px-5 py-3.5">Kind</th>
+              <th className="px-5 py-3.5">Document Root</th>
               <th className="px-5 py-3.5">Status</th>
               <th className="px-5 py-3.5 text-right">Actions</th>
             </tr>
@@ -196,7 +200,7 @@ export default function Domains() {
           <tbody className="divide-y divide-gray-100">
             {domains.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-5 py-10 text-center text-gray-400">
+                <td colSpan={6} className="px-5 py-10 text-center text-gray-400">
                   No domains yet. Add your first domain.
                 </td>
               </tr>
@@ -208,6 +212,9 @@ export default function Domains() {
                   </td>
                   <td className="px-5 py-3.5 text-gray-600">{d.username}</td>
                   <td className="px-5 py-3.5">{kindBadge(d.kind)}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-gray-500">
+                    {d.docroot}
+                  </td>
                   <td className="px-5 py-3.5">
                     <span
                       className={`rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -220,13 +227,23 @@ export default function Domains() {
                     </span>
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <button
-                      onClick={() => remove(d.id)}
-                      className="rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
-                      title="Delete domain"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        onClick={() => navigate(`/dns?domain=${encodeURIComponent(d.name)}`)}
+                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-50"
+                        title="Manage DNS zone"
+                      >
+                        <Settings2 className="h-4 w-4" />
+                        Manage
+                      </button>
+                      <button
+                        onClick={() => remove(d.id)}
+                        className="rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
+                        title="Delete domain"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

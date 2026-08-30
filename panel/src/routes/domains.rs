@@ -29,6 +29,18 @@ pub struct DomainAdmin {
     pub kind: String,
     pub status: String,
     pub created_at: String,
+    pub docroot: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DomainClient {
+    pub id: i64,
+    pub account_id: i64,
+    pub name: String,
+    pub kind: String,
+    pub status: String,
+    pub created_at: String,
+    pub docroot: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,14 +79,20 @@ async fn list(State(state): State<AppState>) -> Result<Json<Vec<DomainAdmin>>, A
 
     let mut out = Vec::with_capacity(rows.len());
     for r in rows {
+        let username: String = r.get(2);
+        let kind: String = r.get(4);
+        let name: String = r.get(3);
         out.push(DomainAdmin {
             id: r.get(0),
             account_id: r.get(1),
-            username: r.get(2),
-            name: r.get(3),
-            kind: r.get(4),
+            username: username.clone(),
+            name: name.clone(),
+            kind: kind.clone(),
             status: r.get(5),
             created_at: r.get(6),
+            docroot: provision::vhost_root(&username, &kind, &name)
+                .to_string_lossy()
+                .into_owned(),
         });
     }
     Ok(Json(out))
@@ -121,16 +139,30 @@ async fn remove(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn client_list(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Result<Json<Vec<Domain>>, ApiError> {
-    let (account_id, _username) = bearer_account(&state, &headers).await?;
-    let domains = sqlx::query_as::<_, Domain>(
+async fn client_list(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Result<Json<Vec<DomainClient>>, ApiError> {
+    let (account_id, username) = bearer_account(&state, &headers).await?;
+    let rows = sqlx::query_as::<_, Domain>(
         "SELECT * FROM domains WHERE account_id = ? ORDER BY kind, name",
     )
     .bind(account_id)
     .fetch_all(&state.db)
     .await
     .map_err(|e| internal_error(e.into()))?;
-    Ok(Json(domains))
+    let out = rows
+        .into_iter()
+        .map(|d| DomainClient {
+            id: d.id,
+            account_id: d.account_id,
+            name: d.name.clone(),
+            kind: d.kind.clone(),
+            status: d.status,
+            created_at: d.created_at,
+            docroot: provision::vhost_root(&username, &d.kind, &d.name)
+                .to_string_lossy()
+                .into_owned(),
+        })
+        .collect();
+    Ok(Json(out))
 }
 
 async fn client_create(

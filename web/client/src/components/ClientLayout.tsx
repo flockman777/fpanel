@@ -30,26 +30,58 @@ type NavItem = {
   icon: any;
 };
 
-const navItems: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/domains", label: "Domains", icon: Globe },
-  { to: "/redirects", label: "Redirects", icon: ArrowRightLeft },
-  { to: "/files", label: "File Manager", icon: FolderOpen },
-  { to: "/databases", label: "Databases", icon: Database },
-  { href: "https://pma.fpanel.my.id", label: "phpMyAdmin", icon: Table2 },
-  { to: "/email", label: "Email", icon: Mail },
-  { to: "/software", label: "Software", icon: Boxes },
-  { to: "/php", label: "MultiPHP", icon: Braces },
-  { to: "/ssl", label: "SSL", icon: ShieldCheck },
-  { to: "/runtime", label: "Runtime", icon: Server },
-  { to: "/ip-blocker", label: "IP Blocker", icon: ShieldOff },
-  { to: "/hotlink", label: "Hotlink", icon: Link2Off },
-  { to: "/waf", label: "WAF", icon: Flame },
-  { to: "/ssh", label: "SSH", icon: Terminal },
-  { to: "/dns", label: "DNS Zone", icon: Network },
-  { to: "/cron", label: "Cron Jobs", icon: Clock },
-  { to: "/backups", label: "Backups", icon: Archive },
-  { to: "/usage", label: "Usage", icon: BarChart3 },
+const dashboardItem: NavItem = { to: "/", label: "Dashboard", icon: LayoutDashboard };
+
+const navSections: { title: string; items: NavItem[] }[] = [
+  {
+    title: "DOMAINS",
+    items: [
+      { to: "/domains", label: "Domains", icon: Globe },
+      { to: "/redirects", label: "Redirects", icon: ArrowRightLeft },
+      { to: "/dns", label: "Zone Editor", icon: Network },
+    ],
+  },
+  {
+    title: "FILES",
+    items: [{ to: "/files", label: "File Manager", icon: FolderOpen }],
+  },
+  {
+    title: "DATABASES",
+    items: [
+      { to: "/databases", label: "Databases", icon: Database },
+      { href: "https://pma.fpanel.my.id", label: "phpMyAdmin", icon: Table2 },
+    ],
+  },
+  {
+    title: "EMAIL",
+    items: [{ to: "/email", label: "Email", icon: Mail }],
+  },
+  {
+    title: "SOFTWARE",
+    items: [
+      { to: "/software", label: "Software", icon: Boxes },
+      { to: "/php", label: "MultiPHP", icon: Braces },
+      { to: "/runtime", label: "Runtime", icon: Server },
+      { to: "/ssh", label: "SSH", icon: Terminal },
+    ],
+  },
+  {
+    title: "SECURITY",
+    items: [
+      { to: "/ssl", label: "SSL", icon: ShieldCheck },
+      { to: "/ip-blocker", label: "IP Blocker", icon: ShieldOff },
+      { to: "/hotlink", label: "Hotlink", icon: Link2Off },
+      { to: "/waf", label: "WAF", icon: Flame },
+    ],
+  },
+  {
+    title: "CONFIGURATION",
+    items: [
+      { to: "/cron", label: "Cron Jobs", icon: Clock },
+      { to: "/backups", label: "Backups", icon: Archive },
+      { to: "/usage", label: "Usage", icon: BarChart3 },
+    ],
+  },
 ];
 
 export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
@@ -72,40 +104,60 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3 py-4">
-          <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-brand-400">
-            Menu
-          </div>
-          {navItems.map((item) =>
-            item.href ? (
-              <a
-                key={item.href}
-                href={item.href}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-200 transition hover:bg-brand-800 hover:text-white"
-              >
-                <item.icon className="h-5 w-5" />
-                {item.label}
-              </a>
-            ) : (
-              <NavLink
-                key={item.to}
-                to={item.to!}
-                end={item.to === "/"}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                    isActive
-                      ? "bg-brand-700 text-white"
-                      : "text-brand-200 hover:bg-brand-800 hover:text-white"
-                  }`
-                }
-              >
-                <item.icon className="h-5 w-5" />
-                {item.label}
-              </NavLink>
-            )
-          )}
+        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+          <NavLink
+            to={dashboardItem.to!}
+            end
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                isActive
+                  ? "bg-brand-700 text-white"
+                  : "text-brand-200 hover:bg-brand-800 hover:text-white"
+              }`
+            }
+          >
+            <dashboardItem.icon className="h-5 w-5" />
+            {dashboardItem.label}
+          </NavLink>
+
+          {navSections.map((section) => (
+            <div key={section.title}>
+              <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-brand-400">
+                {section.title}
+              </div>
+              <div className="space-y-1">
+                {section.items.map((item) =>
+                  item.href ? (
+                    <a
+                      key={item.href}
+                      href={item.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-200 transition hover:bg-brand-800 hover:text-white"
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.label}
+                    </a>
+                  ) : (
+                    <NavLink
+                      key={item.to}
+                      to={item.to!}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                          isActive
+                            ? "bg-brand-700 text-white"
+                            : "text-brand-200 hover:bg-brand-800 hover:text-white"
+                        }`
+                      }
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.label}
+                    </NavLink>
+                  )
+                )}
+              </div>
+            </div>
+          ))}
         </nav>
 
         <div className="border-t border-brand-800 p-3">

@@ -22,6 +22,7 @@ import Totp from "./pages/Totp";
 import Dns from "./pages/Dns";
 import Cron from "./pages/Cron";
 import Backups from "./pages/Backups";
+import CacheManager from "./pages/Cache";
 import Metrics from "./pages/Metrics";
 
 export function getToken() {
@@ -140,6 +141,7 @@ export default function App() {
         <Route path="/dns" element={<Dns />} />
         <Route path="/cron" element={<Cron />} />
         <Route path="/backups" element={<Backups />} />
+        <Route path="/cache" element={<CacheManager />} />
         <Route path="/metrics" element={<Metrics />} />
         <Route path="/accounts" element={<Accounts />} />
         <Route path="/packages" element={<Packages />} />
