@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Globe, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../App";
@@ -115,7 +116,7 @@ export default function Dns() {
   };
 
   const remove = async (r: Record) => {
-    if (!confirm(`Delete ${r.rtype} record "${r.name}"?`)) return;
+    if (!await askConfirm(`Delete ${r.rtype} record "${r.name}"?`)) return;
     try {
       await api(`/client/dns/${r.id}`, { method: "DELETE" });
       notify("Record deleted");

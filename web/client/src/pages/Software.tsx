@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Boxes, CheckCircle2, ExternalLink, PackageOpen, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../App";
@@ -124,7 +125,7 @@ export default function Software() {
   };
 
   const uninstall = async (r: AppRow) => {
-    if (!confirm(`Uninstall ${appMeta(r.app).label} from "${r.domain}"?\n\nThis removes the files and its database (${r.db_name || "n/a"}).`)) return;
+    if (!await askConfirm(`Uninstall ${appMeta(r.app).label} from "${r.domain}"?\n\nThis removes the files and its database (${r.db_name || "n/a"}).`)) return;
     try {
       await api(`/client/apps/${r.id}`, { method: "DELETE" });
       notify("Application uninstalled");

@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Flame, RotateCcw, Save } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../App";
@@ -73,7 +74,7 @@ export default function Waf() {
   };
 
   const remove = async (row: Row) => {
-    if (!confirm(`Disable WAF for "${row.domain}"?`)) return;
+    if (!await askConfirm(`Disable WAF for "${row.domain}"?`)) return;
     try {
       await api(`/client/waf/${row.id}`, { method: "DELETE" });
       notify("WAF disabled");

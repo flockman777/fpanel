@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import {
   BadgeCheck,
   FileDown,
@@ -52,7 +53,7 @@ export default function Ssl() {
   }, []);
 
   const generate = async (r: SslRow) => {
-    if (!confirm(`Generate a self-signed certificate for "${r.domain}"?`)) return;
+    if (!await askConfirm(`Generate a self-signed certificate for "${r.domain}"?`)) return;
     try {
       await api("/client/ssl/generate", {
         method: "POST",
@@ -93,7 +94,7 @@ export default function Ssl() {
   };
 
   const drop = async (r: SslRow) => {
-    if (!confirm(`Remove the certificate for "${r.domain}"?`)) return;
+    if (!await askConfirm(`Remove the certificate for "${r.domain}"?`)) return;
     try {
       await api(`/client/ssl/${r.cert_id}`, { method: "DELETE" });
       notify("Certificate removed");

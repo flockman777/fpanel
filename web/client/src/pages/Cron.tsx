@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Clock, Pause, Play, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../App";
@@ -95,7 +96,7 @@ export default function Cron() {
   };
 
   const remove = async (job: CronJob) => {
-    if (!confirm("Delete this cron job?")) return;
+    if (!await askConfirm("Delete this cron job?")) return;
     try {
       await api(`/client/cron/${job.id}`, { method: "DELETE" });
       notify("Cron job deleted");

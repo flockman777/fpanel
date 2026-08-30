@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Archive, Download, HardDriveDownload, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, getSess } from "../App";
@@ -47,7 +48,7 @@ export default function Backups() {
   };
 
   const restore = async (b: Backup) => {
-    if (!confirm(`Restore backup "${b.file}"? Current htdocs files will be overwritten by the backup content.`)) return;
+    if (!await askConfirm(`Restore backup "${b.file}"? Current htdocs files will be overwritten by the backup content.`)) return;
     setBusy(true);
     try {
       await api(`/client/backups/${b.file}/restore`, { method: "POST" });
@@ -60,7 +61,7 @@ export default function Backups() {
   };
 
   const remove = async (b: Backup) => {
-    if (!confirm(`Delete backup "${b.file}"?`)) return;
+    if (!await askConfirm(`Delete backup "${b.file}"?`)) return;
     try {
       await api(`/client/backups/${b.file}`, { method: "DELETE" });
       notify("Backup deleted");

@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import { Plus, ShieldOff, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../App";
@@ -66,7 +67,7 @@ export default function IpBlocker() {
   };
 
   const remove = async (r: Row) => {
-    if (!confirm(`Unblock ${r.ip}?`)) return;
+    if (!await askConfirm(`Unblock ${r.ip}?`)) return;
     try {
       await api(`/client/ipblocker/${r.id}`, { method: "DELETE" });
       notify(`Unblocked ${r.ip}`);

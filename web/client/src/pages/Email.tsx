@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import {
   ExternalLink,
   Forward,
@@ -152,7 +153,7 @@ export default function Email() {
   };
 
   const dropAccount = async (a: Account) => {
-    if (!confirm(`Delete email account "${a.address}"?`)) return;
+    if (!await askConfirm(`Delete email account "${a.address}"?`)) return;
     try {
       await api(`/client/email/accounts/${a.id}`, { method: "DELETE" });
       notify("Email account deleted");
@@ -199,7 +200,7 @@ export default function Email() {
   };
 
   const dropForwarder = async (f: Forwarder) => {
-    if (!confirm(`Delete forwarder "${f.from}"?`)) return;
+    if (!await askConfirm(`Delete forwarder "${f.from}"?`)) return;
     try {
       await api(`/client/email/forwarders/${f.id}`, { method: "DELETE" });
       notify("Forwarder deleted");
@@ -236,7 +237,7 @@ export default function Email() {
   };
 
   const dropResp = async (r: AutoResp) => {
-    if (!confirm(`Delete autoresponder for "${r.address}"?`)) return;
+    if (!await askConfirm(`Delete autoresponder for "${r.address}"?`)) return;
     try {
       await api(`/client/email/autoresponders/${r.id}`, { method: "DELETE" });
       notify("Autoresponder deleted");

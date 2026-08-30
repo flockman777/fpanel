@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import {
   Database,
   KeyRound,
@@ -134,7 +135,7 @@ export default function Databases() {
   };
 
   const dropDb = async (d: DatabaseRow) => {
-    if (!confirm(`Delete database "${d.name}"? This removes it from the server.`)) return;
+    if (!await askConfirm(`Delete database "${d.name}"? This removes it from the server.`)) return;
     try {
       await api(`/client/databases/${d.id}`, { method: "DELETE" });
       if (manage?.id === d.id) setManage(null);
@@ -146,7 +147,7 @@ export default function Databases() {
   };
 
   const dropUser = async (u: DbUser) => {
-    if (!confirm(`Delete MySQL user "${u.username}"?`)) return;
+    if (!await askConfirm(`Delete MySQL user "${u.username}"?`)) return;
     try {
       await api(`/client/databases/db-users/${u.id}`, { method: "DELETE" });
       notify("MySQL user deleted");
@@ -205,7 +206,7 @@ export default function Databases() {
   };
 
   const revoke = async (g: Privilege) => {
-    if (!confirm(`Revoke permissions of "${g.username}" on this database?`)) return;
+    if (!await askConfirm(`Revoke permissions of "${g.username}" on this database?`)) return;
     try {
       await api(`/client/databases/db-privileges/${g.id}`, { method: "DELETE" });
       setGrants(grants.filter((x) => x.id !== g.id));

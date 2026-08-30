@@ -1,3 +1,4 @@
+import { askConfirm } from "../askConfirm";
 import {
   Download,
   File,
@@ -202,7 +203,7 @@ export default function FileManager() {
   };
 
   const remove = async (e: Entry) => {
-    if (!window.confirm(`Delete "${e.name}"?`)) return;
+    if (!await askConfirm(`Delete "${e.name}"?`)) return;
     await doPost("delete", { path: joinPath(path, e.name) }, "Deleted");
   };
 
