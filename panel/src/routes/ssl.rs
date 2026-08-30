@@ -345,8 +345,19 @@ async fn issue_and_store(
         .into_iter()
         .find(|s| s.domain == domain);
     if let Some(s) = current {
-        if s.status == "active" && s.days_left.unwrap_or(0) > 30 {
-            return Ok(format!("Certificate valid ({}) days left", s.days_left.unwrap_or(0)));
+        let self_signed = s
+            .issuer
+            .as_deref()
+            .map(|iss| {
+                iss.trim().eq_ignore_ascii_case(domain)
+                    || iss.contains(&format!("CN={domain}"))
+            })
+            .unwrap_or(false);
+        if !self_signed && s.status == "active" && s.days_left.unwrap_or(0) > 30 {
+            return Ok(format!(
+                "Certificate valid ({}) days left",
+                s.days_left.unwrap_or(0)
+            ));
         }
     }
 
