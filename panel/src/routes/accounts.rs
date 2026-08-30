@@ -79,6 +79,23 @@ async fn create(
         ));
     }
 
+    let username = input.username.trim().to_lowercase();
+    let email = input.email.trim().to_lowercase();
+    let taken = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM accounts WHERE username = ? OR email = ?",
+    )
+    .bind(&username)
+    .bind(&email)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
+    if taken > 0 {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "Username or email is already registered",
+        ));
+    }
+
     let Some(domain) = input
         .domain
         .map(|d| d.trim().to_lowercase())
@@ -100,8 +117,8 @@ async fn create(
     let result = sqlx::query(
         "INSERT INTO accounts (username, email, password_hash, package_id, name) VALUES (?, ?, ?, ?, ?)",
     )
-    .bind(input.username.trim())
-    .bind(input.email.trim())
+    .bind(&username)
+    .bind(&email)
     .bind(password_hash)
     .bind(input.package_id)
     .bind(input.name)
