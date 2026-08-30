@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 mod auth;
 mod db;
 mod error;
@@ -21,8 +22,21 @@ async fn main() {
         .compact()
         .init();
 
-    let default_db = format!("{}/db/fpanel.db", env!("CARGO_MANIFEST_DIR"));
-    let db_path = std::env::var("FPANEL_DB").unwrap_or(default_db);
+    // Cross-compiled binaries are built on a different host, so a compile-time
+    // CARGO_MANIFEST_DIR may point at a path that doesn't exist here. Resolve at
+    // runtime instead: env override > next to the deployed executable > dev path.
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|p| p.to_path_buf()));
+    let deployed_db = exe_dir
+        .as_ref()
+        .and_then(|p| p.parent().and_then(|q| q.parent()))
+        .map(|p| p.join("db/fpanel.db"));
+    let dev_db = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("db/fpanel.db");
+    let db_path = std::env::var("FPANEL_DB")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| deployed_db.filter(|p| p.exists()).unwrap_or(dev_db));
+    let db_path = db_path.to_string_lossy().into_owned();
     let jwt_secret = std::env::var("FPANEL_SECRET")
         .unwrap_or_else(|_| "fpanel-dev-secret-change-me".into());
 
