@@ -436,7 +436,9 @@ fn validate_record(rtype: &str, name: Option<&str>, value: &str, ttl: Option<i64
             return Err(ApiError::new(StatusCode::BAD_REQUEST, "TTL must be between 1 and 604800"));
         }
     }
-    if v.contains(['\n', '\r', ';', '$', '(', ')']) {
+    if v.contains(['\n', '\r'])
+        || (rt != "TXT" && v.contains([';', '$', '(', ')']))
+    {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "Record value contains invalid characters",
