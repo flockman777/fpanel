@@ -17,17 +17,26 @@ import {
   Server,
   ShieldCheck,
   ShieldOff,
+  Table2,
   Terminal,
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getAccountName } from "../App";
 
-const navItems = [
+type NavItem = {
+  to?: string;
+  href?: string;
+  label: string;
+  icon: any;
+};
+
+const navItems: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/domains", label: "Domains", icon: Globe },
   { to: "/redirects", label: "Redirects", icon: ArrowRightLeft },
   { to: "/files", label: "File Manager", icon: FolderOpen },
   { to: "/databases", label: "Databases", icon: Database },
+  { href: "https://pma.fpanel.my.id", label: "phpMyAdmin", icon: Table2 },
   { to: "/email", label: "Email", icon: Mail },
   { to: "/software", label: "Software", icon: Boxes },
   { to: "/php", label: "MultiPHP", icon: Braces },
@@ -67,23 +76,36 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
           <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-brand-400">
             Menu
           </div>
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive
-                    ? "bg-brand-700 text-white"
-                    : "text-brand-200 hover:bg-brand-800 hover:text-white"
-                }`
-              }
-            >
-              <item.icon className="h-5 w-5" />
-              {item.label}
-            </NavLink>
-          ))}
+          {navItems.map((item) =>
+            item.href ? (
+              <a
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-200 transition hover:bg-brand-800 hover:text-white"
+              >
+                <item.icon className="h-5 w-5" />
+                {item.label}
+              </a>
+            ) : (
+              <NavLink
+                key={item.to}
+                to={item.to!}
+                end={item.to === "/"}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                    isActive
+                      ? "bg-brand-700 text-white"
+                      : "text-brand-200 hover:bg-brand-800 hover:text-white"
+                  }`
+                }
+              >
+                <item.icon className="h-5 w-5" />
+                {item.label}
+              </NavLink>
+            )
+          )}
         </nav>
 
         <div className="border-t border-brand-800 p-3">

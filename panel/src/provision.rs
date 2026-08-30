@@ -177,6 +177,16 @@ pub fn account_htdocs(username: &str) -> PathBuf {
     data_dir().join("accounts").join(username).join("htdocs")
 }
 
+/// cPanel-style layout: main/alias domains map to the account root
+/// (public_html), addon subdomains live in their own subfolder inside it.
+pub fn vhost_root(username: &str, kind: &str, domain: &str) -> PathBuf {
+    if kind == "sub" {
+        account_htdocs(username).join(domain.trim_matches('.'))
+    } else {
+        account_htdocs(username)
+    }
+}
+
 fn vhost_path(name: &str) -> PathBuf {
     vhosts_dir().join(format!("{name}.json"))
 }
@@ -484,12 +494,12 @@ pub fn remove_ssh(account: &str) {
     }
 }
 
-pub fn write_vhost(name: &str, username: &str) {
+pub fn write_vhost(name: &str, username: &str, kind: &str) {
     let path = vhost_path(name);
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let root = account_htdocs(username);
+    let root = vhost_root(username, kind, name);
     let vhost = Vhost {
         domain: name.to_string(),
         account: username.to_string(),

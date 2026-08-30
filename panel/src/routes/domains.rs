@@ -108,7 +108,7 @@ pub async fn create(
 
     let domain = insert_domain(&state, input.account_id, &input.name, input.kind.as_deref().unwrap_or("main"))
         .await?;
-    provision::write_vhost(&domain.name, &username);
+    provision::write_vhost(&domain.name, &username, &domain.kind);
     crate::routes::dns::seed_domain_dns(&state, domain.id).await?;
     Ok((StatusCode::CREATED, Json(domain)))
 }
@@ -148,7 +148,7 @@ async fn client_create(
     }
     check_domain(state.clone(), account_id, &input.name, Some(kind)).await?;
     let domain = insert_domain(&state, account_id, &input.name, kind).await?;
-    provision::write_vhost(&domain.name, &username);
+    provision::write_vhost(&domain.name, &username, kind);
     crate::routes::dns::seed_domain_dns(&state, domain.id).await?;
     Ok((StatusCode::CREATED, Json(domain)))
 }
