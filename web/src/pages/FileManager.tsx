@@ -229,8 +229,7 @@ export default function FileManager() {
     try {
       const sess = localStorage.getItem("fpanel_sess");
       const token = localStorage.getItem("fpanel_token");
-      const q = new URLSearchParams({ account_id: accountId });
-      selected.forEach((p) => q.append("path", p));
+      const q = new URLSearchParams({ account_id: accountId, paths: selected.join(",") });
       const res = await fetch(`/api/s/${sess}/files/download?${q.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });

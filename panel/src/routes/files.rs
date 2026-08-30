@@ -24,8 +24,8 @@ pub struct PathQ {
 
 #[derive(Debug, Deserialize)]
 pub struct DownloadQ {
-    #[serde(default)]
-    pub path: Vec<String>,
+    pub path: Option<String>,
+    pub paths: Option<String>,
     pub account_id: Option<i64>,
 }
 
@@ -139,7 +139,7 @@ async fn read_admin(State(state): State<AppState>, Query(q): Query<PathQ>) -> Re
 
 async fn download_admin(State(state): State<AppState>, Query(q): Query<DownloadQ>) -> Result<impl IntoResponse, ApiError> {
     let root = admin_root(&state, q.account_id).await?;
-    download_many(&root, &q.path)
+    download_many(&root, q.path, q.paths)
 }
 
 async fn write_admin(State(state): State<AppState>, Json(body): Json<WriteBody>) -> Result<StatusCode, ApiError> {
@@ -224,7 +224,7 @@ async fn read_client(State(state): State<AppState>, headers: HeaderMap, Query(q)
 
 async fn download_client(State(state): State<AppState>, headers: HeaderMap, Query(q): Query<DownloadQ>) -> Result<impl IntoResponse, ApiError> {
     let root = client_root(&state, &headers).await?;
-    download_many(&root, &q.path)
+    download_many(&root, q.path, q.paths)
 }
 
 async fn write_client(State(state): State<AppState>, headers: HeaderMap, Json(body): Json<WriteBody>) -> Result<StatusCode, ApiError> {
@@ -418,8 +418,15 @@ fn read_file(root: &Path, rel: Option<&str>) -> Result<String, ApiError> {
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Binary file (cannot edit as text)"))
 }
 
-fn download_many(root: &Path, paths: &[String]) -> Result<impl IntoResponse, ApiError> {
-    let rels: Vec<&str> = paths.iter().map(String::as_str).collect();
+fn download_many(root: &Path, qpath: Option<String>, qpaths: Option<String>) -> Result<impl IntoResponse, ApiError> {
+    let mut list: Vec<String> = Vec::new();
+    if let Some(p) = qpath {
+        list.push(p);
+    }
+    if let Some(ps) = qpaths {
+        list.extend(ps.split(',').filter(|s| !s.is_empty()).map(String::from));
+    }
+    let rels: Vec<&str> = list.iter().map(String::as_str).collect();
     let cleaned: Vec<&str> = if rels.is_empty() { vec![""] } else { rels };
     let spaths: Vec<PathBuf> = cleaned
         .iter()
