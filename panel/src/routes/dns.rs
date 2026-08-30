@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use sqlx::Row;
 use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::db::AppState;
 use crate::error::{internal_error, ApiError};
@@ -576,7 +577,10 @@ async fn generate_zone(state: &AppState, domain_id: i64) -> Result<(), ApiError>
 
     let ns1 = fqdn(&provision::default_ns1());
     let ns2 = fqdn(&provision::default_ns2());
-    let serial = chrono::Utc::now().format("%Y%m%d%H%M%S").to_string();
+    let serial = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let mut content = format!(
         "; FPanel generated DNS zone for {domain}\n$ORIGIN {domain}.\n$TTL 3600\n\
          @ IN SOA {ns1} hostmaster.{domain}. ( {serial} 7200 3600 1209600 300 )\n"
