@@ -200,9 +200,9 @@ export default function Accounts() {
               <input
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2.5 text-sm focus:outline-none"
+                className="w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2.5 text-sm focus:outline-none disabled:cursor-not-allowed"
                 required
-                disabled
+                disabled={edit}
               />
             </div>
             <div>
