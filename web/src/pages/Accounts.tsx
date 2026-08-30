@@ -30,6 +30,7 @@ export default function Accounts() {
     package_id: "",
     status: "active",
     name: "",
+    domain: "",
   });
 
   const load = async () => {
@@ -73,6 +74,7 @@ export default function Accounts() {
             password: form.password || null,
             package_id: Number(form.package_id),
             name: form.name || null,
+            domain: form.domain.trim() || null,
           }),
         });
       }
@@ -83,6 +85,7 @@ export default function Accounts() {
         package_id: "",
         status: "active",
         name: "",
+        domain: "",
       });
       setEdit(null);
       setShowForm(false);
@@ -130,6 +133,7 @@ export default function Accounts() {
       package_id: String(a.package_id),
       status: a.status,
       name: a.name || "",
+      domain: "",
     });
     setShowForm(true);
     setError("");
@@ -184,6 +188,7 @@ export default function Accounts() {
                     package_id: "",
                     status: "active",
                     name: "",
+                    domain: "",
                   });
                 }}
                 className="ml-auto text-xs font-medium text-brand-500 hover:text-brand-700"
@@ -193,6 +198,22 @@ export default function Accounts() {
             )}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {!edit && (
+              <div className="sm:col-span-2">
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Main Domain <span className="text-brand-500">(opsional)</span>
+                </label>
+                <input
+                  value={form.domain}
+                  onChange={(e) => setForm({ ...form, domain: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                  placeholder="mis. situsku.com"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  DNS dibuat otomatis (A → IP server, NS, www CNAME) seperti cPanel.
+                </p>
+              </div>
+            )}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">
                 Username

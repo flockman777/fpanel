@@ -375,7 +375,7 @@ pub(crate) async fn bearer_account(
     Ok((claims.sub, username))
 }
 
-fn valid_domain(name: &str) -> bool {
+pub fn valid_domain(name: &str) -> bool {
     if name.is_empty() || name.len() > 253 {
         return false;
     }

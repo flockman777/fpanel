@@ -496,10 +496,14 @@ fn nsd_stanza_file(domain: &str) -> std::path::PathBuf {
 }
 
 fn nsd_reload() {
-    match std::process::Command::new("nsd-control").arg("reload").status() {
-        Ok(s) if s.success() => tracing::info!("[nsd] zone reload ok"),
-        Ok(_) => tracing::warn!("[nsd] nsd-control reload returned non-zero"),
-        Err(e) => tracing::warn!("[nsd] cannot run nsd-control reload: {e}"),
+    // reconfig picks up NEW zones from conf.d (stanzas written by publish_nsd),
+    // reload then refreshes the zone data for existing ones.
+    for cmd in ["reconfig", "reload"] {
+        match std::process::Command::new("nsd-control").arg(cmd).status() {
+            Ok(s) if s.success() => tracing::info!("[nsd] nsd-control {cmd} ok"),
+            Ok(_) => tracing::warn!("[nsd] nsd-control {cmd} returned non-zero"),
+            Err(e) => tracing::warn!("[nsd] cannot run nsd-control {cmd}: {e}"),
+        }
     }
 }
 
@@ -722,11 +726,7 @@ pub async fn seed_domain_dns(state: &AppState, domain_id: i64) -> Result<(), Api
     let ip = provision::public_ip();
 
     if kind == "main" {
-        try_insert_record(state, account_id, domain_id, &name, "@", "A", &ip).await?;
-        try_insert_record(state, account_id, domain_id, &name, "@", "NS", &fqdn(&provision::default_ns1())).await?;
-        try_insert_record(state, account_id, domain_id, &name, "@", "NS", &fqdn(&provision::default_ns2())).await?;
-        try_insert_record(state, account_id, domain_id, &name, "www", "CNAME", &fqdn(&name)).await?;
-        generate_zone(state, domain_id).await?;
+        seed_own_zone(state, account_id, domain_id, &name, &ip).await?;
         return Ok(());
     }
 
@@ -742,8 +742,29 @@ pub async fn seed_domain_dns(state: &AppState, domain_id: i64) -> Result<(), Api
             try_insert_record(state, account_id, parent_id, &parent_name, &label, "A", &ip).await?;
         }
         generate_zone(state, parent_id).await?;
+        return Ok(());
+    }
+
+    // cPanel-style: an addon domain is a standalone registered domain, so it gets
+    // its own zone (A @ -> server IP, NS, www CNAME) automatically.
+    if kind == "addon" {
+        seed_own_zone(state, account_id, domain_id, &name, &ip).await?;
     }
     Ok(())
+}
+
+async fn seed_own_zone(
+    state: &AppState,
+    account_id: i64,
+    domain_id: i64,
+    name: &str,
+    ip: &str,
+) -> Result<(), ApiError> {
+    try_insert_record(state, account_id, domain_id, name, "@", "A", ip).await?;
+    try_insert_record(state, account_id, domain_id, name, "@", "NS", &fqdn(&provision::default_ns1())).await?;
+    try_insert_record(state, account_id, domain_id, name, "@", "NS", &fqdn(&provision::default_ns2())).await?;
+    try_insert_record(state, account_id, domain_id, name, "www", "CNAME", &fqdn(name)).await?;
+    generate_zone(state, domain_id).await
 }
 
 pub async fn cleanup_domain_dns(state: &AppState, domain_id: i64, name: &str, kind: &str) -> Result<(), ApiError> {
