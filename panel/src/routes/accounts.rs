@@ -9,6 +9,7 @@ use axum::Router;
 
 use crate::db::AppState;
 use crate::error::{internal_error, ApiError};
+use crate::provision;
 
 #[derive(Debug, Serialize, FromRow)]
 pub struct Account {
@@ -165,20 +166,87 @@ async fn remove(
     State(state): State<AppState>,
     Path((_sess, id)): Path<(String, i64)>,
 ) -> Result<StatusCode, ApiError> {
-    let result = sqlx::query("DELETE FROM accounts WHERE id = ?")
+    let username = sqlx::query_scalar::<_, String>("SELECT username FROM accounts WHERE id = ?")
         .bind(id)
-        .execute(&state.db)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| internal_error(e.into()))?
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Account not found"))?;
+
+    // Collect this account's domains so we can clean up provisioning afterwards.
+    let domains: Vec<(i64, String, String)> =
+        sqlx::query_as("SELECT id, name, kind FROM domains WHERE account_id = ?")
+            .bind(id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| internal_error(e.into()))?;
+
+    let mut tx = state
+        .db
+        .begin()
         .await
         .map_err(|e| internal_error(e.into()))?;
 
-    if result.rows_affected() == 0 {
-        return Err(ApiError::new(
-            StatusCode::NOT_FOUND,
-            "Account not found",
-        ));
+    // Delete child rows first (FK-safe order, leaves -> parents -> account).
+    for table in [
+        // reference domains / databases / db_users
+        "dns_records",
+        "email_accounts",
+        "email_forwarders",
+        "email_autoresponders",
+        "email_defaults",
+        "redirects",
+        "ssl_certs",
+        "php_settings",
+        "installed_apps",
+        "ip_blocker",
+        "hotlink",
+        "waf_rules",
+        "run_apps",
+        "db_privileges",
+        // reference accounts directly
+        "databases",
+        "db_users",
+        "ssh_access",
+        "cron_jobs",
+    ] {
+        sqlx::query(&format!("DELETE FROM {table} WHERE account_id = ?"))
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| internal_error(e.into()))?;
+    }
+    sqlx::query("DELETE FROM domains WHERE account_id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    sqlx::query("DELETE FROM accounts WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+
+    tx.commit().await.map_err(|e| internal_error(e.into()))?;
+
+    // Cleanup provisioning artifacts (vhosts, mail, ssl, dns zones, ssh, home).
+    for (domain_id, name, kind) in &domains {
+        provision::remove_vhost(name);
+        provision::remove_mail(name);
+        provision::remove_ssl(name);
+        provision::remove_redirects(name);
+        provision::remove_runtime(name);
+        provision::remove_php(name);
+        provision::remove_security(name);
+        crate::routes::dns::cleanup_domain_dns(&state, *domain_id, name, kind).await?;
+    }
+    provision::remove_ssh(&username);
+    let home = provision::account_home(&username);
+    if home.exists() {
+        let _ = std::fs::remove_dir_all(&home);
     }
 
-    trace::log_provision(&format!("delete account {id}"));
+    trace::log_provision(&format!("delete account {id} ({username})"));
     Ok(StatusCode::NO_CONTENT)
 }
 

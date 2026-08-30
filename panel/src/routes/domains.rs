@@ -312,11 +312,39 @@ async fn delete_domain(
     let name: String = row.get(1);
     let kind: String = row.get(2);
 
-    sqlx::query("DELETE FROM domains WHERE id = ?")
-        .bind(id)
-        .execute(&state.db)
+    // Delete child rows first so FK constraints don't block the delete.
+    let mut tx = state
+        .db
+        .begin()
         .await
         .map_err(|e| internal_error(e.into()))?;
+    for table in [
+        "dns_records",
+        "email_accounts",
+        "email_forwarders",
+        "email_autoresponders",
+        "email_defaults",
+        "redirects",
+        "ssl_certs",
+        "php_settings",
+        "installed_apps",
+        "ip_blocker",
+        "hotlink",
+        "waf_rules",
+        "run_apps",
+    ] {
+        sqlx::query(&format!("DELETE FROM {table} WHERE domain_id = ?"))
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| internal_error(e.into()))?;
+    }
+    sqlx::query("DELETE FROM domains WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    tx.commit().await.map_err(|e| internal_error(e.into()))?;
 
     if remove_vhost {
         provision::remove_vhost(&name);

@@ -93,9 +93,14 @@ export default function Accounts() {
   };
 
   const remove = async (id: number) => {
-    if (!await askConfirm("Delete this account?")) return;
-    await api(`/accounts/${id}`, { method: "DELETE" });
-    load();
+    if (!await askConfirm("Delete this account? This removes its files, domains, databases and emails.")) return;
+    try {
+      await api(`/accounts/${id}`, { method: "DELETE" });
+      setError("");
+      load();
+    } catch (e: any) {
+      setError(String(e.message || e));
+    }
   };
 
   const setPassword = async (id: number) => {
