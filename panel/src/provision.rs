@@ -192,12 +192,11 @@ pub fn account_htdocs(username: &str) -> PathBuf {
 
 /// cPanel-style layout:
 /// - main (primary) and alias (parked) -> /home/<username>/public_html
-/// - sub (subdomain)                    -> /home/<username>/public_html/<sub>
-/// - addon (extra/added domain)         -> /home/<username>/addondomains/<domain>
+/// - sub (subdomain)                   -> /home/<username>/<sub>
+/// - addon (extra/added domain)        -> /home/<username>/<domain>
 pub fn vhost_root(username: &str, kind: &str, domain: &str) -> PathBuf {
     match kind {
-        "sub" => account_htdocs(username).join(domain.trim_matches('.')),
-        "addon" => account_home(username).join("addondomains").join(domain.trim_matches('.')),
+        "sub" | "addon" => account_home(username).join(domain.trim_matches('.')),
         _ => account_htdocs(username),
     }
 }
