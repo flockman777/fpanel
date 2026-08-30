@@ -79,6 +79,17 @@ async fn create(
         ));
     }
 
+    let Some(domain) = input
+        .domain
+        .map(|d| d.trim().to_lowercase())
+        .filter(|d| !d.is_empty())
+    else {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Main domain is required when creating an account",
+        ));
+    };
+
     let password_hash = match input.password.as_deref() {
         Some(p) if p.len() >= 6 => Some(
             crate::auth::hash_password(p).map_err(|e| internal_error(e.into()))?,
@@ -104,32 +115,30 @@ async fn create(
         .await
         .map_err(|e| internal_error(e.into()))?;
 
-    // cPanel-style: creating a hosting account can provision its main domain
-    // right away, seeding the DNS zone automatically.
-    if let Some(domain) = input.domain.map(|d| d.trim().to_lowercase()).filter(|d| !d.is_empty()) {
-        if !crate::routes::domains::valid_domain(&domain) {
-            return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid domain name"));
-        }
-        let clash = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM domains WHERE name = ?")
-            .bind(&domain)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|e| internal_error(e.into()))?;
-        if clash > 0 {
-            return Err(ApiError::new(
-                StatusCode::CONFLICT,
-                format!("Domain {domain} is already assigned to another account"),
-            ));
-        }
-        let insert = sqlx::query("INSERT INTO domains (account_id, name, kind) VALUES (?, ?, 'main')")
-            .bind(account.id)
-            .bind(&domain)
-            .execute(&state.db)
-            .await
-            .map_err(|e| internal_error(e.into()))?;
-        provision::write_vhost(&domain, &account.username, "main");
-        crate::routes::dns::seed_domain_dns(&state, insert.last_insert_rowid()).await?;
+    // A hosting account always gets its main domain provisioned with the DNS
+    // zone seeded automatically.
+    if !crate::routes::domains::valid_domain(&domain) {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid domain name"));
     }
+    let clash = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM domains WHERE name = ?")
+        .bind(&domain)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    if clash > 0 {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            format!("Domain {domain} is already assigned to another account"),
+        ));
+    }
+    let insert = sqlx::query("INSERT INTO domains (account_id, name, kind) VALUES (?, ?, 'main')")
+        .bind(account.id)
+        .bind(&domain)
+        .execute(&state.db)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    provision::write_vhost(&domain, &account.username, "main");
+    crate::routes::dns::seed_domain_dns(&state, insert.last_insert_rowid()).await?;
 
     trace::log_provision(&format!("create account {}", account.username));
 
