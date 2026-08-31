@@ -6,7 +6,9 @@ export default defineConfig({
   root: __dirname,
   plugins: [react(), tailwindcss()],
   server: {
+    host: true,
     port: 2083,
+    allowedHosts: true,
     proxy: {
       "/s/": {
         target: "http://localhost:8181",

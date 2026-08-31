@@ -416,6 +416,7 @@ fn run_php_cgi(
     method: String,
     body: Option<Vec<u8>>,
     content_type: Option<String>,
+    tls: bool,
     log_dir: std::path::PathBuf,
 ) -> Option<PhpOut> {
     let mut cmd = Command::new("php-cgi");
@@ -432,13 +433,16 @@ fn run_php_cgi(
         .env("DOCUMENT_ROOT", &root)
         .env("SERVER_NAME", &host)
         .env("SERVER_ADDR", "127.0.0.1")
-        .env("SERVER_PORT", "8080")
+        .env("SERVER_PORT", if tls { "443" } else { "8080" })
         .env("SERVER_PROTOCOL", "HTTP/1.1")
         .env("REQUEST_METHOD", &method)
         .env("REQUEST_URI", &uri)
         .env("QUERY_STRING", &query)
         .env("HTTP_HOST", &host)
         .env("REMOTE_ADDR", "127.0.0.1");
+    if tls {
+        cmd.env("HTTPS", "on");
+    }
     if !path_info.is_empty() {
         cmd.env("ORIG_PATH_INFO", &path_info);
     }
@@ -683,6 +687,13 @@ impl ProxyHttp for FS {
                         .get("content-type")
                         .and_then(|h| h.to_str().ok())
                         .map(|s| s.to_string());
+                    let tls = session
+                        .req_header()
+                        .headers
+                        .get("x-forwarded-proto")
+                        .and_then(|h| h.to_str().ok())
+                        .map(|s| s.eq_ignore_ascii_case("https"))
+                        .unwrap_or(false);
                     let block_root = root.clone();
                     let block_file = res.file.clone();
                     let block_host = host.clone();
@@ -693,9 +704,10 @@ impl ProxyHttp for FS {
                     let block_method = method.clone();
                     let block_body = body.clone();
                     let block_ct = content_type.clone();
+                    let block_tls = tls;
                     let block_log = self.log_dir.clone();
                     let result = tokio::task::spawn_blocking(move || {
-                        run_php_cgi(block_root, block_file, block_host, block_uri, block_script, block_pi, block_query, block_method, block_body, block_ct, block_log)
+                        run_php_cgi(block_root, block_file, block_host, block_uri, block_script, block_pi, block_query, block_method, block_body, block_ct, block_tls, block_log)
                     })
                     .await
                     .ok()
