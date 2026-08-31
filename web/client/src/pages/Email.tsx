@@ -1,5 +1,6 @@
 import { askConfirm } from "../askConfirm";
 import {
+  Copy,
   ExternalLink,
   Forward,
   KeyRound,
@@ -8,6 +9,7 @@ import {
   Plus,
   Reply,
   Save,
+  Settings,
   Trash2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -61,7 +63,7 @@ interface DefaultRow {
   forward_to: string | null;
 }
 
-type Tab = "accounts" | "forwarders" | "autoresponders" | "default";
+type Tab = "accounts" | "forwarders" | "autoresponders" | "default" | "settings";
 
 export default function Email() {
   const [tab, setTab] = useState<Tab>("accounts");
@@ -130,6 +132,27 @@ export default function Email() {
   }, [domains]);
 
   const domainName = (id: number) => domains.find((d) => d.id === id)?.name || "";
+
+  const copySettings = async () => {
+    const host = `mail.${domains.length > 0 ? domains[0].name : "your-domain.example"}`;
+    const lines = [
+      "Mail client settings",
+      `Server hostname: ${host}`,
+      "IMAP (SSL)     : 993",
+      "IMAP alt (TLS) : 143",
+      "POP3 (SSL)     : 995",
+      "SMTP (TLS)     : 587 (requires authentication)",
+      "Username: your full email address",
+      "Password: the email account password",
+      "Webmail: https://webmail." + `${domains.length > 0 ? domains[0].name : "your-domain.example"}`,
+    ];
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      notify("Mail settings copied to clipboard");
+    } catch {
+      notify("Could not copy. Select the settings manually.", "err");
+    }
+  };
 
   const createAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -283,6 +306,7 @@ export default function Email() {
     { key: "forwarders", label: "Forwarders" },
     { key: "autoresponders", label: "Autoresponders" },
     { key: "default", label: "Default Address" },
+    { key: "settings", label: "Mail Settings" },
   ];
 
   return (
@@ -736,6 +760,120 @@ export default function Email() {
               })}
             </div>
           )}
+        </section>
+      )}
+
+      {tab === "settings" && (
+        <section className="rounded-xl border border-gray-200 bg-white p-5">
+          <div className="mb-1 flex items-center gap-2 text-gray-800">
+            <Settings className="h-4 w-4 text-brand-600" />
+            <span className="font-semibold">Mail Client Settings</span>
+          </div>
+          <p className="mb-4 text-sm text-gray-500">
+            Use these settings to access your email from any mail client (Outlook, Gmail, Thunderbird
+            or your phone). The same server works for every mailbox on your account.
+          </p>
+
+          {domains.length > 0 && (
+            <div className="mb-4 rounded-lg border border-brand-100 bg-brand-50/70 px-4 py-3 text-sm">
+              <span className="font-medium text-gray-700">Webmail:</span>{" "}
+              <a
+                href={`https://webmail.${domains[0].name}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-brand-600 hover:underline"
+              >
+                https://webmail.{domains[0].name}
+              </a>
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500">
+                  <th className="px-3 py-2">Setting</th>
+                  <th className="px-3 py-2">Value</th>
+                  <th className="px-3 py-2">Port</th>
+                  <th className="px-3 py-2">Security</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-gray-100">
+                  <td className="px-3 py-2.5 font-medium text-gray-800">Server hostname</td>
+                  <td className="px-3 py-2.5" colSpan={3}>
+                    <code className="rounded bg-gray-50 px-1.5 py-0.5 text-brand-700">
+                      mail.{domains.length > 0 ? domains[0].name : "your-domain.example"}
+                    </code>
+                    <span className="ml-2 text-xs text-gray-400">
+                      same for incoming and outgoing
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b border-gray-100">
+                  <td className="px-3 py-2.5 font-medium text-gray-800">Incoming (IMAP)</td>
+                  <td className="px-3 py-2.5 text-gray-600">Recommended for all mailboxes</td>
+                  <td className="px-3 py-2.5 font-mono text-gray-700">993</td>
+                  <td className="px-3 py-2.5">
+                    <span className={chip}>SSL/TLS</span>
+                  </td>
+                </tr>
+                <tr className="border-b border-gray-100">
+                  <td className="px-3 py-2.5 font-medium text-gray-800">Incoming (IMAP alt)</td>
+                  <td className="px-3 py-2.5 text-gray-600">STARTTLS</td>
+                  <td className="px-3 py-2.5 font-mono text-gray-700">143</td>
+                  <td className="px-3 py-2.5">
+                    <span className={chip}>STARTTLS</span>
+                  </td>
+                </tr>
+                <tr className="border-b border-gray-100">
+                  <td className="px-3 py-2.5 font-medium text-gray-800">Incoming (POP3)</td>
+                  <td className="px-3 py-2.5 text-gray-600">Downloads mail to one device</td>
+                  <td className="px-3 py-2.5 font-mono text-gray-700">995</td>
+                  <td className="px-3 py-2.5">
+                    <span className={chip}>SSL/TLS</span>
+                  </td>
+                </tr>
+                <tr className="border-b border-gray-100">
+                  <td className="px-3 py-2.5 font-medium text-gray-800">Incoming (POP3 alt)</td>
+                  <td className="px-3 py-2.5 text-gray-600">STARTTLS</td>
+                  <td className="px-3 py-2.5 font-mono text-gray-700">110</td>
+                  <td className="px-3 py-2.5">
+                    <span className={chip}>STARTTLS</span>
+                  </td>
+                </tr>
+                <tr className="border-b border-gray-100">
+                  <td className="px-3 py-2.5 font-medium text-gray-800">Outgoing (SMTP)</td>
+                  <td className="px-3 py-2.5 text-gray-600">Requires authentication</td>
+                  <td className="px-3 py-2.5 font-mono text-gray-700">587</td>
+                  <td className="px-3 py-2.5">
+                    <span className={chip}>STARTTLS</span>
+                  </td>
+                </tr>
+                <tr className="border-b border-gray-100">
+                  <td className="px-3 py-2.5 font-medium text-gray-800">Username</td>
+                  <td className="px-3 py-2.5 text-gray-600" colSpan={3}>
+                    Your full email address:{" "}
+                    <code className="rounded bg-gray-50 px-1.5 py-0.5 text-gray-700">
+                      john@example.com
+                    </code>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2.5 font-medium text-gray-800">Password</td>
+                  <td className="px-3 py-2.5 text-gray-600" colSpan={3}>
+                    The password of that email account
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-4">
+            <button onClick={copySettings} className={btnSm}>
+              <Copy className="h-4 w-4" /> Copy Settings
+            </button>
+          </div>
         </section>
       )}
 

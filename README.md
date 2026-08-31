@@ -20,6 +20,7 @@ fpanel/
 | fserver | `server/` | Reverse-proxy web server: static files, PHP-CGI, redirects, proxy runtime, IP blocker / hotlink / WAF, access & error logs |
 | Admin UI | `web/` | Operator panel (Vite, proxying to :8181) |
 | Client UI | `web/client/` | Customer panel |
+| mailtrack | `tools/mailtrack.py` | Postfix content filter: HTML open-pixel + link-click tracking daemon |
 
 ## Getting Started
 
@@ -80,8 +81,31 @@ Requests with a missing or mismatched session are rejected (401/404).
 
 Plus full feature suites under `/api/s/{sess}/...`: `domains`, `directives`,
 `files`, `databases`, `email`, `php`, `ssl`, `runtime`, `ipblocker`, `hotlink`,
-`waf`, `ssh`, `totp`, `dns`, `cron`, `backups`, `logs`, `stats`, `apps`.
+`waf`, `ssh`, `totp`, `dns`, `cron`, `backups`, `logs`, `stats`, `apps`,
+`deliverability`, `delivery`, `tracking`.
 Customer-scoped endpoints live under `/api/s/{sess}/client/...`.
+
+## Email
+
+Out-of-the-box mail stack plus deliverability tooling:
+
+- **Mail service** — Postfix (SMTP :25 / submission :587) + Dovecot (IMAP :993 / POP3 :995)
+  with per-account maildir virtual hosting and Roundcube webmail (`https://webmail.<domain>`).
+- **DKIM** — per-domain OpenDKIM keys (`/etc/opendkim/keys/<domain>/`), issued and
+  published as DNS records by the panel; signing applied inside the mail pipeline.
+- **Deliverability page** (`/deliverability`) — one-click SPF / DMARC / DKIM record
+  provisioning on the panel's nsd authoritative DNS (`generate_zone` also chunks
+  TXT records >255 chars for nsd).
+- **Delivery tracking** (`/delivery`) — parses postfix `maillog_file`
+  (`/var/log/mail.log`) into the `mail_log` table; shows sent / bounced / deferred
+  per message.
+- **Open & link tracking** (`/tracking`) — Postfix `content_filter` hands every outbound
+  mail to `tools/mailtrack.py` (systemd `mailtrack.service`), which injects a tracking
+  pixel (`/t/o/{token}.png`) and rewrites links to `/t/c/{token}?u=...`, then re-injects
+  through the loopback SMTP listener (DKIM-signing milter) so recipients see one trust
+  chain. Opens and clicks are stored in `/var/log/mailtrack.db`.
+- **Client Mail Settings tab** — shows IMAP/POP3/SMTP host & ports (993/995/587) plus a
+  copy-to-clipboard helper so customers can configure any mail client.
 
 ## Runtime data
 
@@ -96,6 +120,8 @@ PHP sites) and are **not** part of this repository. See `.gitignore`.
 - [x] Database provisioning (MariaDB)
 - [x] Pingora web server layer (static, PHP, redirects, proxy)
 - [x] DNS zone editor, SSL, email
+- [x] Email deliverability: SPF / DMARC / DKIM provisioning + signing
+- [x] Email delivery tracking (postfix log) and open/click tracking (content filter)
 - [x] Security: IP blocker, hotlink, WAF, SSH, 2FA/TOTP
 - [x] Cron jobs, backups
 - [x] Monitoring: access/error logs, disk & bandwidth usage
