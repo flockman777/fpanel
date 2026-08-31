@@ -420,8 +420,7 @@ fn run_php_cgi(
     log_dir: std::path::PathBuf,
 ) -> Option<PhpOut> {
     let mut cmd = Command::new("php-cgi");
-    cmd.arg("-q")
-        .arg(&file)
+    cmd.arg(&file)
         .current_dir(&root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -475,14 +474,19 @@ fn run_php_cgi(
     let mut ctype: Option<String> = None;
     for line in head.lines() {
         let l = line.trim_end_matches('\r');
-        if let Some(rest) = l.strip_prefix("Status:") {
-            if let Some(code) = rest.trim().split(' ').next().and_then(|c| c.parse::<u16>().ok()) {
-                status = code;
+        let (key, value) = match l.split_once(':') {
+            Some((k, v)) => (k.trim().to_ascii_lowercase(), v.trim().to_string()),
+            None => (String::new(), String::new()),
+        };
+        match key.as_str() {
+            "status" => {
+                if let Some(code) = value.split(' ').next().and_then(|c| c.parse::<u16>().ok()) {
+                    status = code;
+                }
             }
-        } else if let Some(rest) = l.strip_prefix("Location:") {
-            location = Some(rest.trim().to_string());
-        } else if let Some(rest) = l.strip_prefix("Content-type:") {
-            ctype = Some(rest.trim().to_string());
+            "location" => location = Some(value),
+            "content-type" => ctype = Some(value),
+            _ => {}
         }
     }
     raw.drain(..head_end);
@@ -697,10 +701,19 @@ impl ProxyHttp for FS {
                     let block_root = root.clone();
                     let block_file = res.file.clone();
                     let block_host = host.clone();
-                    let block_uri = decoded.clone();
+                    let block_query = session
+                        .req_header()
+                        .uri
+                        .query()
+                        .unwrap_or("")
+                        .to_string();
+                    let block_uri = if block_query.is_empty() {
+                        decoded.clone()
+                    } else {
+                        format!("{}?{}", decoded, block_query)
+                    };
                     let block_script = res.script.clone();
                     let block_pi = res.path_info.clone();
-                    let block_query = uri_path.split('?').nth(1).unwrap_or("").to_string();
                     let block_method = method.clone();
                     let block_body = body.clone();
                     let block_ct = content_type.clone();
