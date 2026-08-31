@@ -24,7 +24,7 @@ export default function Packages() {
     mailbox_limit: "5",
     database_limit: "1",
     domain_limit: "1",
-    bandwidth_limit_gb: "10",
+    bandwidth_limit_gb: "0",
   });
 
   const load = async () => {
@@ -80,7 +80,7 @@ export default function Packages() {
       mailbox_limit: "5",
       database_limit: "1",
       domain_limit: "1",
-      bandwidth_limit_gb: "10",
+      bandwidth_limit_gb: "0",
     });
   };
 
@@ -116,7 +116,7 @@ export default function Packages() {
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Hosting Packages</h2>
           <p className="text-sm text-gray-500">
-            Set limits for bandwidth, disk, mailboxes, and databases
+            Set limits for disk, mailboxes, and databases
           </p>
         </div>
         <button
@@ -163,7 +163,6 @@ export default function Packages() {
               { key: "mailbox_limit", label: "Mailboxes" },
               { key: "database_limit", label: "Databases" },
               { key: "domain_limit", label: "Domains" },
-              { key: "bandwidth_limit_gb", label: "Bandwidth (GB)" },
             ].map((f) => (
               <div key={f.key}>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
@@ -247,7 +246,9 @@ export default function Packages() {
               </li>
               <li className="flex justify-between py-2">
                 <span>Bandwidth</span>
-                <span className="font-medium">{p.bandwidth_limit_gb} GB</span>
+                <span className="font-medium">
+                  {p.bandwidth_limit_gb > 0 ? `${p.bandwidth_limit_gb} GB` : "Unlimited"}
+                </span>
               </li>
             </ul>
           </div>

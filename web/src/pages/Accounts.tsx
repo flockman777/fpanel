@@ -107,21 +107,35 @@ export default function Accounts() {
     }
   };
 
-  const setPassword = async (id: number) => {
-    const pw = prompt("New password for this account (min 6 chars):");
-    if (!pw) return;
+  const [pwAccount, setPwAccount] = useState<Account | null>(null);
+  const [pw, setPw] = useState("");
+  const [pwShow, setPwShow] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const openPw = (a: Account) => {
+    setPwAccount(a);
+    setPw("");
+    setPwShow(false);
+    setPwError("");
+  };
+
+  const savePw = async () => {
+    if (!pwAccount) return;
     if (pw.length < 6) {
-      setError("Password must be at least 6 characters");
+      setPwError("Password must be at least 6 characters");
       return;
     }
     try {
-      await api(`/accounts/${id}`, {
+      await api(`/accounts/${pwAccount.id}`, {
         method: "PUT",
         body: JSON.stringify({ password: pw }),
       });
+      setNotice(`Password updated for ${pwAccount.username}`);
+      setPwAccount(null);
       setError("");
     } catch (e: any) {
-      setError(String(e.message || e));
+      setPwError(String(e.message || e));
     }
   };
 
@@ -164,6 +178,11 @@ export default function Accounts() {
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      )}
+      {notice && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {notice}
         </div>
       )}
 
@@ -378,9 +397,9 @@ export default function Accounts() {
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => setPassword(a.id)}
+                        onClick={() => openPw(a)}
                         className="rounded-lg p-2 text-gray-400 transition hover:bg-brand-50 hover:text-brand-600"
-                        title="Set password"
+                        title="Reset password"
                       >
                         <KeyRound className="h-4 w-4" />
                       </button>
@@ -398,6 +417,58 @@ export default function Accounts() {
           </tbody>
         </table>
       </div>
+
+      {pwAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-800">
+              Reset password for {pwAccount.username}
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">Minimum 6 characters.</p>
+            <div className="mt-4">
+              <div className="relative">
+                <input
+                  type={pwShow ? "text" : "password"}
+                  value={pw}
+                  onChange={(e) => {
+                    setPw(e.target.value);
+                    setPwError("");
+                  }}
+                  autoFocus
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none"
+                  placeholder="New password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPwShow(!pwShow)}
+                  className="absolute inset-y-0 right-2 text-sm text-gray-500 hover:text-gray-700"
+                >
+                  {pwShow ? "Hide" : "Show"}
+                </button>
+              </div>
+              {pwError && (
+                <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {pwError}
+                </div>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setPwAccount(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={savePw}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
+              >
+                Save password
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

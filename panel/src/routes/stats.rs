@@ -33,7 +33,7 @@ fn logs_dir() -> std::path::PathBuf {
         .unwrap_or_else(|_| provision::data_dir().join("logs"))
 }
 
-fn dir_size(path: &std::path::Path) -> i64 {
+pub(crate) fn dir_size(path: &std::path::Path) -> i64 {
     fn walk(p: &std::path::Path) -> i64 {
         let Ok(rd) = std::fs::read_dir(p) else {
             return std::fs::metadata(p).map(|m| m.len() as i64).unwrap_or(0);
@@ -115,7 +115,7 @@ async fn accumulate(
     .await
     .map_err(|e| internal_error(e.into()))?;
 
-    let disk_bytes = dir_size(&provision::account_htdocs(&username));
+    let disk_bytes = dir_size(&provision::account_home(&username));
 
     Ok(AccountUsage {
         account_id,

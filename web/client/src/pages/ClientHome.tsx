@@ -169,10 +169,14 @@ export default function ClientHome() {
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-400">Bandwidth Limit</dt>
+            <dt className="text-xs text-gray-400">Disk Limit</dt>
             <dd className="mt-0.5 font-medium text-gray-800">
-              {data?.package.bandwidth_limit_gb ?? 0} GB
+              {data?.package.disk_limit_mb ?? 0} MB
             </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-gray-400">Bandwidth</dt>
+            <dd className="mt-0.5 font-medium text-green-600">Unlimited</dd>
           </div>
           <div>
             <dt className="text-xs text-gray-400">Status</dt>

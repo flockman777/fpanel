@@ -161,15 +161,24 @@ async fn me(
             .fetch_one(&state.db)
             .await
             .map_err(|e| internal_error(e.into()))?;
+    let mailbox_used =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM email_accounts WHERE account_id = ?")
+            .bind(account.id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|e| internal_error(e.into()))?;
+    let disk_used_mb =
+        crate::routes::stats::dir_size(&crate::provision::account_home(&account.username))
+            / 1048576;
 
     Ok(Json(ClientSummary {
         account,
         package,
         usage: Usage {
-            disk_used_mb: 0,
+            disk_used_mb: disk_used_mb,
             domain_used: domain_used,
             database_used: database_used,
-            mailbox_used: 0,
+            mailbox_used: mailbox_used,
         },
     }))
 }
