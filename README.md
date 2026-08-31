@@ -2,6 +2,29 @@
 
 Self-hosted hosting control panel backed by Rust. Blue theme, Lucide icons.
 
+## Tech stack
+
+**Backend (Rust)**
+- Panel API: **axum 0.8** + **tokio**, **tower-http** (CORS/trace); **sqlx 0.8** →
+  **SQLite** (panel DB) + **MariaDB** (MySQL); **jsonwebtoken** (JWT + per-login
+  sessions), **bcrypt**, **uuid**, **openssl** (vendored, SSL certs), **zip**
+  (file manager backups).
+- Web server: **Pingora 0.8** (`pingora-core / proxy / http`) — Cloudflare's
+  reverse-proxy framework, `ProxyHttp` handler serving static files, PHP-CGI
+  (front-controller fallback + PATH_INFO), reverse-proxy runtime, redirects,
+  WAF / IP blocker / hotlink, access & error logs.
+
+**Frontend (TypeScript)**
+- **React 19** + **react-router-dom 7**; **Vite 6**; **Tailwind CSS 4**;
+  **lucide-react** icons. Two apps: admin (`web/`) and customer (`web/client/`).
+
+**Email & infra**
+- **Postfix** (SMTP :25, submission :587, `content_filter`), **Dovecot**
+  (IMAP :993 / POP3 :995, maildir vhosts), **OpenDKIM** (per-domain signing),
+  **Roundcube** webmail, **nsd** authoritative DNS (SPF/DMARC/DKIM/MX zones),
+  **nginx** edge TLS (:2083/:2087/:443), **MariaDB**, **Let's Encrypt**,
+  **systemd** services (panel, fserver, mailtrack).
+
 ## Layout
 
 ```
