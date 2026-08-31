@@ -20,6 +20,7 @@ anyhow = "1"
 uuid = { version = "1", features = ["v4"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 openssl = { version = "0.10", features = ["vendored"] }
+regex = "1"
 
 [profile.release]
 opt-level = 3

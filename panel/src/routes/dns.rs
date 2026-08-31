@@ -554,7 +554,7 @@ fn unpublish_nsd(domain: &str) {
     nsd_reload();
 }
 
-async fn generate_zone(state: &AppState, domain_id: i64) -> Result<(), ApiError> {
+pub(crate) async fn generate_zone(state: &AppState, domain_id: i64) -> Result<(), ApiError> {
     let Some(domain) = sqlx::query_scalar::<_, String>("SELECT name FROM domains WHERE id = ?")
         .bind(domain_id)
         .fetch_optional(&state.db)
@@ -615,7 +615,14 @@ async fn generate_zone(state: &AppState, domain_id: i64) -> Result<(), ApiError>
             }
             "TXT" => {
                 let escaped = value.replace('"', "\\\"");
-                content.push_str(&format!("{label} {ttl} IN TXT \"{escaped}\"\n"));
+                let mut parts = String::new();
+                let chars: Vec<char> = escaped.chars().collect();
+                for chunk in chars.chunks(255) {
+                    parts.push('"');
+                    parts.extend(chunk);
+                    parts.push_str("\" ");
+                }
+                content.push_str(&format!("{label} {ttl} IN TXT {}\n", parts.trim_end()));
             }
             "CNAME" | "NS" => {
                 content.push_str(&format!("{label} {ttl} IN {rtype} {}\n", fqdn(&value)));
@@ -652,7 +659,7 @@ async fn generate_zone(state: &AppState, domain_id: i64) -> Result<(), ApiError>
     Ok(())
 }
 
-async fn try_insert_record(
+pub(crate) async fn try_insert_record(
     state: &AppState,
     account_id: i64,
     domain_id: i64,

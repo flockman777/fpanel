@@ -14,6 +14,8 @@ import {
   Link2Off,
   LogOut,
   Mail,
+  Send,
+  MousePointerClick,
   Network,
   Server,
   Settings,
@@ -37,6 +39,13 @@ const dashboardItem: NavItem = { to: "/", label: "Dashboard", icon: LayoutDashbo
 
 const navSections: { title: string; items: NavItem[] }[] = [
   {
+    title: "SYSTEM",
+    items: [
+      { to: "/accounts", label: "Accounts", icon: Users },
+      { to: "/packages", label: "Packages", icon: Globe },
+    ],
+  },
+  {
     title: "DOMAINS",
     items: [
       { to: "/domains", label: "Domains", icon: Globe },
@@ -57,7 +66,12 @@ const navSections: { title: string; items: NavItem[] }[] = [
   },
   {
     title: "EMAIL",
-    items: [{ to: "/email", label: "Email", icon: Mail }],
+    items: [
+      { to: "/email", label: "Email", icon: Mail },
+      { to: "/deliverability", label: "Deliverability", icon: ShieldCheck },
+      { to: "/delivery", label: "Delivery", icon: Send },
+      { to: "/tracking", label: "Tracking", icon: MousePointerClick },
+    ],
   },
   {
     title: "SOFTWARE",
@@ -85,13 +99,6 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { to: "/cache", label: "Cache Manager", icon: Zap },
       { to: "/backups", label: "Backups", icon: Archive },
       { to: "/metrics", label: "Metrics", icon: BarChart3 },
-    ],
-  },
-  {
-    title: "SYSTEM",
-    items: [
-      { to: "/accounts", label: "Accounts", icon: Users },
-      { to: "/packages", label: "Packages", icon: Globe },
     ],
   },
 ];

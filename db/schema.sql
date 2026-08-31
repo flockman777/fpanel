@@ -275,3 +275,16 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
     last_run TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS mail_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    qid TEXT,
+    kind TEXT,
+    from_addr TEXT,
+    to_addr TEXT,
+    relay TEXT,
+    status TEXT,
+    detail TEXT,
+    UNIQUE(ts, qid, to_addr)
+);

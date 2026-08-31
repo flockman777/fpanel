@@ -10,6 +10,9 @@ import Redirects from "./pages/Redirects";
 import FileManager from "./pages/FileManager";
 import Databases from "./pages/Databases";
 import Email from "./pages/Email";
+import Deliverability from "./pages/Deliverability";
+import Delivery from "./pages/Delivery";
+import Tracking from "./pages/Tracking";
 import Ssl from "./pages/Ssl";
 import Runtime from "./pages/Runtime";
 import Php from "./pages/Php";
@@ -129,6 +132,9 @@ export default function App() {
         <Route path="/files" element={<FileManager />} />
         <Route path="/databases" element={<Databases />} />
         <Route path="/email" element={<Email />} />
+        <Route path="/deliverability" element={<Deliverability />} />
+        <Route path="/delivery" element={<Delivery />} />
+        <Route path="/tracking" element={<Tracking />} />
         <Route path="/ssl" element={<Ssl />} />
         <Route path="/runtime" element={<Runtime />} />
         <Route path="/php" element={<Php />} />

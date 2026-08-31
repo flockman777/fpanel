@@ -109,6 +109,9 @@ fn build_api(state: db::AppState) -> Router<db::AppState> {
         .nest("/waf", routes::waf::router())
         .nest("/ssh", routes::ssh::router())
         .nest("/totp", routes::totp::router())
+        .nest("/deliverability", routes::deliverability::router())
+        .nest("/delivery", routes::delivery::router())
+        .nest("/tracking", routes::tracking::router())
         .nest(
             "/client",
             routes::client::router()
