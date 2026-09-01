@@ -116,26 +116,29 @@ function StatRow({
   unit = "",
 }: {
   label: string;
-  used: number;
-  limit: number;
+  used: number | string;
+  limit: number | string;
   unit?: string;
 }) {
-  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const warn = pct >= 80;
+  const usedNum = Number(used);
+  const limitNum = Number(limit);
+  const pct =
+    limitNum > 0 ? Math.min(100, Math.round((usedNum / limitNum) * 100)) : null;
+  const warn = pct !== null && pct >= 80;
+  const limitStr = limitNum > 0 ? `${limitNum}${unit}` : "∞";
   return (
-    <div className="py-2 border-b border-gray-100 last:border-0">
-      <div className="flex items-center justify-between text-xs mb-1">
-        <span className="text-gray-600 font-medium">{label}</span>
-        <span className={warn ? "text-amber-600 font-semibold" : "text-gray-400"}>
-          {used}{unit} / {limit > 0 ? `${limit}${unit}` : "∞"}
-        </span>
-      </div>
-      <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
-        <div
-          className={`h-full rounded-full ${warn ? "bg-amber-500" : "bg-brand-500"}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+    <div className="flex items-start justify-between gap-2 py-1.5 border-b border-gray-100 last:border-0">
+      <span className="text-xs text-gray-500 leading-snug">{label}</span>
+      <span
+        className={`text-xs font-semibold whitespace-nowrap ${
+          warn ? "text-amber-600" : "text-gray-700"
+        }`}
+      >
+        {usedNum}{unit} / {limitStr}
+        {pct !== null && (
+          <span className="text-gray-400 font-normal"> ({pct}%)</span>
+        )}
+      </span>
     </div>
   );
 }
@@ -204,35 +207,33 @@ export default function ClientHome() {
       </div>
 
       {/* ── RIGHT: info + statistics sidebar ── */}
-      <div className="w-56 shrink-0 space-y-4">
+      <div className="w-60 shrink-0 space-y-4">
         {/* General Information */}
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
           <div className="bg-brand-700 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white">
             General Information
           </div>
-          <dl className="divide-y divide-gray-100 px-4 py-1">
-            {[
-              { label: "Username", value: data?.account.username },
-              { label: "Domain", value: data?.account.username },
-              { label: "Email", value: data?.account.email },
-              { label: "Package", value: data?.package.name },
-              {
-                label: "Status",
-                value: data?.account.status?.toUpperCase(),
-                green: true,
-              },
-            ].map(({ label, value, green }) => (
-              <div key={label} className="py-2">
-                <dt className="text-xs text-gray-400">{label}</dt>
-                <dd
-                  className={`mt-0.5 text-xs font-semibold break-all ${
-                    green ? "text-green-600" : "text-gray-800"
-                  }`}
-                >
-                  {value || "—"}
-                </dd>
-              </div>
-            ))}
+          <dl className="divide-y divide-gray-100 px-4 py-1 text-xs">
+            <div className="py-2">
+              <dt className="text-gray-400">Current User</dt>
+              <dd className="font-semibold text-gray-800 break-all">{data?.account.username || "—"}</dd>
+            </div>
+            <div className="py-2">
+              <dt className="text-gray-400">Primary Domain</dt>
+              <dd className="font-semibold text-gray-800 break-all">{data?.account.username || "—"}</dd>
+            </div>
+            <div className="py-2">
+              <dt className="text-gray-400">Email</dt>
+              <dd className="font-semibold text-gray-800 break-all">{data?.account.email || "—"}</dd>
+            </div>
+            <div className="py-2">
+              <dt className="text-gray-400">Package</dt>
+              <dd className="font-semibold text-gray-800">{data?.package.name || "—"}</dd>
+            </div>
+            <div className="py-2">
+              <dt className="text-gray-400">Status</dt>
+              <dd className="font-semibold uppercase text-green-600">{data?.account.status || "—"}</dd>
+            </div>
           </dl>
         </div>
 
@@ -242,33 +243,15 @@ export default function ClientHome() {
             Statistics
           </div>
           <div className="px-4 py-2">
-            <StatRow
-              label="Disk Usage"
-              used={data?.usage.disk_used_mb ?? 0}
-              limit={data?.package.disk_limit_mb ?? 0}
-              unit=" MB"
-            />
-            <StatRow
-              label="Domains"
-              used={data?.usage.domain_used ?? 0}
-              limit={data?.package.domain_limit ?? 0}
-            />
-            <StatRow
-              label="Databases"
-              used={data?.usage.database_used ?? 0}
-              limit={data?.package.database_limit ?? 0}
-            />
-            <StatRow
-              label="Mailboxes"
-              used={data?.usage.mailbox_used ?? 0}
-              limit={data?.package.mailbox_limit ?? 0}
-            />
-            <StatRow
-              label="Bandwidth"
-              used={0}
-              limit={data?.package.bandwidth_limit_gb ?? 0}
-              unit=" GB"
-            />
+            <StatRow label="Disk Usage" used={data?.usage.disk_used_mb ?? 0} limit={data?.package.disk_limit_mb ?? 0} unit=" MB" />
+            <StatRow label="Bandwidth" used={0} limit={0} />
+            <StatRow label="Addon Domains" used={data?.usage.domain_used ?? 0} limit={data?.package.domain_limit ?? 0} />
+            <StatRow label="Databases" used={data?.usage.database_used ?? 0} limit={data?.package.database_limit ?? 0} />
+            <StatRow label="Email Accounts" used={data?.usage.mailbox_used ?? 0} limit={data?.package.mailbox_limit ?? 0} />
+            <StatRow label="Subdomains" used={0} limit={0} />
+            <StatRow label="FTP Accounts" used={0} limit={0} />
+            <StatRow label="Autoresponders" used={0} limit={0} />
+            <StatRow label="Forwarders" used={0} limit={0} />
           </div>
         </div>
       </div>
