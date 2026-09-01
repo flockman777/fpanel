@@ -168,9 +168,11 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
       {/* ── Main content ── */}
       <main className="flex-1 overflow-x-hidden flex flex-col">
         {/* ── Top header bar ── */}
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white px-6 py-3">
-          {/* Search rata kiri */}
-          <div ref={searchRef} className="relative w-72">
+        <header className="sticky top-0 z-20 flex items-center border-b border-gray-200 bg-white px-6 py-3">
+          <div className="flex-1" />
+
+          {/* Search */}
+          <div ref={searchRef} className="relative w-64 mr-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
@@ -181,7 +183,7 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
               className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-400 focus:bg-white"
             />
             {searchOpen && filtered.length > 0 && (
-              <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg z-30">
+              <div className="absolute top-full right-0 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg z-30">
                 {filtered.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -204,20 +206,19 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
             )}
           </div>
 
-          {/* Bell langsung setelah search */}
-          <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100">
+          {/* Bell */}
+          <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 mr-1">
             <Bell className="h-5 w-5" />
           </button>
 
-          {/* User icon pojok kanan */}
-          <div ref={userRef} className="relative ml-auto">
+          {/* User icon */}
+          <div ref={userRef} className="relative">
             <button
               onClick={() => setUserOpen((v) => !v)}
               className="flex items-center justify-center h-8 w-8 rounded-full bg-brand-600 text-white hover:bg-brand-700"
             >
               <User className="h-4 w-4" />
             </button>
-
             {userOpen && (
               <div className="absolute right-0 top-full mt-1 w-52 rounded-xl border border-gray-200 bg-white shadow-lg z-30 overflow-hidden">
                 {[
@@ -226,10 +227,7 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
                   { label: "Contact Information", icon: User },
                   { label: "Reset Page Settings", icon: RefreshCw },
                 ].map(({ label, icon: Icon }) => (
-                  <button
-                    key={label}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
-                  >
+                  <button key={label} className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
                     <Icon className="h-4 w-4 text-gray-400" />
                     {label}
                   </button>
