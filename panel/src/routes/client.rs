@@ -63,6 +63,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/login", axum::routing::post(login))
         .route("/me", get(me))
+        .route("/server-info", get(server_info))
 }
 
 pub async fn login(
@@ -197,5 +198,136 @@ async fn me(
             mailbox_used: mailbox_used,
         },
         primary_domain,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct ServiceStatus {
+    pub name: String,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ServerInfo {
+    pub os: String,
+    pub kernel: String,
+    pub arch: String,
+    pub ip: String,
+    pub server_name: String,
+    pub php_version: String,
+    pub nginx_version: String,
+    pub mariadb_version: String,
+    pub panel_version: String,
+    pub disk_used: String,
+    pub disk_total: String,
+    pub disk_pct: String,
+    pub mem_pct: String,
+    pub load: String,
+    pub services: Vec<ServiceStatus>,
+}
+
+fn cmd_out(cmd: &str, args: &[&str]) -> String {
+    std::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+async fn server_info(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<ServerInfo>, ApiError> {
+    let Some(token) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    else {
+        return Err(ApiError::new(StatusCode::UNAUTHORIZED, "Token not found"));
+    };
+    let claims = verify_and_get_claims_with_state(&state.jwt_secret, token).await?;
+    if claims.role != "client" {
+        return Err(ApiError::new(StatusCode::FORBIDDEN, "Forbidden"));
+    }
+
+    let os = cmd_out("sh", &["-c", "grep PRETTY_NAME /etc/os-release | cut -d'\"' -f2"]);
+    let kernel = cmd_out("uname", &["-r"]);
+    let arch = cmd_out("uname", &["-m"]);
+    let ip = cmd_out("sh", &["-c", "hostname -I | awk '{print $1}'"]);
+    let server_name = cmd_out("hostname", &[]);
+
+    let php_version = cmd_out("sh", &["-c", "php --version 2>/dev/null | head -1 | awk '{print $1\" \"$2}'"]);
+    let nginx_version = cmd_out("sh", &["-c", "nginx -v 2>&1 | sed 's/nginx version: nginx\\//nginx /'"]);
+    let mariadb_version = cmd_out("sh", &["-c", "mariadb --version 2>/dev/null | awk '{print $5}' | tr -d ','"]);
+
+    // disk
+    let disk_out = cmd_out("sh", &["-c", "df -h / | tail -1 | awk '{print $3\"|\"$2\"|\"$5}'"]);
+    let parts: Vec<&str> = disk_out.split('|').collect();
+    let disk_used = parts.first().unwrap_or(&"").to_string();
+    let disk_total = parts.get(1).unwrap_or(&"").to_string();
+    let disk_pct = parts.get(2).unwrap_or(&"").to_string();
+
+    // mem
+    let mem_pct = cmd_out("sh", &["-c", "free | awk '/Mem/{printf \"%.0f%%\", $3/$2*100}'"]);
+    let load = cmd_out("sh", &["-c", "cat /proc/loadavg | cut -d' ' -f1"]);
+
+    // services
+    let svc_names = vec![
+        ("Pingora (Web Server)", "fserver"),
+        ("Postfix (SMTP)", "postfix"),
+        ("Dovecot (IMAP)", "dovecot"),
+        ("NSD (DNS)", "nsd"),
+        ("MariaDB", "mariadb"),
+        ("Nginx", "nginx"),
+        ("FPanel", "fpanel"),
+        ("Mailtrack", "mailtrack"),
+        ("Valkey", "valkey"),
+    ];
+    let services = svc_names
+        .into_iter()
+        .map(|(label, unit)| {
+            let procs = ["fserver", "fpanel"];
+            let status = if procs.contains(&unit) {
+                if std::process::Command::new("pgrep")
+                    .args(["-f", &format!("target/release/{}", unit)])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+                {
+                    "active".to_string()
+                } else {
+                    "inactive".to_string()
+                }
+            } else {
+                let s = cmd_out("systemctl", &["is-active", unit]);
+                if s.contains("inactive") || s.is_empty() {
+                    "inactive".to_string()
+                } else {
+                    s
+                }
+            };
+            ServiceStatus {
+                name: label.to_string(),
+                status,
+            }
+        })
+        .collect();
+
+    Ok(Json(ServerInfo {
+        os,
+        kernel,
+        arch,
+        ip,
+        server_name,
+        php_version,
+        nginx_version,
+        mariadb_version,
+        panel_version: "1.0.0".to_string(),
+        disk_used,
+        disk_total,
+        disk_pct,
+        mem_pct,
+        load,
+        services,
     }))
 }

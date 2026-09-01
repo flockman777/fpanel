@@ -42,6 +42,24 @@ interface ClientData {
   primary_domain: string | null;
 }
 
+interface ServerInfo {
+  os: string;
+  kernel: string;
+  arch: string;
+  ip: string;
+  server_name: string;
+  php_version: string;
+  nginx_version: string;
+  mariadb_version: string;
+  panel_version: string;
+  disk_used: string;
+  disk_total: string;
+  disk_pct: string;
+  mem_pct: string;
+  load: string;
+  services: { name: string; status: string }[];
+}
+
 type SectionItem = { label: string; icon: any; to?: string; href?: string; disabled?: boolean };
 
 const sections: { title: string; items: SectionItem[] }[] = [
@@ -232,6 +250,7 @@ function StatRow({
 
 export default function ClientHome() {
   const [data, setData] = useState<ClientData | null>(null);
+  const [srvInfo, setSrvInfo] = useState<ServerInfo | null>(null);
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const [open, setOpen] = useState<Record<string, boolean>>(
@@ -242,6 +261,9 @@ export default function ClientHome() {
     api<ClientData>("/client/me")
       .then(setData)
       .catch((e) => setError(String(e.message || e)));
+    api<ServerInfo>("/client/server-info")
+      .then(setSrvInfo)
+      .catch(() => {});
   }, []);
 
   const tileCls = (disabled?: boolean) =>
@@ -354,6 +376,86 @@ export default function ClientHome() {
             <StatRow label="Forwarders" used={0} limit={0} />
           </div>
         </div>
+
+        {/* Server Information */}
+        {srvInfo && (
+          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <div className="bg-brand-700 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white">
+              Server Information
+            </div>
+            <dl className="divide-y divide-gray-100 px-4 py-1 text-xs">
+              <div className="py-2">
+                <dt className="text-gray-400">Server Name</dt>
+                <dd className="font-semibold text-gray-800 break-all">{srvInfo.server_name || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Panel Version</dt>
+                <dd className="font-semibold text-gray-800">{srvInfo.panel_version || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Operating System</dt>
+                <dd className="font-semibold text-gray-800 break-all">{srvInfo.os || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Kernel</dt>
+                <dd className="font-semibold text-gray-800 break-all">{srvInfo.kernel || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Architecture</dt>
+                <dd className="font-semibold text-gray-800">{srvInfo.arch || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Shared IP</dt>
+                <dd className="font-semibold text-gray-800">{srvInfo.ip || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">PHP Version</dt>
+                <dd className="font-semibold text-gray-800 break-all">{srvInfo.php_version || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Web Server</dt>
+                <dd className="font-semibold text-gray-800 break-all">{srvInfo.nginx_version || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Database</dt>
+                <dd className="font-semibold text-gray-800 break-all">{srvInfo.mariadb_version || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Server Load</dt>
+                <dd className="font-semibold text-gray-800">{srvInfo.load || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Memory Used</dt>
+                <dd className="font-semibold text-gray-800">{srvInfo.mem_pct || "—"}</dd>
+              </div>
+              <div className="py-2">
+                <dt className="text-gray-400">Disk Used</dt>
+                <dd className="font-semibold text-gray-800">
+                  {srvInfo.disk_used || "—"} / {srvInfo.disk_total || "—"} ({srvInfo.disk_pct || "—"})
+                </dd>
+              </div>
+            </dl>
+            <div className="border-t border-gray-200">
+              <div className="bg-gray-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                Services
+              </div>
+              <dl className="divide-y divide-gray-100 px-4 py-1 text-xs">
+                {srvInfo.services.map((svc) => (
+                  <div key={svc.name} className="flex items-center justify-between py-1.5">
+                    <dt className="text-gray-600 pr-2 break-all">{svc.name}</dt>
+                    <dd
+                      className={`font-semibold ${
+                        svc.status === "active" ? "text-green-600" : "text-red-500"
+                      }`}
+                    >
+                      {svc.status === "active" ? "up" : "down"}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
