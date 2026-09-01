@@ -44,9 +44,11 @@ interface ClientData {
   usage: {
     disk_used_mb: number;
     domain_used: number;
+    subdomain_used: number;
     database_used: number;
     mailbox_used: number;
   };
+  primary_domain: string | null;
 }
 
 const sections: {
@@ -220,7 +222,7 @@ export default function ClientHome() {
             </div>
             <div className="py-2">
               <dt className="text-gray-400">Primary Domain</dt>
-              <dd className="font-semibold text-gray-800 break-all">{data?.account.username || "—"}</dd>
+              <dd className="font-semibold text-gray-800 break-all">{data?.primary_domain || data?.account.username || "—"}</dd>
             </div>
             <div className="py-2">
               <dt className="text-gray-400">Email</dt>
@@ -246,9 +248,9 @@ export default function ClientHome() {
             <StatRow label="Disk Usage" used={data?.usage.disk_used_mb ?? 0} limit={data?.package.disk_limit_mb ?? 0} unit=" MB" />
             <StatRow label="Bandwidth" used={0} limit={0} />
             <StatRow label="Addon Domains" used={data?.usage.domain_used ?? 0} limit={data?.package.domain_limit ?? 0} />
+            <StatRow label="Subdomains" used={data?.usage.subdomain_used ?? 0} limit={0} />
             <StatRow label="Databases" used={data?.usage.database_used ?? 0} limit={data?.package.database_limit ?? 0} />
             <StatRow label="Email Accounts" used={data?.usage.mailbox_used ?? 0} limit={data?.package.mailbox_limit ?? 0} />
-            <StatRow label="Subdomains" used={0} limit={0} />
             <StatRow label="FTP Accounts" used={0} limit={0} />
             <StatRow label="Autoresponders" used={0} limit={0} />
             <StatRow label="Forwarders" used={0} limit={0} />

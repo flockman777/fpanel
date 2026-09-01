@@ -47,12 +47,14 @@ pub struct ClientSummary {
     pub account: ClientAccount,
     pub package: PackageRow,
     pub usage: Usage,
+    pub primary_domain: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Usage {
     pub disk_used_mb: i64,
     pub domain_used: i64,
+    pub subdomain_used: i64,
     pub database_used: i64,
     pub mailbox_used: i64,
 }
@@ -150,7 +152,12 @@ async fn me(
     .map_err(|e| internal_error(e.into()))?
     .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Package not found"))?;
 
-    let domain_used = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM domains WHERE account_id = ?")
+    let domain_used = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM domains WHERE account_id = ? AND kind = 'main'")
+        .bind(account.id)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| internal_error(e.into()))?;
+    let subdomain_used = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM domains WHERE account_id = ? AND kind = 'sub'")
         .bind(account.id)
         .fetch_one(&state.db)
         .await
@@ -171,14 +178,24 @@ async fn me(
         crate::routes::stats::dir_size(&crate::provision::account_home(&account.username))
             / 1048576;
 
+    let primary_domain = sqlx::query_scalar::<_, String>(
+        "SELECT name FROM domains WHERE account_id = ? ORDER BY id ASC LIMIT 1",
+    )
+    .bind(account.id)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|e| internal_error(e.into()))?;
+
     Ok(Json(ClientSummary {
         account,
         package,
         usage: Usage {
             disk_used_mb: disk_used_mb,
             domain_used: domain_used,
+            subdomain_used: subdomain_used,
             database_used: database_used,
             mailbox_used: mailbox_used,
         },
+        primary_domain,
     }))
 }

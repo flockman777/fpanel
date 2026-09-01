@@ -2,26 +2,34 @@ import {
   Archive,
   ArrowRightLeft,
   BarChart3,
+  Bell,
   Boxes,
   Braces,
+  ChevronDown,
   Clock,
   Database,
   Flame,
   FolderOpen,
   Globe,
+  KeyRound,
   LayoutDashboard,
   Link2Off,
   LogOut,
   Mail,
   Network,
+  RefreshCw,
+  Search,
   Server,
+  Settings,
   ShieldCheck,
   ShieldOff,
   Table2,
   Terminal,
+  User,
   Zap,
 } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { getAccountName } from "../App";
 
 type NavItem = {
@@ -86,18 +94,45 @@ const navSections: { title: string; items: NavItem[] }[] = [
   },
 ];
 
+const allItems: (NavItem & { keywords?: string })[] = [
+  dashboardItem,
+  ...navSections.flatMap((s) => s.items),
+];
+
 export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
   const name = getAccountName() || "Client";
+  const navigate = useNavigate();
+
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState(false);
+  const userRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  const filtered = search.trim()
+    ? allItems.filter(
+        (i) =>
+          i.label.toLowerCase().includes(search.toLowerCase()) && (i.to || i.href)
+      )
+    : [];
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (userRef.current && !userRef.current.contains(e.target as Node))
+        setUserOpen(false);
+      if (searchRef.current && !searchRef.current.contains(e.target as Node))
+        setSearchOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <aside className="flex w-64 flex-col bg-brand-900 text-brand-100">
+      {/* ── Left sidebar ── */}
+      <aside className="flex w-56 flex-col bg-brand-900 text-brand-100">
         <div className="flex flex-col items-center border-b border-brand-800 px-4 pt-4 pb-3">
-          <img
-            src="/fpanel-logo.png"
-            alt="FPanel"
-            className="w-36 rounded-lg object-contain"
-          />
+          <img src="/fpanel-logo.png" alt="FPanel" className="w-32 rounded-lg object-contain" />
           <div className="mt-2 text-xs font-semibold uppercase tracking-wider text-brand-300">
             Client Area
           </div>
@@ -108,23 +143,23 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
             to={dashboardItem.to!}
             end
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+              `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
                 isActive
                   ? "bg-brand-700 text-white"
                   : "text-brand-200 hover:bg-brand-800 hover:text-white"
               }`
             }
           >
-            <dashboardItem.icon className="h-5 w-5" />
+            <dashboardItem.icon className="h-4 w-4" />
             {dashboardItem.label}
           </NavLink>
 
           {navSections.map((section) => (
             <div key={section.title}>
-              <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-brand-400">
+              <div className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-brand-400">
                 {section.title}
               </div>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {section.items.map((item) =>
                   item.href ? (
                     <a
@@ -132,9 +167,9 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
                       href={item.href}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-200 transition hover:bg-brand-800 hover:text-white"
+                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-200 transition hover:bg-brand-800 hover:text-white"
                     >
-                      <item.icon className="h-5 w-5" />
+                      <item.icon className="h-4 w-4" />
                       {item.label}
                     </a>
                   ) : (
@@ -142,14 +177,14 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
                       key={item.to}
                       to={item.to!}
                       className={({ isActive }) =>
-                        `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                        `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
                           isActive
                             ? "bg-brand-700 text-white"
                             : "text-brand-200 hover:bg-brand-800 hover:text-white"
                         }`
                       }
                     >
-                      <item.icon className="h-5 w-5" />
+                      <item.icon className="h-4 w-4" />
                       {item.label}
                     </NavLink>
                   )
@@ -158,34 +193,97 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
             </div>
           ))}
         </nav>
-
-        <div className="border-t border-brand-800 p-3">
-          <div className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-white">
-              {(name[0] || "C").toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="truncate font-semibold text-white">{name}</div>
-              <div className="text-xs text-brand-300">Client</div>
-            </div>
-            <button
-              onClick={onLogout}
-              className="rounded-lg p-2 text-brand-300 transition hover:bg-brand-800 hover:text-white"
-              title="Logout"
-            >
-              <LogOut className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
       </aside>
 
-      <main className="flex-1 overflow-x-hidden">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-8 py-4">
-          <h2 className="text-xl font-semibold text-gray-800">
-            Hosting Control Panel
-          </h2>
+      {/* ── Main content ── */}
+      <main className="flex-1 overflow-x-hidden flex flex-col">
+        {/* ── Top header bar ── */}
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white px-6 py-3">
+          {/* Search */}
+          <div ref={searchRef} className="relative flex-1 max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search features..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setSearchOpen(true); }}
+              onFocus={() => setSearchOpen(true)}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-400 focus:bg-white"
+            />
+            {searchOpen && filtered.length > 0 && (
+              <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg z-30">
+                {filtered.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.to || item.href}
+                      onClick={() => {
+                        if (item.to) navigate(item.to);
+                        else window.open(item.href, "_blank");
+                        setSearch("");
+                        setSearchOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-brand-50 hover:text-brand-700"
+                    >
+                      <Icon className="h-4 w-4 text-brand-500" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 ml-auto">
+            {/* Notification bell */}
+            <button className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100">
+              <Bell className="h-5 w-5" />
+            </button>
+
+            {/* User dropdown */}
+            <div ref={userRef} className="relative">
+              <button
+                onClick={() => setUserOpen((v) => !v)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
+                  {(name[0] || "C").toUpperCase()}
+                </div>
+                <span className="max-w-[120px] truncate">{name}</span>
+                <ChevronDown className="h-4 w-4 text-gray-400" />
+              </button>
+
+              {userOpen && (
+                <div className="absolute right-0 top-full mt-1 w-52 rounded-xl border border-gray-200 bg-white shadow-lg z-30 overflow-hidden">
+                  {[
+                    { label: "Account Preferences", icon: Settings },
+                    { label: "Password & Security", icon: KeyRound },
+                    { label: "Contact Information", icon: User },
+                    { label: "Reset Page Settings", icon: RefreshCw },
+                  ].map(({ label, icon: Icon }) => (
+                    <button
+                      key={label}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <Icon className="h-4 w-4 text-gray-400" />
+                      {label}
+                    </button>
+                  ))}
+                  <div className="border-t border-gray-100" />
+                  <button
+                    onClick={() => { setUserOpen(false); onLogout(); }}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Log Out
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </header>
-        <div className="p-8">
+
+        <div className="flex-1 p-6">
           <Outlet />
         </div>
       </main>
