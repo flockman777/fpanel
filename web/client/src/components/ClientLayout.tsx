@@ -139,33 +139,20 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          <NavLink
-            to={dashboardItem.to!}
-            end
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                isActive ? "bg-brand-700 text-white" : "text-brand-200 hover:bg-brand-800 hover:text-white"
-              }`
-            }
-          >
-            <dashboardItem.icon className="h-4 w-4" />
-            {dashboardItem.label}
-          </NavLink>
-
-          <div className="pt-2 pb-1 px-3 text-xs font-semibold uppercase tracking-wider text-brand-400">Menu</div>
 
           {[
-            { to: "/files",     label: "File Manager",  icon: FolderOpen },
-            { to: "/domains",   label: "Domains",       icon: Globe },
-            { to: "/databases", label: "Databases",     icon: Database },
-            { to: "/email",     label: "Email",         icon: Mail },
-            { to: "/ssl",       label: "Security",      icon: ShieldCheck },
-            { to: "/software",  label: "Software",      icon: Boxes },
-            { to: "/cron",      label: "Advanced",      icon: Clock },
+            { to: "/",          label: "Home",         icon: LayoutDashboard },
+            { to: "/software",  label: "Apps",         icon: Boxes },
+            { to: "/domains",   label: "Domains",      icon: Globe },
+            { to: "/files",     label: "File Manager", icon: FolderOpen },
+            { to: "/databases", label: "Database",     icon: Database },
+            { to: "/email",     label: "Email",        icon: Mail },
+            { to: "/ssl",       label: "Security",     icon: ShieldCheck },
           ].map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
+              end={item.to === "/"}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
                   isActive ? "bg-brand-700 text-white" : "text-brand-200 hover:bg-brand-800 hover:text-white"
