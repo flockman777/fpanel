@@ -199,7 +199,7 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
       <main className="flex-1 overflow-x-hidden flex flex-col">
         {/* ── Top header bar ── */}
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white px-6 py-3">
-          {/* Search */}
+          {/* Search kiri */}
           <div ref={searchRef} className="relative flex-1 max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
@@ -235,7 +235,7 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
           </div>
 
           <div className="flex items-center gap-2 ml-auto">
-            {/* Notification bell */}
+            {/* Bell */}
             <button className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100">
               <Bell className="h-5 w-5" />
             </button>
