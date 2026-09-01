@@ -3,35 +3,35 @@ import { useNavigate } from "react-router-dom";
 import {
   Archive,
   ArrowRightLeft,
+  BarChart2,
   BarChart3,
   Boxes,
   Braces,
+  ChevronDown,
   Clock,
   Database,
+  FileCode2,
   Flame,
   FolderOpen,
+  GitBranch,
   Globe,
   HardDrive,
+  HelpCircle,
   KeyRound,
   Link2Off,
   Lock,
   Mail,
   MailCheck,
   Network,
+  Radio,
   Server,
   Settings,
   ShieldCheck,
   ShieldOff,
   Table2,
   Terminal,
-  Zap,
-  GitBranch,
-  Cpu,
-  Radio,
-  FileCode2,
-  BarChart2,
   Users,
-  HelpCircle,
+  Zap,
 } from "lucide-react";
 import { api } from "../App";
 
@@ -235,6 +235,9 @@ export default function ClientHome() {
   const [data, setData] = useState<ClientData | null>(null);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const [open, setOpen] = useState<Record<string, boolean>>(
+    Object.fromEntries(sections.map((s) => [s.title, true]))
+  );
 
   useEffect(() => {
     api<ClientData>("/client/me")
@@ -243,7 +246,7 @@ export default function ClientHome() {
   }, []);
 
   const tileCls = (disabled?: boolean) =>
-    `flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition ${
+    `flex items-center gap-3 rounded-lg border px-3 py-3 transition ${
       disabled
         ? "border-gray-100 bg-gray-50 cursor-not-allowed opacity-50"
         : "border-gray-200 bg-white shadow-sm hover:border-brand-400 hover:shadow-md cursor-pointer"
@@ -251,7 +254,7 @@ export default function ClientHome() {
 
   const tileContent = (Icon: any, label: string, disabled?: boolean) => (
     <>
-      <Icon className={`h-5 w-5 shrink-0 ${disabled ? "text-gray-400" : "text-brand-600"}`} />
+      <Icon className={`h-6 w-6 shrink-0 ${disabled ? "text-gray-400" : "text-brand-600"}`} />
       <span className={`text-xs font-medium leading-tight text-left ${disabled ? "text-gray-400" : "text-gray-700"}`}>
         {label}
       </span>
@@ -269,31 +272,37 @@ export default function ClientHome() {
         )}
 
         {sections.map((section) => (
-          <div key={section.title}>
-            <div className="mb-2 border-b border-gray-200 pb-1 text-xs font-bold uppercase tracking-widest text-brand-600">
+          <div key={section.title} className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+            <button
+              onClick={() => setOpen((o) => ({ ...o, [section.title]: !o[section.title] }))}
+              className="flex w-full items-center justify-between px-4 py-3 text-sm font-bold uppercase tracking-widest text-brand-700 hover:bg-brand-50 transition"
+            >
               {section.title}
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {section.items.map((item) => {
-                const Icon = item.icon;
-                if (item.disabled) {
-                  return (
-                    <div key={item.label} className={tileCls(true)}>
-                      {tileContent(Icon, item.label, true)}
-                    </div>
+              <ChevronDown className={`h-4 w-4 text-brand-400 transition-transform ${open[section.title] ? "rotate-180" : ""}`} />
+            </button>
+            {open[section.title] && (
+              <div className="grid grid-cols-3 gap-2 p-3 border-t border-gray-100">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  if (item.disabled) {
+                    return (
+                      <div key={item.label} className={tileCls(true)}>
+                        {tileContent(Icon, item.label, true)}
+                      </div>
+                    );
+                  }
+                  return item.href ? (
+                    <a key={item.href + item.label} href={item.href} target="_blank" rel="noreferrer" className={tileCls()}>
+                      {tileContent(Icon, item.label)}
+                    </a>
+                  ) : (
+                    <button key={item.to + item.label} onClick={() => navigate(item.to!)} className={tileCls()}>
+                      {tileContent(Icon, item.label)}
+                    </button>
                   );
-                }
-                return item.href ? (
-                  <a key={item.href + item.label} href={item.href} target="_blank" rel="noreferrer" className={tileCls()}>
-                    {tileContent(Icon, item.label)}
-                  </a>
-                ) : (
-                  <button key={item.to + item.label} onClick={() => navigate(item.to!)} className={tileCls()}>
-                    {tileContent(Icon, item.label)}
-                  </button>
-                );
-              })}
-            </div>
+                })}
+              </div>
+            )}
           </div>
         ))}
       </div>
