@@ -132,9 +132,6 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
       <aside className="flex w-56 flex-col bg-brand-900 text-brand-100">
         <div className="flex flex-col items-center border-b border-brand-800 px-4 pt-4 pb-3">
           <img src="/fpanel-logo.png" alt="FPanel" className="w-32 rounded-lg object-contain" />
-          <div className="mt-2 text-xs font-semibold uppercase tracking-wider text-brand-300">
-            Client Area
-          </div>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
