@@ -49,7 +49,6 @@ const sections: { title: string; items: SectionItem[] }[] = [
     title: "Exclusive For FPanel",
     items: [
       { label: "Let's Encrypt", icon: ShieldCheck, to: "/ssl" },
-      { label: "Speed Booster", icon: Zap, to: "/cache" },
       { label: "WordPress Accelerator", icon: Globe, disabled: true },
       { label: "Redis", icon: Radio, disabled: true },
       { label: "Valkey", icon: Radio, disabled: true },
@@ -256,7 +255,7 @@ export default function ClientHome() {
     <>
       <Icon className={`h-6 w-6 shrink-0 ${disabled ? "text-gray-400" : "text-brand-600"}`} />
       <span className={`text-xs font-medium leading-tight text-left ${disabled ? "text-gray-400" : "text-gray-700"}`}>
-        {label}
+        {label}{disabled ? <span className="ml-1 text-[10px] text-gray-400">(Soon)</span> : null}
       </span>
     </>
   );
