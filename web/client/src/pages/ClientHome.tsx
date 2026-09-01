@@ -243,11 +243,20 @@ export default function ClientHome() {
   }, []);
 
   const tileCls = (disabled?: boolean) =>
-    `flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition ${
+    `flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition ${
       disabled
         ? "border-gray-100 bg-gray-50 cursor-not-allowed opacity-50"
         : "border-gray-200 bg-white shadow-sm hover:border-brand-400 hover:shadow-md cursor-pointer"
     }`;
+
+  const tileContent = (Icon: any, label: string, disabled?: boolean) => (
+    <>
+      <Icon className={`h-5 w-5 shrink-0 ${disabled ? "text-gray-400" : "text-brand-600"}`} />
+      <span className={`text-xs font-medium leading-tight text-left ${disabled ? "text-gray-400" : "text-gray-700"}`}>
+        {label}
+      </span>
+    </>
+  );
 
   return (
     <div className="flex gap-6 items-start">
@@ -270,20 +279,17 @@ export default function ClientHome() {
                 if (item.disabled) {
                   return (
                     <div key={item.label} className={tileCls(true)}>
-                      <Icon className="h-7 w-7 text-gray-400" />
-                      <span className="text-xs font-medium text-gray-400 leading-tight">{item.label}</span>
+                      {tileContent(Icon, item.label, true)}
                     </div>
                   );
                 }
                 return item.href ? (
                   <a key={item.href + item.label} href={item.href} target="_blank" rel="noreferrer" className={tileCls()}>
-                    <Icon className="h-7 w-7 text-brand-600" />
-                    <span className="text-xs font-medium text-gray-700 leading-tight">{item.label}</span>
+                    {tileContent(Icon, item.label)}
                   </a>
                 ) : (
                   <button key={item.to + item.label} onClick={() => navigate(item.to!)} className={tileCls()}>
-                    <Icon className="h-7 w-7 text-brand-600" />
-                    <span className="text-xs font-medium text-gray-700 leading-tight">{item.label}</span>
+                    {tileContent(Icon, item.label)}
                   </button>
                 );
               })}
