@@ -12,7 +12,6 @@ import {
   FolderOpen,
   Globe,
   HardDrive,
-  Inbox,
   Link2Off,
   Mail,
   Network,
@@ -48,39 +47,6 @@ interface ClientData {
     database_used: number;
     mailbox_used: number;
   };
-}
-
-function UsageBar({
-  label,
-  used,
-  limit,
-  icon: Icon,
-}: {
-  label: string;
-  used: number;
-  limit: number;
-  icon: typeof Globe;
-}) {
-  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const color =
-    pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-brand-600";
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-          <Icon className="h-4 w-4 text-brand-600" />
-          {label}
-        </div>
-        <span className="text-xs text-gray-400">
-          {used} / {limit}
-        </span>
-      </div>
-      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <div className="mt-1 text-xs text-gray-400">{pct}% used</div>
-    </div>
-  );
 }
 
 const sections: {
@@ -143,6 +109,37 @@ const sections: {
   },
 ];
 
+function StatRow({
+  label,
+  used,
+  limit,
+  unit = "",
+}: {
+  label: string;
+  used: number;
+  limit: number;
+  unit?: string;
+}) {
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const warn = pct >= 80;
+  return (
+    <div className="py-2 border-b border-gray-100 last:border-0">
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span className="text-gray-600 font-medium">{label}</span>
+        <span className={warn ? "text-amber-600 font-semibold" : "text-gray-400"}>
+          {used}{unit} / {limit > 0 ? `${limit}${unit}` : "∞"}
+        </span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+        <div
+          className={`h-full rounded-full ${warn ? "bg-amber-500" : "bg-brand-500"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function ClientHome() {
   const [data, setData] = useState<ClientData | null>(null);
   const [error, setError] = useState("");
@@ -154,100 +151,36 @@ export default function ClientHome() {
       .catch((e) => setError(String(e.message || e)));
   }, []);
 
+  const tileCls =
+    "flex flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white p-3 text-center shadow-sm transition hover:border-brand-400 hover:shadow-md cursor-pointer";
+
   return (
-    <div className="space-y-6">
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Error loading data: {error}
-        </div>
-      )}
-
-      {/* Account info bar */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs text-gray-400">Main Domain</div>
-              <div className="mt-0.5 text-xl font-bold text-gray-800">
-                {data?.account.username || "—"}
-              </div>
-              <div className="mt-0.5 text-xs text-gray-400">
-                {data?.account.email || ""}
-              </div>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-              <Globe className="h-6 w-6" />
-            </div>
+    <div className="flex gap-6 items-start">
+      {/* ── LEFT: feature tile grid ── */}
+      <div className="flex-1 min-w-0 space-y-5">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            Error loading data: {error}
           </div>
-        </div>
+        )}
 
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs text-gray-400">Hosting Package</div>
-              <div className="mt-0.5 text-xl font-bold text-gray-800">
-                {data?.package.name || "—"}
-              </div>
-              <div className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-green-600">
-                {data?.account.status || ""}
-              </div>
-            </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-              <Inbox className="h-6 w-6" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Usage bars */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <UsageBar
-          label="Disk"
-          used={data?.usage.disk_used_mb ?? 0}
-          limit={data?.package.disk_limit_mb ?? 0}
-          icon={HardDrive}
-        />
-        <UsageBar
-          label="Domains"
-          used={data?.usage.domain_used ?? 0}
-          limit={data?.package.domain_limit ?? 0}
-          icon={Globe}
-        />
-        <UsageBar
-          label="Databases"
-          used={data?.usage.database_used ?? 0}
-          limit={data?.package.database_limit ?? 0}
-          icon={Database}
-        />
-        <UsageBar
-          label="Mailboxes"
-          used={data?.usage.mailbox_used ?? 0}
-          limit={data?.package.mailbox_limit ?? 0}
-          icon={Mail}
-        />
-      </div>
-
-      {/* cPanel-style feature grid */}
-      <div className="space-y-5">
         {sections.map((section) => (
           <div key={section.title}>
-            <div className="mb-3 border-b border-gray-200 pb-1 text-xs font-bold uppercase tracking-widest text-brand-600">
+            <div className="mb-2 border-b border-gray-200 pb-1 text-xs font-bold uppercase tracking-widest text-brand-600">
               {section.title}
             </div>
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const cls =
-                  "flex flex-col items-center gap-2 rounded-xl border border-gray-200 bg-white p-4 text-center shadow-sm transition hover:border-brand-300 hover:shadow-md cursor-pointer";
                 return item.href ? (
                   <a
                     key={item.href}
                     href={item.href}
                     target="_blank"
                     rel="noreferrer"
-                    className={cls}
+                    className={tileCls}
                   >
-                    <Icon className="h-8 w-8 text-brand-600" />
+                    <Icon className="h-7 w-7 text-brand-600" />
                     <span className="text-xs font-medium text-gray-700 leading-tight">
                       {item.label}
                     </span>
@@ -256,9 +189,9 @@ export default function ClientHome() {
                   <button
                     key={item.to}
                     onClick={() => navigate(item.to!)}
-                    className={cls}
+                    className={tileCls}
                   >
-                    <Icon className="h-8 w-8 text-brand-600" />
+                    <Icon className="h-7 w-7 text-brand-600" />
                     <span className="text-xs font-medium text-gray-700 leading-tight">
                       {item.label}
                     </span>
@@ -268,6 +201,76 @@ export default function ClientHome() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* ── RIGHT: info + statistics sidebar ── */}
+      <div className="w-56 shrink-0 space-y-4">
+        {/* General Information */}
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="bg-brand-700 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white">
+            General Information
+          </div>
+          <dl className="divide-y divide-gray-100 px-4 py-1">
+            {[
+              { label: "Username", value: data?.account.username },
+              { label: "Domain", value: data?.account.username },
+              { label: "Email", value: data?.account.email },
+              { label: "Package", value: data?.package.name },
+              {
+                label: "Status",
+                value: data?.account.status?.toUpperCase(),
+                green: true,
+              },
+            ].map(({ label, value, green }) => (
+              <div key={label} className="py-2">
+                <dt className="text-xs text-gray-400">{label}</dt>
+                <dd
+                  className={`mt-0.5 text-xs font-semibold break-all ${
+                    green ? "text-green-600" : "text-gray-800"
+                  }`}
+                >
+                  {value || "—"}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        {/* Statistics */}
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="bg-brand-700 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white">
+            Statistics
+          </div>
+          <div className="px-4 py-2">
+            <StatRow
+              label="Disk Usage"
+              used={data?.usage.disk_used_mb ?? 0}
+              limit={data?.package.disk_limit_mb ?? 0}
+              unit=" MB"
+            />
+            <StatRow
+              label="Domains"
+              used={data?.usage.domain_used ?? 0}
+              limit={data?.package.domain_limit ?? 0}
+            />
+            <StatRow
+              label="Databases"
+              used={data?.usage.database_used ?? 0}
+              limit={data?.package.database_limit ?? 0}
+            />
+            <StatRow
+              label="Mailboxes"
+              used={data?.usage.mailbox_used ?? 0}
+              limit={data?.package.mailbox_limit ?? 0}
+            />
+            <StatRow
+              label="Bandwidth"
+              used={0}
+              limit={data?.package.bandwidth_limit_gb ?? 0}
+              unit=" GB"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
