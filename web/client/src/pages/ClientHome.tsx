@@ -247,14 +247,14 @@ export default function ClientHome() {
   const tileCls = (disabled?: boolean) =>
     `flex items-center gap-3 rounded-lg border px-3 py-3 transition ${
       disabled
-        ? "border-gray-100 bg-gray-50 cursor-not-allowed opacity-50"
+        ? "border-gray-200 bg-white shadow-sm cursor-not-allowed"
         : "border-gray-200 bg-white shadow-sm hover:border-brand-400 hover:shadow-md cursor-pointer"
     }`;
 
   const tileContent = (Icon: any, label: string, disabled?: boolean) => (
     <>
-      <Icon className={`h-6 w-6 shrink-0 ${disabled ? "text-gray-400" : "text-brand-600"}`} />
-      <span className={`text-xs font-medium leading-tight text-left ${disabled ? "text-gray-400" : "text-gray-700"}`}>
+      <Icon className="h-6 w-6 shrink-0 text-brand-600" />
+      <span className="text-xs font-medium leading-tight text-left text-gray-700">
         {label}{disabled ? <span className="ml-1 text-[10px] text-gray-400">(Soon)</span> : null}
       </span>
     </>
