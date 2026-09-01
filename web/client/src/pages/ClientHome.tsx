@@ -12,62 +12,92 @@ import {
   FolderOpen,
   Globe,
   HardDrive,
+  KeyRound,
   Link2Off,
+  Lock,
   Mail,
+  MailCheck,
   Network,
   Server,
+  Settings,
   ShieldCheck,
   ShieldOff,
   Table2,
   Terminal,
   Zap,
+  GitBranch,
+  Cpu,
+  Radio,
+  FileCode2,
+  BarChart2,
+  Users,
+  HelpCircle,
 } from "lucide-react";
 import { api } from "../App";
 
 interface ClientData {
-  account: {
-    id: number;
-    username: string;
-    email: string;
-    package_id: number;
-    status: string;
-    name: string | null;
-  };
-  package: {
-    name: string;
-    disk_limit_mb: number;
-    mailbox_limit: number;
-    database_limit: number;
-    domain_limit: number;
-    bandwidth_limit_gb: number;
-  };
-  usage: {
-    disk_used_mb: number;
-    domain_used: number;
-    subdomain_used: number;
-    database_used: number;
-    mailbox_used: number;
-  };
+  account: { id: number; username: string; email: string; package_id: number; status: string; name: string | null };
+  package: { name: string; disk_limit_mb: number; mailbox_limit: number; database_limit: number; domain_limit: number; bandwidth_limit_gb: number };
+  usage: { disk_used_mb: number; domain_used: number; subdomain_used: number; database_used: number; mailbox_used: number };
   primary_domain: string | null;
 }
 
-const sections: {
-  title: string;
-  items: { label: string; icon: any; to?: string; href?: string }[];
-}[] = [
+type SectionItem = { label: string; icon: any; to?: string; href?: string; disabled?: boolean };
+
+const sections: { title: string; items: SectionItem[] }[] = [
   {
-    title: "Files",
+    title: "Exclusive For FPanel",
     items: [
-      { label: "File Manager", icon: FolderOpen, to: "/files" },
-      { label: "Backups", icon: Archive, to: "/backups" },
+      { label: "Let's Encrypt", icon: ShieldCheck, to: "/ssl" },
+      { label: "Speed Booster", icon: Zap, to: "/cache" },
+      { label: "Nginx Cache", icon: Zap, to: "/cache" },
+      { label: "Redis", icon: Radio, disabled: true },
+      { label: "Valkey", icon: Radio, disabled: true },
+      { label: "Git Deploy", icon: GitBranch, disabled: true },
+      { label: "Force HTTPS", icon: Lock, to: "/ssl" },
+      { label: "XML-RPC", icon: FileCode2, to: "/waf" },
+      { label: "CSP", icon: ShieldCheck, to: "/waf" },
+      { label: "Server Status", icon: BarChart2, to: "/usage" },
+    ],
+  },
+  {
+    title: "Runtime Manager",
+    items: [
+      { label: "Runtime", icon: Server, to: "/runtime" },
+      { label: "MultiPHP", icon: Braces, to: "/php" },
+      { label: "SSH Access", icon: Terminal, to: "/ssh" },
+      { label: "Node.js", icon: Server, disabled: true },
+      { label: "Python", icon: Server, disabled: true },
+      { label: "Ruby", icon: Server, disabled: true },
     ],
   },
   {
     title: "Domains",
     items: [
       { label: "Domains", icon: Globe, to: "/domains" },
-      { label: "Zone Editor", icon: Network, to: "/dns" },
       { label: "Redirects", icon: ArrowRightLeft, to: "/redirects" },
+      { label: "Zone Editor", icon: Network, to: "/dns" },
+    ],
+  },
+  {
+    title: "Files",
+    items: [
+      { label: "File Manager", icon: FolderOpen, to: "/files" },
+      { label: "Backup", icon: Archive, to: "/backups" },
+      { label: "Disk Usage", icon: HardDrive, to: "/usage" },
+      { label: "FTP Accounts", icon: Server, disabled: true },
+    ],
+  },
+  {
+    title: "Email",
+    items: [
+      { label: "Email Accounts", icon: Mail, to: "/email" },
+      { label: "Forwarders", icon: ArrowRightLeft, to: "/email" },
+      { label: "Autoresponders", icon: Mail, to: "/email" },
+      { label: "Email Deliverability", icon: MailCheck, to: "/email" },
+      { label: "Track Delivery", icon: BarChart2, to: "/email" },
+      { label: "Spam Filters", icon: ShieldOff, disabled: true },
+      { label: "Webmail", icon: Mail, href: "https://webmail.fpanel.my.id" },
     ],
   },
   {
@@ -75,12 +105,8 @@ const sections: {
     items: [
       { label: "Databases", icon: Database, to: "/databases" },
       { label: "phpMyAdmin", icon: Table2, href: "https://pma.fpanel.my.id" },
-    ],
-  },
-  {
-    title: "Email",
-    items: [
-      { label: "Email", icon: Mail, to: "/email" },
+      { label: "Remote DB Access", icon: Network, disabled: true },
+      { label: "PostgreSQL", icon: Database, disabled: true },
     ],
   },
   {
@@ -90,23 +116,38 @@ const sections: {
       { label: "IP Blocker", icon: ShieldOff, to: "/ip-blocker" },
       { label: "Hotlink", icon: Link2Off, to: "/hotlink" },
       { label: "WAF", icon: Flame, to: "/waf" },
+      { label: "Password & Security", icon: KeyRound, disabled: true },
     ],
   },
   {
     title: "Software",
     items: [
       { label: "Software", icon: Boxes, to: "/software" },
-      { label: "MultiPHP", icon: Braces, to: "/php" },
-      { label: "Runtime", icon: Server, to: "/runtime" },
-      { label: "SSH", icon: Terminal, to: "/ssh" },
+      { label: "WordPress", icon: Globe, to: "/software" },
+    ],
+  },
+  {
+    title: "Metrics",
+    items: [
+      { label: "Bandwidth", icon: BarChart3, to: "/usage" },
+      { label: "Resource Usage", icon: BarChart2, to: "/usage" },
+      { label: "Errors", icon: HelpCircle, disabled: true },
+    ],
+  },
+  {
+    title: "Preferences",
+    items: [
+      { label: "Account Preferences", icon: Settings, disabled: true },
+      { label: "Contact Information", icon: Users, disabled: true },
+      { label: "User Manager", icon: Users, disabled: true },
     ],
   },
   {
     title: "Advanced",
     items: [
       { label: "Cron Jobs", icon: Clock, to: "/cron" },
-      { label: "Cache", icon: Zap, to: "/cache" },
-      { label: "Usage", icon: BarChart3, to: "/usage" },
+      { label: "Terminal", icon: Terminal, to: "/ssh" },
+      { label: "Cache Manager", icon: Zap, to: "/cache" },
     ],
   },
 ];
@@ -156,8 +197,12 @@ export default function ClientHome() {
       .catch((e) => setError(String(e.message || e)));
   }, []);
 
-  const tileCls =
-    "flex flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white p-3 text-center shadow-sm transition hover:border-brand-400 hover:shadow-md cursor-pointer";
+  const tileCls = (disabled?: boolean) =>
+    `flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition ${
+      disabled
+        ? "border-gray-100 bg-gray-50 cursor-not-allowed opacity-50"
+        : "border-gray-200 bg-white shadow-sm hover:border-brand-400 hover:shadow-md cursor-pointer"
+    }`;
 
   return (
     <div className="flex gap-6 items-start">
@@ -177,29 +222,23 @@ export default function ClientHome() {
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
               {section.items.map((item) => {
                 const Icon = item.icon;
+                if (item.disabled) {
+                  return (
+                    <div key={item.label} className={tileCls(true)}>
+                      <Icon className="h-7 w-7 text-gray-400" />
+                      <span className="text-xs font-medium text-gray-400 leading-tight">{item.label}</span>
+                    </div>
+                  );
+                }
                 return item.href ? (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={tileCls}
-                  >
+                  <a key={item.href + item.label} href={item.href} target="_blank" rel="noreferrer" className={tileCls()}>
                     <Icon className="h-7 w-7 text-brand-600" />
-                    <span className="text-xs font-medium text-gray-700 leading-tight">
-                      {item.label}
-                    </span>
+                    <span className="text-xs font-medium text-gray-700 leading-tight">{item.label}</span>
                   </a>
                 ) : (
-                  <button
-                    key={item.to}
-                    onClick={() => navigate(item.to!)}
-                    className={tileCls}
-                  >
+                  <button key={item.to + item.label} onClick={() => navigate(item.to!)} className={tileCls()}>
                     <Icon className="h-7 w-7 text-brand-600" />
-                    <span className="text-xs font-medium text-gray-700 leading-tight">
-                      {item.label}
-                    </span>
+                    <span className="text-xs font-medium text-gray-700 leading-tight">{item.label}</span>
                   </button>
                 );
               })}
