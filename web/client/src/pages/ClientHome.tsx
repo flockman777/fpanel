@@ -1,11 +1,27 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
+  Archive,
+  ArrowRightLeft,
+  BarChart3,
+  Boxes,
+  Braces,
+  Clock,
   Database,
+  Flame,
+  FolderOpen,
   Globe,
   HardDrive,
   Inbox,
+  Link2Off,
   Mail,
+  Network,
+  Server,
   ShieldCheck,
+  ShieldOff,
+  Table2,
+  Terminal,
+  Zap,
 } from "lucide-react";
 import { api } from "../App";
 
@@ -49,7 +65,7 @@ function UsageBar({
   const color =
     pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-brand-600";
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
           <Icon className="h-4 w-4 text-brand-600" />
@@ -59,17 +75,78 @@ function UsageBar({
           {used} / {limit}
         </span>
       </div>
-      <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-100">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <div className="mt-1.5 text-xs text-gray-400">{pct}% used</div>
+      <div className="mt-1 text-xs text-gray-400">{pct}% used</div>
     </div>
   );
 }
 
+const sections: {
+  title: string;
+  items: { label: string; icon: any; to?: string; href?: string }[];
+}[] = [
+  {
+    title: "Files",
+    items: [
+      { label: "File Manager", icon: FolderOpen, to: "/files" },
+      { label: "Backups", icon: Archive, to: "/backups" },
+    ],
+  },
+  {
+    title: "Domains",
+    items: [
+      { label: "Domains", icon: Globe, to: "/domains" },
+      { label: "Zone Editor", icon: Network, to: "/dns" },
+      { label: "Redirects", icon: ArrowRightLeft, to: "/redirects" },
+    ],
+  },
+  {
+    title: "Databases",
+    items: [
+      { label: "Databases", icon: Database, to: "/databases" },
+      { label: "phpMyAdmin", icon: Table2, href: "https://pma.fpanel.my.id" },
+    ],
+  },
+  {
+    title: "Email",
+    items: [
+      { label: "Email", icon: Mail, to: "/email" },
+    ],
+  },
+  {
+    title: "Security",
+    items: [
+      { label: "SSL", icon: ShieldCheck, to: "/ssl" },
+      { label: "IP Blocker", icon: ShieldOff, to: "/ip-blocker" },
+      { label: "Hotlink", icon: Link2Off, to: "/hotlink" },
+      { label: "WAF", icon: Flame, to: "/waf" },
+    ],
+  },
+  {
+    title: "Software",
+    items: [
+      { label: "Software", icon: Boxes, to: "/software" },
+      { label: "MultiPHP", icon: Braces, to: "/php" },
+      { label: "Runtime", icon: Server, to: "/runtime" },
+      { label: "SSH", icon: Terminal, to: "/ssh" },
+    ],
+  },
+  {
+    title: "Advanced",
+    items: [
+      { label: "Cron Jobs", icon: Clock, to: "/cron" },
+      { label: "Cache", icon: Zap, to: "/cache" },
+      { label: "Usage", icon: BarChart3, to: "/usage" },
+    ],
+  },
+];
+
 export default function ClientHome() {
   const [data, setData] = useState<ClientData | null>(null);
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
     api<ClientData>("/client/me")
@@ -85,20 +162,21 @@ export default function ClientHome() {
         </div>
       )}
 
+      {/* Account info bar */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-gray-500">Main Domain</div>
-              <div className="mt-1 text-2xl font-bold text-gray-800">
+              <div className="text-xs text-gray-400">Main Domain</div>
+              <div className="mt-0.5 text-xl font-bold text-gray-800">
                 {data?.account.username || "—"}
               </div>
-              <div className="mt-1 text-xs text-gray-400">
+              <div className="mt-0.5 text-xs text-gray-400">
                 {data?.account.email || ""}
               </div>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-              <Globe className="h-7 w-7" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+              <Globe className="h-6 w-6" />
             </div>
           </div>
         </div>
@@ -106,24 +184,25 @@ export default function ClientHome() {
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-gray-500">Hosting Package</div>
-              <div className="mt-1 text-2xl font-bold text-gray-800">
+              <div className="text-xs text-gray-400">Hosting Package</div>
+              <div className="mt-0.5 text-xl font-bold text-gray-800">
                 {data?.package.name || "—"}
               </div>
-              <div className="mt-1 text-xs font-medium text-green-600 uppercase">
+              <div className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-green-600">
                 {data?.account.status || ""}
               </div>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-              <ShieldCheck className="h-7 w-7" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+              <Inbox className="h-6 w-6" />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Usage bars */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <UsageBar
-          label="Disk Usage"
+          label="Disk"
           used={data?.usage.disk_used_mb ?? 0}
           limit={data?.package.disk_limit_mb ?? 0}
           icon={HardDrive}
@@ -148,43 +227,47 @@ export default function ClientHome() {
         />
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <h3 className="font-semibold text-gray-800">Account Details</h3>
-          <span className="flex items-center gap-1.5 text-xs text-gray-400">
-            <Inbox className="h-3.5 w-3.5" /> FPanel
-          </span>
-        </div>
-        <dl className="grid grid-cols-1 gap-x-8 gap-y-4 p-5 sm:grid-cols-2">
-          <div>
-            <dt className="text-xs text-gray-400">Username</dt>
-            <dd className="mt-0.5 font-medium text-gray-800">
-              {data?.account.username || "—"}
-            </dd>
+      {/* cPanel-style feature grid */}
+      <div className="space-y-5">
+        {sections.map((section) => (
+          <div key={section.title}>
+            <div className="mb-3 border-b border-gray-200 pb-1 text-xs font-bold uppercase tracking-widest text-brand-600">
+              {section.title}
+            </div>
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const cls =
+                  "flex flex-col items-center gap-2 rounded-xl border border-gray-200 bg-white p-4 text-center shadow-sm transition hover:border-brand-300 hover:shadow-md cursor-pointer";
+                return item.href ? (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cls}
+                  >
+                    <Icon className="h-8 w-8 text-brand-600" />
+                    <span className="text-xs font-medium text-gray-700 leading-tight">
+                      {item.label}
+                    </span>
+                  </a>
+                ) : (
+                  <button
+                    key={item.to}
+                    onClick={() => navigate(item.to!)}
+                    className={cls}
+                  >
+                    <Icon className="h-8 w-8 text-brand-600" />
+                    <span className="text-xs font-medium text-gray-700 leading-tight">
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div>
-            <dt className="text-xs text-gray-400">Email</dt>
-            <dd className="mt-0.5 font-medium text-gray-800">
-              {data?.account.email || "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-gray-400">Disk Limit</dt>
-            <dd className="mt-0.5 font-medium text-gray-800">
-              {data?.package.disk_limit_mb ?? 0} MB
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-gray-400">Bandwidth</dt>
-            <dd className="mt-0.5 font-medium text-green-600">Unlimited</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-gray-400">Status</dt>
-            <dd className="mt-0.5 font-medium text-green-600 uppercase">
-              {data?.account.status || "—"}
-            </dd>
-          </div>
-        </dl>
+        ))}
       </div>
     </div>
   );
