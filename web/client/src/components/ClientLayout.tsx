@@ -1,32 +1,20 @@
 import {
-  Archive,
-  ArrowRightLeft,
-  BarChart3,
   Bell,
   Boxes,
-  Braces,
-  ChevronDown,
   Clock,
   Database,
-  Flame,
   FolderOpen,
   Globe,
   KeyRound,
   LayoutDashboard,
-  Link2Off,
   LogOut,
   Mail,
   Network,
   RefreshCw,
   Search,
-  Server,
   Settings,
   ShieldCheck,
-  ShieldOff,
-  Table2,
-  Terminal,
   User,
-  Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
@@ -170,7 +158,7 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
       <main className="flex-1 overflow-x-hidden flex flex-col">
         {/* ── Top header bar ── */}
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white px-6 py-3">
-          {/* Search */}
+          {/* Search rata kiri */}
           <div ref={searchRef} className="relative w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
@@ -206,50 +194,46 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
           </div>
 
           {/* Bell langsung setelah search */}
-          <button className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100">
+          <button className="rounded-lg p-2 text-gray-500 hover:bg-gray-100">
             <Bell className="h-5 w-5" />
           </button>
 
-          {/* User dropdown pojok kanan */}
+          {/* User icon pojok kanan */}
           <div ref={userRef} className="relative ml-auto">
-              <button
-                onClick={() => setUserOpen((v) => !v)}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
-                  {(name[0] || "C").toUpperCase()}
-                </div>
-                <span className="max-w-[120px] truncate">{name}</span>
-                <ChevronDown className="h-4 w-4 text-gray-400" />
-              </button>
+            <button
+              onClick={() => setUserOpen((v) => !v)}
+              className="flex items-center justify-center h-8 w-8 rounded-full bg-brand-600 text-white hover:bg-brand-700"
+            >
+              <User className="h-4 w-4" />
+            </button>
 
-              {userOpen && (
-                <div className="absolute right-0 top-full mt-1 w-52 rounded-xl border border-gray-200 bg-white shadow-lg z-30 overflow-hidden">
-                  {[
-                    { label: "Account Preferences", icon: Settings },
-                    { label: "Password & Security", icon: KeyRound },
-                    { label: "Contact Information", icon: User },
-                    { label: "Reset Page Settings", icon: RefreshCw },
-                  ].map(({ label, icon: Icon }) => (
-                    <button
-                      key={label}
-                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      <Icon className="h-4 w-4 text-gray-400" />
-                      {label}
-                    </button>
-                  ))}
-                  <div className="border-t border-gray-100" />
+            {userOpen && (
+              <div className="absolute right-0 top-full mt-1 w-52 rounded-xl border border-gray-200 bg-white shadow-lg z-30 overflow-hidden">
+                {[
+                  { label: "Account Preferences", icon: Settings },
+                  { label: "Password & Security", icon: KeyRound },
+                  { label: "Contact Information", icon: User },
+                  { label: "Reset Page Settings", icon: RefreshCw },
+                ].map(({ label, icon: Icon }) => (
                   <button
-                    onClick={() => { setUserOpen(false); onLogout(); }}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                    key={label}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
                   >
-                    <LogOut className="h-4 w-4" />
-                    Log Out
+                    <Icon className="h-4 w-4 text-gray-400" />
+                    {label}
                   </button>
-                </div>
-              )}
-            </div>
+                ))}
+                <div className="border-t border-gray-100" />
+                <button
+                  onClick={() => { setUserOpen(false); onLogout(); }}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Log Out
+                </button>
+              </div>
+            )}
+          </div>
         </header>
 
         <div className="flex-1 p-6">
