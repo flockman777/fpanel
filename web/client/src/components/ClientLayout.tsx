@@ -138,15 +138,13 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
 
-        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           <NavLink
             to={dashboardItem.to!}
             end
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                isActive
-                  ? "bg-brand-700 text-white"
-                  : "text-brand-200 hover:bg-brand-800 hover:text-white"
+                isActive ? "bg-brand-700 text-white" : "text-brand-200 hover:bg-brand-800 hover:text-white"
               }`
             }
           >
@@ -154,43 +152,29 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
             {dashboardItem.label}
           </NavLink>
 
-          {navSections.map((section) => (
-            <div key={section.title}>
-              <div className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-brand-400">
-                {section.title}
-              </div>
-              <div className="space-y-0.5">
-                {section.items.map((item) =>
-                  item.href ? (
-                    <a
-                      key={item.href}
-                      href={item.href}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-200 transition hover:bg-brand-800 hover:text-white"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </a>
-                  ) : (
-                    <NavLink
-                      key={item.to}
-                      to={item.to!}
-                      className={({ isActive }) =>
-                        `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                          isActive
-                            ? "bg-brand-700 text-white"
-                            : "text-brand-200 hover:bg-brand-800 hover:text-white"
-                        }`
-                      }
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </NavLink>
-                  )
-                )}
-              </div>
-            </div>
+          <div className="pt-2 pb-1 px-3 text-xs font-semibold uppercase tracking-wider text-brand-400">Menu</div>
+
+          {[
+            { to: "/files",     label: "File Manager",  icon: FolderOpen },
+            { to: "/domains",   label: "Domains",       icon: Globe },
+            { to: "/databases", label: "Databases",     icon: Database },
+            { to: "/email",     label: "Email",         icon: Mail },
+            { to: "/ssl",       label: "Security",      icon: ShieldCheck },
+            { to: "/software",  label: "Software",      icon: Boxes },
+            { to: "/cron",      label: "Advanced",      icon: Clock },
+          ].map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  isActive ? "bg-brand-700 text-white" : "text-brand-200 hover:bg-brand-800 hover:text-white"
+                }`
+              }
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </NavLink>
           ))}
         </nav>
       </aside>
@@ -199,8 +183,8 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
       <main className="flex-1 overflow-x-hidden flex flex-col">
         {/* ── Top header bar ── */}
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white px-6 py-3">
-          {/* Search kiri */}
-          <div ref={searchRef} className="relative flex-1 max-w-sm">
+          {/* Search */}
+          <div ref={searchRef} className="relative w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
@@ -234,14 +218,13 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
             )}
           </div>
 
-          <div className="flex items-center gap-2 ml-auto">
-            {/* Bell */}
-            <button className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100">
-              <Bell className="h-5 w-5" />
-            </button>
+          {/* Bell langsung setelah search */}
+          <button className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100">
+            <Bell className="h-5 w-5" />
+          </button>
 
-            {/* User dropdown */}
-            <div ref={userRef} className="relative">
+          {/* User dropdown pojok kanan */}
+          <div ref={userRef} className="relative ml-auto">
               <button
                 onClick={() => setUserOpen((v) => !v)}
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
@@ -280,7 +263,6 @@ export default function ClientLayout({ onLogout }: { onLogout: () => void }) {
                 </div>
               )}
             </div>
-          </div>
         </header>
 
         <div className="flex-1 p-6">
