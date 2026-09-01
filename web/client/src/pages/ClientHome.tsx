@@ -50,25 +50,40 @@ const sections: { title: string; items: SectionItem[] }[] = [
     items: [
       { label: "Let's Encrypt", icon: ShieldCheck, to: "/ssl" },
       { label: "Speed Booster", icon: Zap, to: "/cache" },
-      { label: "Nginx Cache", icon: Zap, to: "/cache" },
+      { label: "WordPress Accelerator", icon: Globe, disabled: true },
       { label: "Redis", icon: Radio, disabled: true },
       { label: "Valkey", icon: Radio, disabled: true },
-      { label: "Git Deploy", icon: GitBranch, disabled: true },
-      { label: "Force HTTPS", icon: Lock, to: "/ssl" },
+      { label: "Memcached", icon: Radio, disabled: true },
+      { label: "MongoDB", icon: Database, disabled: true },
+      { label: "PostgreSQL", icon: Database, disabled: true },
+      { label: "Nginx Cache", icon: Zap, to: "/cache" },
+      { label: "cP Cleaner", icon: Settings, disabled: true },
       { label: "XML-RPC", icon: FileCode2, to: "/waf" },
       { label: "CSP", icon: ShieldCheck, to: "/waf" },
+      { label: "Force to HTTPS", icon: Lock, to: "/ssl" },
+      { label: "Git Deploy", icon: GitBranch, disabled: true },
+      { label: "How to Access SSH", icon: HelpCircle, to: "/ssh" },
       { label: "Server Status", icon: BarChart2, to: "/usage" },
     ],
   },
   {
     title: "Runtime Manager",
     items: [
-      { label: "Runtime", icon: Server, to: "/runtime" },
-      { label: "MultiPHP", icon: Braces, to: "/php" },
-      { label: "SSH Access", icon: Terminal, to: "/ssh" },
+      { label: "Runtime Manager", icon: Server, to: "/runtime" },
       { label: "Node.js", icon: Server, disabled: true },
+      { label: "Bun", icon: Server, disabled: true },
+      { label: "Deno", icon: Server, disabled: true },
       { label: "Python", icon: Server, disabled: true },
       { label: "Ruby", icon: Server, disabled: true },
+      { label: "Go", icon: Server, disabled: true },
+      { label: "Rust", icon: Server, disabled: true },
+      { label: "MultiPHP Version", icon: Braces, to: "/php" },
+      { label: "Perl Modules", icon: FileCode2, disabled: true },
+      { label: "PHP PEAR Packages", icon: Braces, disabled: true },
+      { label: "Select PHP Version", icon: Braces, to: "/php" },
+      { label: "Setup Node.js App", icon: Server, disabled: true },
+      { label: "Setup Ruby App", icon: Server, disabled: true },
+      { label: "Setup Python App", icon: Server, disabled: true },
     ],
   },
   {
@@ -77,15 +92,21 @@ const sections: { title: string; items: SectionItem[] }[] = [
       { label: "Domains", icon: Globe, to: "/domains" },
       { label: "Redirects", icon: ArrowRightLeft, to: "/redirects" },
       { label: "Zone Editor", icon: Network, to: "/dns" },
+      { label: "Dynamic DNS", icon: Network, disabled: true },
+      { label: "Sitejet Builder", icon: Globe, disabled: true },
     ],
   },
   {
     title: "Files",
     items: [
       { label: "File Manager", icon: FolderOpen, to: "/files" },
-      { label: "Backup", icon: Archive, to: "/backups" },
+      { label: "Directory Privacy", icon: Lock, disabled: true },
       { label: "Disk Usage", icon: HardDrive, to: "/usage" },
+      { label: "Web Disk", icon: HardDrive, disabled: true },
       { label: "FTP Accounts", icon: Server, disabled: true },
+      { label: "Backup", icon: Archive, to: "/backups" },
+      { label: "Backup Wizard", icon: Archive, to: "/backups" },
+      { label: "JetBackup 5", icon: Archive, disabled: true },
     ],
   },
   {
@@ -93,20 +114,33 @@ const sections: { title: string; items: SectionItem[] }[] = [
     items: [
       { label: "Email Accounts", icon: Mail, to: "/email" },
       { label: "Forwarders", icon: ArrowRightLeft, to: "/email" },
+      { label: "Email Routing", icon: Network, disabled: true },
       { label: "Autoresponders", icon: Mail, to: "/email" },
-      { label: "Email Deliverability", icon: MailCheck, to: "/email" },
+      { label: "Default Address", icon: Mail, disabled: true },
       { label: "Track Delivery", icon: BarChart2, to: "/email" },
+      { label: "Global Email Filters", icon: ShieldOff, disabled: true },
+      { label: "Email Filters", icon: ShieldOff, disabled: true },
+      { label: "Email Deliverability", icon: MailCheck, to: "/email" },
+      { label: "Address Importer", icon: Users, disabled: true },
       { label: "Spam Filters", icon: ShieldOff, disabled: true },
+      { label: "Archive", icon: Archive, disabled: true },
+      { label: "Encryption", icon: KeyRound, disabled: true },
+      { label: "BoxTrapper", icon: ShieldCheck, disabled: true },
+      { label: "Calendars & Contacts", icon: Users, disabled: true },
+      { label: "Email Disk Usage", icon: HardDrive, to: "/usage" },
       { label: "Webmail", icon: Mail, href: "https://webmail.fpanel.my.id" },
     ],
   },
   {
     title: "Databases",
     items: [
-      { label: "Databases", icon: Database, to: "/databases" },
       { label: "phpMyAdmin", icon: Table2, href: "https://pma.fpanel.my.id" },
+      { label: "Manage Databases", icon: Database, to: "/databases" },
+      { label: "Database Wizard", icon: Database, to: "/databases" },
       { label: "Remote DB Access", icon: Network, disabled: true },
       { label: "PostgreSQL", icon: Database, disabled: true },
+      { label: "PostgreSQL Wizard", icon: Database, disabled: true },
+      { label: "phpPgAdmin", icon: Table2, disabled: true },
     ],
   },
   {
@@ -114,7 +148,7 @@ const sections: { title: string; items: SectionItem[] }[] = [
     items: [
       { label: "SSL", icon: ShieldCheck, to: "/ssl" },
       { label: "IP Blocker", icon: ShieldOff, to: "/ip-blocker" },
-      { label: "Hotlink", icon: Link2Off, to: "/hotlink" },
+      { label: "Hotlink Protection", icon: Link2Off, to: "/hotlink" },
       { label: "WAF", icon: Flame, to: "/waf" },
       { label: "Password & Security", icon: KeyRound, disabled: true },
     ],
@@ -123,21 +157,27 @@ const sections: { title: string; items: SectionItem[] }[] = [
     title: "Software",
     items: [
       { label: "Software", icon: Boxes, to: "/software" },
-      { label: "WordPress", icon: Globe, to: "/software" },
+      { label: "WordPress Manager", icon: Globe, to: "/software" },
     ],
   },
   {
     title: "Metrics",
     items: [
-      { label: "Bandwidth", icon: BarChart3, to: "/usage" },
-      { label: "Resource Usage", icon: BarChart2, to: "/usage" },
+      { label: "Visitors", icon: Users, disabled: true },
+      { label: "Site Quality", icon: BarChart2, disabled: true },
       { label: "Errors", icon: HelpCircle, disabled: true },
+      { label: "Bandwidth", icon: BarChart3, to: "/usage" },
+      { label: "Raw Access", icon: BarChart2, disabled: true },
+      { label: "Awstats", icon: BarChart2, disabled: true },
+      { label: "Resource Usage", icon: BarChart3, to: "/usage" },
     ],
   },
   {
     title: "Preferences",
     items: [
       { label: "Account Preferences", icon: Settings, disabled: true },
+      { label: "Password & Security", icon: KeyRound, disabled: true },
+      { label: "Change Language", icon: Globe, disabled: true },
       { label: "Contact Information", icon: Users, disabled: true },
       { label: "User Manager", icon: Users, disabled: true },
     ],
@@ -145,8 +185,13 @@ const sections: { title: string; items: SectionItem[] }[] = [
   {
     title: "Advanced",
     items: [
-      { label: "Cron Jobs", icon: Clock, to: "/cron" },
       { label: "Terminal", icon: Terminal, to: "/ssh" },
+      { label: "Cron Jobs", icon: Clock, to: "/cron" },
+      { label: "Track DNS", icon: Network, disabled: true },
+      { label: "Indexes", icon: FileCode2, disabled: true },
+      { label: "Error Pages", icon: HelpCircle, disabled: true },
+      { label: "Apache Handlers", icon: Server, disabled: true },
+      { label: "MIME Types", icon: FileCode2, disabled: true },
       { label: "Cache Manager", icon: Zap, to: "/cache" },
     ],
   },
@@ -219,7 +264,7 @@ export default function ClientHome() {
             <div className="mb-2 border-b border-gray-200 pb-1 text-xs font-bold uppercase tracking-widest text-brand-600">
               {section.title}
             </div>
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
+            <div className="grid grid-cols-3 gap-2">
               {section.items.map((item) => {
                 const Icon = item.icon;
                 if (item.disabled) {
