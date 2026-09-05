@@ -16,6 +16,7 @@ import IpBlocker from "./pages/IpBlocker";
 import Hotlink from "./pages/Hotlink";
 import Waf from "./pages/Waf";
 import Ssh from "./pages/Ssh";
+import Ftp from "./pages/Ftp";
 import Dns from "./pages/Dns";
 import Cron from "./pages/Cron";
 import Backups from "./pages/Backups";
@@ -86,11 +87,13 @@ export default function App() {
 
   if (authed === null) {
     return (
-      <div className="flex h-screen items-center justify-center bg-brand-50">
-        <div className="flex items-center gap-3 text-brand-600">
-          <span className="h-8 w-8 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
-          <span className="text-lg font-semibold">FPanel</span>
-        </div>
+      <div className="flex h-screen flex-col items-center justify-center gap-6 bg-brand-50">
+        <img
+          src="/fpanel-logo.png"
+          alt="FPanel"
+          className="w-52 object-contain"
+        />
+        <span className="h-8 w-8 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
       </div>
     );
   }
@@ -140,6 +143,7 @@ export default function App() {
         <Route path="/hotlink" element={<Hotlink />} />
         <Route path="/waf" element={<Waf />} />
         <Route path="/ssh" element={<Ssh />} />
+        <Route path="/ftp" element={<Ftp />} />
         <Route path="/dns" element={<Dns />} />
         <Route path="/cron" element={<Cron />} />
         <Route path="/backups" element={<Backups />} />
