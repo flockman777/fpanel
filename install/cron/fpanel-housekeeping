@@ -1,0 +1,8 @@
+# FPanel: pangkas data yang tumbuh terus (sesi, audit log, percobaan login)
+# dan buang access log nginx untuk domain yang sudah dihapus.
+# Dijalankan dini hari saat lalu lintas sepi, supaya tidak mengganggu trafik.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+23 4 * * * www-data /usr/bin/php /srv/fpanel/bin/fpanel housekeeping:run >/dev/null 2>&1

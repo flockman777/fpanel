@@ -1,0 +1,8 @@
+# FPanel: kumpulkan resource usage per domain (disk, bandwidth, request).
+# Dijalankan per jam; php.ini CLI tidak membatasi waktu sehingga aman.
+# www-data cukup: bisa baca docroot dan access log nginx.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+37 * * * * www-data /usr/bin/php /srv/fpanel/bin/fpanel usage:collect >/dev/null 2>&1

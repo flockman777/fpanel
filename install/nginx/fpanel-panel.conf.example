@@ -1,0 +1,105 @@
+# FPanel - panel kontrol di domain resmi
+# Struktur location dicerminkan dari /etc/nginx/sites-available/fpanel (port 8090)
+# supaya perilaku aplikasi identik di 8090 maupun 443.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name fpanel.my.id www.fpanel.my.id;
+
+    root /var/www/acme/challenges;
+    index index.html;
+
+    # Tantangan ACME dilayani apa adanya sebelum redirect, kalau tidak
+    # renewal certbot akan ikut dialihkan ke HTTPS dan gagal.
+    location ^~ /.well-known/acme-challenge/ {
+        alias /var/www/acme/challenges/.well-known/acme-challenge/;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name fpanel.my.id www.fpanel.my.id;
+
+    ssl_certificate     /etc/letsencrypt/live/fpanel.my.id/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/fpanel.my.id/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    ssl_trusted_certificate /etc/letsencrypt/live/fpanel.my.id/fullchain.pem;
+
+    # Header keamanan TIDAK didefinisikan di sini. Aplikasi sudah mengirimnya
+    # sendiri, dan dua add_header untuk kunci yang sama menghasilkan header
+    # dobel (mis. dua X-Frame-Options dengan nilai berbeda).
+    # HSTS tetap di sini karena hanya relevan di lapisan TLS.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    root /srv/fpanel/app/public;
+    index index.php;
+
+    client_max_body_size 512M;
+    server_tokens off;
+
+    access_log /srv/fpanel/var/log/nginx-access.log;
+    error_log  /srv/fpanel/var/log/nginx-error.log warn;
+
+    location = /favicon.svg { alias /srv/fpanel/app/public/assets/img/favicon.svg; }
+    location = /favicon.ico { alias /srv/fpanel/app/public/assets/img/favicon.ico; }
+
+    location / { try_files $uri $uri/ /index.php?$query_string; }
+
+        
+    
+    
+    
+    
+        # BEGIN FPANEL-PMA
+    # ---- phpMyAdmin per-database (token sekali pakai) -----------------
+    # Alur: /pma/<token>/... -> rewrite -> /fpma/... (internal) -> front
+    # controller fpma-index.php yang memvalidasi token lalu memanggil
+    # phpMyAdmin. Validasi token sengaja ada di PHP, bukan di nginx:
+    # di nginx memakai "if (!-f ...)" sulit dipastikan perilakunya,
+    # sedangkan di PHP hasilnya eksplisit: 404 atau phpMyAdmin.
+    #
+    # Regex WAJIB diapit tanda kutip: tanpa tanda kutip nginx menganggap "}"
+    # sebagai penutup blok; di-escape ("\{32\}") pun PCRE memperlakukannya
+    # sebagai kurung kurawal literal, bukan pengulangan.
+    location ~ "^/pma/(?<fptok>[a-f0-9]{32})(/.*)?$" {
+        rewrite "^/pma/[a-f0-9]{32}(/.*)?$" /fpma$1 last;
+    }
+    # Tanpa token: tidak ada apa-apa di sini.
+    location = /pma { return 404; }
+    location /pma/ { return 404; }
+
+    # Target internal: tidak bisa diakses langsung, hanya lewat rewrite di atas.
+    location ~ ^/fpma/.+\.php$ {
+        internal;
+        include fastcgi_params;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME /usr/share/phpmyadmin/fpma-index.php;
+        fastcgi_param SCRIPT_NAME     /index.php;
+        fastcgi_param DOCUMENT_ROOT   /usr/share/phpmyadmin;
+    }
+    location ~ ^/fpma(?<fpapath>/.*)?$ {
+        internal;
+        root /usr/share/phpmyadmin;
+        try_files /$fpapath /$fpapath/index.php /fpma/index.php;
+    }
+    # END FPANEL-PMA
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+
+    location ~ /\.                                          { deny all; }
+    location ~* ^/(var|config|bin|tests|node_modules|app/src)/ { deny all; }
+}

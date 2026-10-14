@@ -1,0 +1,39 @@
+{
+  "categories": [
+    { "key": "cat.files",     "icon": "folder-open" },
+    { "key": "cat.databases", "icon": "database" },
+    { "key": "cat.domains",   "icon": "globe" },
+    { "key": "cat.email",     "icon": "mail" },
+    { "key": "cat.security",  "icon": "shield" },
+    { "key": "cat.software",  "icon": "blocks" }
+  ],
+  "features": [
+    { "cat": "cat.files",     "tile": "tile.fileManager",    "icon": "folder-open",     "href": "#" },
+    { "cat": "cat.files",     "tile": "tile.backup",         "icon": "archive",         "href": "#" },
+    { "cat": "cat.files",     "tile": "tile.ftpAccounts",    "icon": "users",           "href": "#" },
+    { "cat": "cat.files",     "tile": "tile.diskUsage",      "icon": "hard-drive",      "href": "domains.php" },
+
+    { "cat": "cat.databases", "tile": "tile.mariadb",        "icon": "database",        "href": "databases.php" },
+    { "cat": "cat.databases", "tile": "tile.dbUsers",        "icon": "user-cog",        "href": "databases.php" },
+    { "cat": "cat.databases", "tile": "tile.phpmyadmin",     "icon": "table-2",         "href": "#" },
+
+    { "cat": "cat.domains",   "tile": "tile.domains",        "icon": "globe",           "href": "domains.php" },
+    { "cat": "cat.domains",   "tile": "tile.subdomains",     "icon": "app-window",         "href": "domains.php" },
+    { "cat": "cat.domains",   "tile": "tile.redirects",      "icon": "corner-up-right", "href": "#" },
+    { "cat": "cat.domains",   "tile": "tile.dnsZone",        "icon": "list-ordered",    "href": "#" },
+
+    { "cat": "cat.email",     "tile": "tile.emailAccounts",  "icon": "mail",            "href": "email.php" },
+    { "cat": "cat.email",     "tile": "tile.forwarders",     "icon": "forward",         "href": "email.php" },
+    { "cat": "cat.email",     "tile": "tile.autoresponders", "icon": "reply",           "href": "email.php" },
+    { "cat": "cat.email",     "tile": "tile.spamFilters",    "icon": "shield-check",    "href": "#" },
+
+    { "cat": "cat.security",  "tile": "tile.sslTls",         "icon": "lock",            "href": "#" },
+    { "cat": "cat.security",  "tile": "tile.ipBlocker",      "icon": "ban",             "href": "#" },
+    { "cat": "cat.security",  "tile": "tile.hotlink",        "icon": "link-2-off",      "href": "#" },
+
+    { "cat": "cat.software",  "tile": "tile.phpSelector",    "icon": "blocks",          "href": "#" },
+    { "cat": "cat.software",  "tile": "tile.cronJobs",       "icon": "clock",           "href": "#" },
+    { "cat": "cat.software",  "tile": "tile.terminal",       "icon": "terminal",        "href": "#" },
+    { "cat": "cat.software",  "tile": "tile.errorLogs",      "icon": "file-x",    "href": "#" }
+  ]
+}

@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900;
+  }
+  .input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700;
+    @apply placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-400/30 focus:outline-none;
+    @apply dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium
+           transition duration-150 disabled:cursor-not-allowed disabled:opacity-50
+           bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+  }
+  /* Logo untuk panel navy. Filter dibungkan ke tema karena panelnya
+     selalu gelap, sedangkan logo aslinya teal tua yang tidak terbaca. */
+  .logo-on-navy {
+    filter: invert(1) hue-rotate(180deg);
+  }
+  /* Latar halaman masuk: navy berlapis glow teal + grid halus. */
+  .btn-icon {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg p-2 text-sm font-medium
+           text-slate-500 transition duration-150 hover:bg-slate-50 hover:text-slate-700
+           dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white;
+  }
+}

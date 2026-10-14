@@ -1,0 +1,217 @@
+#!/bin/bash
+# FPanel helper cron jobs.
+#
+# Cron job milik user ditulis sebagai satu file per user di /etc/cron.d/,
+# sehingga tidak perlu menyentuh crontab user di home. Dua subcommand:
+#
+#   sync <user>   (dipanggil www-data lewat sudo, butuh root)
+#       Tulis ulang /etc/cron.d/fpanel-cron-<user> dari daftar job di stdin.
+#       Setiap baris WAJIB cocok dengan pola yang sangat ketat; kalau tidak,
+#       baris dibuang. Jadi walau panel salah kirim, tidak ada perintah
+#       bebas yang bisa masuk ke cron daemon.
+#
+#   run <user> <id>   (dipanggil cron sebagai www-data, tanpa sudo)
+#       Jalankan command milik satu job, hasil + exit code masuk log.
+#       Sengaja TIDAK ada di sudoers: kalau ada, www-data yang diretas
+#       bisa membuat job lalu menjalankannya sebagai root.
+#
+# Command disimpan di /var/lib/fpanel/cron/<user>.jobs sebagai base64 supaya
+# "run" tidak perlu parse quoting yang bisa diselipkan.
+set -euo pipefail
+
+PAT_USER='^[a-z0-9][a-z0-9_-]{1,31}$'
+PAT_ID='^[0-9]{1,12}$'
+PAT_SCHED='^[0-9*/,-]{1,120}$'
+
+# Path bisa dioverride lewat environment supaya helper bisa diuji tanpa
+# menyentuh /etc/cron.d sungguhan.
+ETC_DIR="${FPANEL_CRON_ETC:-/etc/cron.d}"
+PREFIX=fpanel-cron-
+STATE_DIR="${FPANEL_CRON_STATE:-/var/lib/fpanel/cron}"
+LOG_DIR="${FPANEL_CRON_LOG:-/var/log/fpanel-cron}"
+# Batas ukuran satu log, supaya job yang stdout-nya besar tidak memenuhi disk.
+LOG_MAX=$((256 * 1024))
+# Batas waktu per eksekusi. Command yang menggantung akan dibunuh.
+RUN_TIMEOUT=300
+# User Unix yang menjalankan job. PENTING: cron hanya mau menjalankan job
+# sebagai user yang benar-benar ada di /etc/passwd. User panel (mis. "admin")
+# hanya baris di SQLite, bukan akun Unix, jadi kalau dipakai di kolom user
+# cron akan menolak seluruh file dengan "bad username".
+# Di panel ini semua docroot dimiliki www-data dan PHP-FPM juga jalan sebagai
+# www-data, jadi itu user yang konsisten untuk semua job.
+RUN_AS="${FPANEL_CRON_RUN_AS:-www-data}"
+
+SELF=/usr/local/sbin/fpanel-cron
+
+die() { echo "ERR: $*" >&2; exit 2; }
+need() { [ -n "${1:-}" ] || die "argumen kurang"; }
+
+check_user() {
+  need "$1"
+  [[ "$1" =~ $PAT_USER ]] || die "nama user tidak valid: $1"
+}
+
+check_id() {
+  need "$1"
+  [[ "$1" =~ $PAT_ID ]] || die "id job tidak valid: $1"
+}
+
+cronfile() { echo "$ETC_DIR/$PREFIX$1"; }
+jobfile()  { echo "$STATE_DIR/$1.jobs"; }
+logfile()  { echo "$LOG_DIR/$1-$2.log"; }
+
+# --- sync -------------------------------------------------------------------
+# Masukan: satu baris per job, format "<5 kolom schedule> <user> <id> <base64>".
+# Yang diperiksa hanya schedule + user + id; base64 divalidasi terpisah.
+do_sync() {
+  check_user "${1:-}"
+  local user="$1" tmp_cron tmp_jobs kept=0 dropped=0 line
+  local f1 f2 f3 f4 f5 rest user_field id_field b64 extra f ok
+
+  mkdir -p "$ETC_DIR" "$STATE_DIR" "$LOG_DIR"
+  chmod 0755 "$ETC_DIR" "$STATE_DIR" "$LOG_DIR"
+  # STATE_DIR dibaca cron (www-data) sehingga root:0644 cukup. LOG_DIR harus
+  # bisa ditulis www-data karena "run" menulis log tanpa sudo.
+  # chown memakai getent supaya tidak fatal di mesin tanpa user www-data.
+  if getent passwd www-data >/dev/null 2>&1; then
+    chown www-data "$LOG_DIR" 2>/dev/null || true
+  fi
+
+  tmp_cron="$(cronfile "$user").tmp.$$"
+  tmp_jobs="$(jobfile "$user").tmp.$$"
+
+  {
+    echo "# Dihasilkan otomatis oleh FPanel. Jangan diedit manual."
+    echo "SHELL=/bin/sh"
+    echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    echo "MAILTO=\"\""
+  } > "$tmp_cron"
+  : > "$tmp_jobs"
+
+  # Baris masuk: "<5 field jadwal> <user> <id> <base64>".
+  #
+  # Parsing pakai read (bukan satu regex besar) karena indeks BASH_REMATCH
+  # mudah bergeser saat ada grup di dalam grup. dulu regex memakai {4} di
+  # dalam, sehingga user/id/base64 dibaca dari indeks yang salah dan semua
+  # baris ditolak.
+  while IFS= read -r line; do
+    line="${line%%$'\r'}"
+    [ -n "$line" ] || continue
+
+    read -r f1 f2 f3 f4 f5 rest <<< "$line"
+    if [ -z "${rest:-}" ]; then
+      dropped=$((dropped + 1))
+      continue
+    fi
+
+    ok=1
+    for f in "$f1" "$f2" "$f3" "$f4" "$f5"; do
+      [[ "$f" =~ ^[0-9*/,?-]{1,60}$ ]] || ok=0
+    done
+    [ "$ok" = 1 ] || { dropped=$((dropped + 1)); continue; }
+
+    read -r user_field id_field b64 extra <<< "$rest"
+    if [ -z "${b64:-}" ] || [ -n "${extra:-}" ]; then
+      dropped=$((dropped + 1))
+      continue
+    fi
+    [[ "$user_field" =~ ^[a-z0-9][a-z0-9_-]{1,31}$ ]] || { dropped=$((dropped + 1)); continue; }
+    [[ "$id_field" =~ ^[0-9]{1,12}$ ]] || { dropped=$((dropped + 1)); continue; }
+    [[ "$b64" =~ ^[A-Za-z0-9+/=]+$ ]] || { dropped=$((dropped + 1)); continue; }
+
+    # Job milik user lain tidak boleh masuk ke file user ini.
+    [ "$user_field" = "$user" ] || { dropped=$((dropped + 1)); continue; }
+    # base64 harus benar-benar bisa di-decode.
+    printf '%s' "$b64" | base64 -d >/dev/null 2>&1 || { dropped=$((dropped + 1)); continue; }
+
+    # Format /etc/cron.d: "<5 field> <user Unix> <command>". Kolom user diisi
+    # RUN_AS (user Unix yang nyata), sedangkan nama user panel ikut sebagai
+    # argumen "run" supaya helper tahu job mana yang harus dijalankan.
+    printf '%s %s %s %s %s %s %s run %s %s\n' \
+      "$f1" "$f2" "$f3" "$f4" "$f5" "$RUN_AS" "$SELF" "$user_field" "$id_field" >> "$tmp_cron"
+    printf '%s %s\n' "$id_field" "$b64" >> "$tmp_jobs"
+    kept=$((kept + 1))
+  done
+
+  # install -o/-g tidak ada di semua mesin (mis. saat diuji di luar server),
+  # jadi ada jalur cadangan pakai cat + chmod.
+  if ! install -m 0644 -o root -g root "$tmp_cron" "$(cronfile "$user")" 2>/dev/null; then
+    cat "$tmp_cron" > "$(cronfile "$user")"
+    chmod 0644 "$(cronfile "$user")" 2>/dev/null || true
+  fi
+  if ! install -m 0644 -o root -g root "$tmp_jobs" "$(jobfile "$user")" 2>/dev/null; then
+    cat "$tmp_jobs" > "$(jobfile "$user")"
+    chmod 0644 "$(jobfile "$user")" 2>/dev/null || true
+  fi
+  rm -f "$tmp_cron" "$tmp_jobs"
+
+  echo "OK $kept job ditulis untuk $user" \
+       "$([ "$dropped" -gt 0 ] && echo "($dropped baris ditolak)" || true)"
+}
+
+# --- run --------------------------------------------------------------------
+do_run() {
+  check_user "${1:-}"
+  check_id "${2:-}"
+  local user="$1" id="$2" b64 cmd log rc
+
+  jf="$(jobfile "$user")"
+  [ -r "$jf" ] || { echo "ERR: daftar job tidak terbaca: $jf" >&2; exit 2; }
+
+  # Cari baris job ini.
+  b64=""
+  while read -r jid jb64; do
+    if [ "$jid" = "$id" ]; then
+      b64="$jb64"
+      break
+    fi
+  done < "$jf"
+
+  if [ -z "$b64" ]; then
+    # Job sudah dihapus atau dinonaktifkan. Ini kondisi normal, bukan error.
+    echo "SKIP job $id tidak ada lagi (nonaktif atau dihapus)"
+    exit 0
+  fi
+
+  cmd="$(printf '%s' "$b64" | base64 -d)"
+  [ -n "$cmd" ] || { echo "ERR: command kosong untuk job $id" >&2; exit 2; }
+
+  mkdir -p "$LOG_DIR" 2>/dev/null || true
+  log="$(logfile "$user" "$id")"
+
+  {
+    echo "===== $(date -u '+%F %T UTC') mulai job #$id ====="
+  } >> "$log" 2>/dev/null || true
+
+  set +e
+  cd /var/www || cd /
+  timeout "$RUN_TIMEOUT" setsid sh -c "$cmd" >> "$log" 2>&1
+  rc=$?
+  set -e
+
+  {
+    echo "----- selesai, exit=$rc ($(date -u '+%F %T UTC'))"
+  } >> "$log" 2>/dev/null || true
+
+  # Potong log kalau membesar.
+  if [ -f "$log" ]; then
+    size=$(stat -c %s "$log" 2>/dev/null || echo 0)
+    if [ "$size" -gt "$LOG_MAX" ]; then
+      tail -c "$LOG_MAX" "$log" > "$log.tmp.$$" && mv "$log.tmp.$$" "$log"
+    fi
+  fi
+
+  echo "OK job $id selesai exit=$rc"
+  exit 0
+}
+
+case "${1:-}" in
+  sync)  shift; do_sync "${1:-}" ;;
+  run)   shift; do_run "${1:-}" "${2:-}" ;;
+  ping)  echo OK ;;
+  *)
+    echo "ERR: subcommand tidak dikenal: '${1:-}'" >&2
+    echo "ERR: yang valid: sync|run|ping" >&2
+    exit 2
+    ;;
+esac

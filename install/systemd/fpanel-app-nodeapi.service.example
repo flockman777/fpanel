@@ -1,0 +1,27 @@
+[Unit]
+Description=FPanel app: nodeapi (node)
+After=network.target
+# StartLimit WAJIB ditulis di [Unit], bukan [Service]. Kalau salah section,
+# systemd menolak memuat unit saat daemon-reload, sehingga app yang tadinya
+# jalan ikut mati tanpa error yang jelas di log panel.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/admin/nodejs.fpanel.my.id/public/app
+Environment=PORT=30000
+Environment=NODE_ENV=production
+Environment=HOME=/var/www/admin
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/node /var/www/admin/nodejs.fpanel.my.id/public/app/server.js
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fpanel-app-nodeapi
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+# FPanel: supervision app runtime (Node.js / Python) lewat systemd.
+# Per app satu unit fpanel-app-<nama>.service. Helper memvalidasi nama app,
+# path, dan port; tidak ada argumen bebas yang masuk ke systemctl.
+www-data ALL=(root) NOPASSWD: /usr/local/sbin/fpanel-app ping, \
+    /usr/local/sbin/fpanel-app list, \
+    /usr/local/sbin/fpanel-app start *, \
+    /usr/local/sbin/fpanel-app stop *, \
+    /usr/local/sbin/fpanel-app restart *, \
+    /usr/local/sbin/fpanel-app status *, \
+    /usr/local/sbin/fpanel-app logs *, \
+    /usr/local/sbin/fpanel-app remove *

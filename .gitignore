@@ -1,0 +1,40 @@
+# ---------------------------------------------------------------------------
+# State runtime — JANGAN pernah di-commit.
+# ---------------------------------------------------------------------------
+# /srv/fpanel/var berisi database SQLite (hash password, sesi, TOTP), log,
+# snapshot backup, dan job. Isinya spesifik server dan bersifat rahasia.
+/var/
+
+# ---------------------------------------------------------------------------
+# Dependensi (dipasang ulang lewat npm/composer, tidak di-commit)
+# ---------------------------------------------------------------------------
+/node_modules/
+/vendor/
+
+# ---------------------------------------------------------------------------
+# Rahasia dan kunci — termasuk cadangan app-key, kredensial offsite, dst.
+# ---------------------------------------------------------------------------
+*.key
+*.pem
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------------------
+# Cadangan & berkas sementara
+# ---------------------------------------------------------------------------
+*.bak
+*.bak-*
+*.bak[0-9]
+*.orig
+*.rej
+*.swp
+*~
+.DS_Store
+/tmp/
+*.log
+
+# ---------------------------------------------------------------------------
+# Output build (dibangun lewat tools/build-*.sh, tidak di-commit)
+# ---------------------------------------------------------------------------
+/assets-src/node_modules/

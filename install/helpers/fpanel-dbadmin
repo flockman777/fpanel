@@ -1,0 +1,137 @@
+#!/bin/bash
+# FPanel helper administrasi MariaDB.
+#
+# Dipanggil www-data lewat sudo (lihat /etc/sudoers.d/fpanel-dbadmin).
+# Kredensial root MariaDB TIDAK pernah disentuh PHP: helper ini yang
+# konek lewat socket root. Semua argumen divalidasi ketat di sini;
+# tidak ada input user yang masuk ke SQL tanpa melewati regex.
+#
+# Bahasa input sengaja bukan SQL mentah. Subcommand dikunci ke daftar tetap
+# supaya www-data tidak bisa menyamar jadi "jalankan SQL bebas".
+set -euo pipefail
+
+MYSQL="mariadb"
+DBPAT='^[a-z0-9_]{1,32}$'
+USRPAT='^[a-z0-9_]{1,16}$'
+HOSTPAT='^[a-z0-9._%-]{1,64}$'
+CSETPAT='^[a-z0-9_]{1,32}$'
+
+# Database sistem / internal: nama-nama ini dilarang walau lolos regex.
+deny_db() {
+  case "$1" in
+    mysql|information_schema|performance_schema|sys|fpanel_*|test)
+      echo "ERR: nama database '$1' dilarang" >&2; exit 1 ;;
+  esac
+}
+
+need_arg() { [ "$1" -ge 1 ] || { echo "ERR: argumen kurang" >&2; exit 2; }; }
+
+run_sql() { $MYSQL --batch --skip-column-names --raw -e "$1"; }
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+
+  ping)
+    run_sql "SELECT 1" >/dev/null
+    echo "OK"
+    ;;
+
+  create-db)
+    need_arg $#; db="$1"; cs="${2:-utf8mb4}"; co="${3:-utf8mb4_unicode_ci}"
+    [[ "$db"   =~ $DBPAT  ]] || { echo "ERR: nama db tidak valid" >&2; exit 2; }
+    [[ "$cs"   =~ $CSETPAT ]] || { echo "ERR: charset tidak valid" >&2; exit 2; }
+    [[ "$co"   =~ $CSETPAT ]] || { echo "ERR: collation tidak valid" >&2; exit 2; }
+    deny_db "$db"
+    if run_sql "SHOW DATABASES LIKE '$db'" | grep -q .; then
+      echo "ERR: database '$db' sudah ada" >&2; exit 1
+    fi
+    run_sql "CREATE DATABASE \`$db\` CHARACTER SET $cs COLLATE $co"
+    echo "OK"
+    ;;
+
+  drop-db)
+    need_arg $#; db="$1"
+    [[ "$db" =~ $DBPAT ]] || { echo "ERR: nama db tidak valid" >&2; exit 2; }
+    deny_db "$db"
+    run_sql "DROP DATABASE IF EXISTS \`$db\`"
+    echo "OK"
+    ;;
+
+  create-user)
+    # password dibaca dari STDIN, bukan argv: argv terlihat di `ps`.
+    need_arg $#; usr="$1"; host="${2:-localhost}"
+    [[ "$usr"  =~ $USRPAT  ]] || { echo "ERR: nama user tidak valid" >&2; exit 2; }
+    [[ "$host" =~ $HOSTPAT ]] || { echo "ERR: host tidak valid" >&2; exit 2; }
+    pass="$(head -n1)"
+    [ ${#pass} -ge 8 ] || { echo "ERR: password terlalu pendek" >&2; exit 2; }
+    # escape untuk literal SQL: backslash dan kutip tunggal didobel.
+    esc="${pass//\\/\\\\}"; esc="${esc//\'/\\\'}"
+    run_sql "DROP USER IF EXISTS '$usr'@'$host';
+             CREATE USER '$usr'@'$host' IDENTIFIED BY '$esc'"
+    echo "OK"
+    ;;
+
+  drop-user)
+    need_arg $#; usr="$1"; host="${2:-localhost}"
+    [[ "$usr"  =~ $USRPAT  ]] || { echo "ERR: nama user tidak valid" >&2; exit 2; }
+    [[ "$host" =~ $HOSTPAT ]] || { echo "ERR: host tidak valid" >&2; exit 2; }
+    run_sql "DROP USER IF EXISTS '$usr'@'$host'"
+    echo "OK"
+    ;;
+
+  grant)
+    need_arg $#; usr="$1"; host="${2:-localhost}"; db="$3"; privs="$4"
+    [[ "$usr"  =~ $USRPAT  ]] || { echo "ERR: nama user tidak valid" >&2; exit 2; }
+    [[ "$host" =~ $HOSTPAT ]] || { echo "ERR: host tidak valid" >&2; exit 2; }
+    [[ "$db"   =~ $DBPAT  ]] || { echo "ERR: nama db tidak valid" >&2; exit 2; }
+    deny_db "$db"
+    # privilege TIDAK boleh bebas: hanya dari daftar putih. Tanpa ini,
+    # argumen "ALL, FILE" bisa menjadi eskalasi ke akses filesistem MariaDB.
+    ok_priv="ALL PRIVILEGES|SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|INDEX|REFERENCES|CREATE TEMPORARY TABLES|LOCK TABLES|CREATE VIEW|SHOW VIEW|TRIGGER|EVENT|EXECUTE"
+    re="^($ok_priv)(,($ok_priv))*$"
+    [[ "$privs" =~ $re ]] || { echo "ERR: privilege tidak dikenal: $privs" >&2; exit 2; }
+    run_sql "GRANT $privs ON \`$db\`.* TO '$usr'@'$host'"
+    echo "OK"
+    ;;
+
+  revoke)
+    need_arg $#; usr="$1"; host="${2:-localhost}"; db="$3"
+    [[ "$usr"  =~ $USRPAT  ]] || { echo "ERR: nama user tidak valid" >&2; exit 2; }
+    [[ "$host" =~ $HOSTPAT ]] || { echo "ERR: host tidak valid" >&2; exit 2; }
+    [[ "$db"   =~ $DBPAT  ]] || { echo "ERR: nama db tidak valid" >&2; exit 2; }
+    deny_db "$db"
+    run_sql "REVOKE ALL PRIVILEGES ON \`$db\`.* FROM '$usr'@'$host'; FLUSH PRIVILEGES"
+    echo "OK"
+    ;;
+
+  has-user)
+    need_arg $#; usr="$1"; host="${2:-localhost}"
+    [[ "$usr"  =~ $USRPAT  ]] || { echo "ERR: nama user tidak valid" >&2; exit 2; }
+    [[ "$host" =~ $HOSTPAT ]] || { echo "ERR: host tidak valid" >&2; exit 2; }
+    if run_sql "SELECT 1 FROM mysql.user WHERE user='$usr' AND host='$host'" | grep -q 1; then
+      echo "1"
+    else
+      echo "0"
+    fi
+    ;;
+
+  size)
+    # Ukuran nyata dalam byte (data + index), untuk memperbarui kolom used_mb.
+    need_arg $#; db="$1"
+    [[ "$db" =~ $DBPAT ]] || { echo "ERR: nama db tidak valid" >&2; exit 2; }
+    deny_db "$db"
+    run_sql "SELECT COALESCE(SUM(data_length+index_length),0)
+               FROM information_schema.TABLES WHERE table_schema='$db'"
+    ;;
+
+  exists)
+    need_arg $#; db="$1"
+    [[ "$db" =~ $DBPAT ]] || { echo "ERR: nama db tidak valid" >&2; exit 2; }
+    if run_sql "SHOW DATABASES LIKE '$db'" | grep -q .; then echo "1"; else echo "0"; fi
+    ;;
+
+  *)
+    echo "ERR: subcommand tidak dikenal: '$cmd'" >&2
+    exit 2
+    ;;
+esac

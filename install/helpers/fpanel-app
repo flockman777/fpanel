@@ -1,0 +1,195 @@
+#!/bin/bash
+# FPanel helper Supervision app runtime (Node.js / Python).
+#
+# Setiap app jadi satu systemd unit: fpanel-app-<nama>.service
+# Dipanggil www-data lewat sudo (lihat /etc/sudoers.d/fpanel-app).
+#
+# Kenapa systemd, bukan pm2:
+#   - native di server ini, tidak butuh daemon tambahan yang harus di-save
+#     supaya hidup lagi setelah reboot;
+#   - logs tersedia lewat journalctl;
+#   - start/stop/status satu perintah yang jelas.
+#
+# Semua argumen divalidasi ketat di sini. Nama unit dirakit dari nama app,
+# jadi nama app WAJIB sudah lolos validasi (^[a-z0-9][a-z0-9_-]{1,30}$)
+# sebelum menyentuh systemd.
+set -euo pipefail
+
+PAT_NAME='^[a-z0-9][a-z0-9_-]{1,30}$'
+PAT_PATH='^[A-Za-z0-9._/-]+$'
+PAT_PORT='^[0-9]{4,5}$'
+PAT_ENTRY='^[A-Za-z0-9._/-]+$'
+PAT_INT='^[0-9]+$'
+UNIT_PREFIX=fpanel-app-
+
+die() { echo "ERR: $*" >&2; exit 2; }
+
+need() { [ -n "${1:-}" ] || die "argumen kurang"; }
+
+check_name() {
+  need "$1"
+  [[ "$1" =~ $PAT_NAME ]] || die "nama app tidak valid: $1"
+}
+
+# Folder app: absolut, tanpa "..".
+check_path() {
+  need "$1"
+  [[ "$1" =~ $PAT_PATH ]] || die "path tidak valid"
+  [[ "$1" == /* ]] || die "path harus absolut"
+  [[ ! "$1" =~ \.\. ]] || die "path tidak boleh berisi .."
+}
+
+# File entry: RELATIF terhadap folder app, tanpa "..". Path relatif di sini
+# benar; check_path tidak boleh dipakai untuk entry karena entry tidak absolut.
+check_entry() {
+  need "$1"
+  [[ "$1" =~ $PAT_ENTRY ]] || die "entry tidak valid"
+  [[ "$1" != /* ]] || die "entry harus relatif terhadap folder app"
+  [[ ! "$1" =~ \.\. ]] || die "entry tidak boleh berisi .."
+}
+
+check_port() {
+  need "$1"
+  [[ "$1" =~ $PAT_PORT ]] || die "port tidak valid"
+  [ "$1" -ge 1024 ] && [ "$1" -le 65535 ] || die "port di luar rentang"
+}
+
+unit_name() { echo "${UNIT_PREFIX}$1.service"; }
+
+write_unit() {
+  local name="$1" kind="$2" root="$3" entry="$4" port="$5" home="$6"
+  local unit; unit="$(unit_name "$name")"
+  local file="/etc/systemd/system/$unit"
+  local workdir exec
+
+  if [ "$kind" = "node" ]; then
+    workdir="$root"
+    exec="/usr/bin/node $root/$entry"
+  else
+    workdir="$root"
+    # Pakai python dari virtualenv app kalau ada; ini yang bikin aplikasi
+    # Python bisa punya dependensi sendiri tanpa menyentuh sistem.
+    local py=""
+    for cand in "$root/.venv/bin/python3" "$root/venv/bin/python3" "/var/www/.venv/bin/python3" "/usr/bin/python3"; do
+      if [ -x "$cand" ]; then py="$cand"; break; fi
+    done
+    [ -n "$py" ] || die "tidak menemukan python untuk app $name"
+    if command -v gunicorn3 >/dev/null 2>&1; then G=gunicorn3; else G=gunicorn; fi
+    exec="$py -m gunicorn --chdir $root --bind 127.0.0.1:$port --workers 2 --timeout 60 wsgi:application"
+  fi
+
+  cat > "$file" <<UNIT
+[Unit]
+Description=FPanel app: $name ($kind)
+After=network.target
+# StartLimit WAJIB ditulis di [Unit], bukan [Service]. Kalau salah section,
+# systemd menolak memuat unit saat daemon-reload, sehingga app yang tadinya
+# jalan ikut mati tanpa error yang jelas di log panel.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=$workdir
+Environment=PORT=$port
+Environment=NODE_ENV=production
+Environment=HOME=$home
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=$exec
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fpanel-app-$name
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  chmod 0644 "$file"
+  systemctl daemon-reload
+  echo "unit ditulis: $unit"
+}
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  start)
+    check_name "${1:-}"; NAME="$1"; shift
+    check_path "${1:-}"; ROOT="$1"; shift
+    check_entry "${1:-}"; ENTRY="$1"; shift
+    check_port "${1:-}"; PORT="$1"; shift
+    KIND="${1:-}"; shift || true
+    HOME_DIR="${1:-/var/www}"
+    [ -d "$ROOT" ] || die "folder app tidak ada: $ROOT"
+    [ -f "$ROOT/$ENTRY" ] || die "entry tidak ada: $ROOT/$ENTRY"
+    case "$KIND" in node|python) ;; *) die "jenis tidak valid: $KIND" ;; esac
+    # Port harus benar-benar belum dipakai app lain.
+    if ss -ltn 2>/dev/null | awk 'NR>1{print $4}' | sed 's/.*://' | grep -qx "$PORT"; then
+      die "port $PORT sedang dipakai proses lain"
+    fi
+    write_unit "$NAME" "$KIND" "$ROOT" "$ENTRY" "$PORT" "$HOME_DIR"
+    systemctl enable "$(unit_name "$NAME")" >/dev/null 2>&1 || true
+    systemctl restart "$(unit_name "$NAME")"
+    sleep 1
+    if systemctl is-active --quiet "$(unit_name "$NAME")"; then
+      echo "OK app $NAME jalan di 127.0.0.1:$PORT"
+    else
+      echo "GAGAL app $NAME tidak mau jalan" >&2
+      journalctl -u "$(unit_name "$NAME")" -n 15 --no-pager 2>/dev/null | sed 's/^/  /' >&2
+      exit 1
+    fi
+    ;;
+
+  stop)
+    check_name "${1:-}"
+    systemctl stop "$(unit_name "$1")" >/dev/null 2>&1 || true
+    echo "OK app $1 dihentikan"
+    ;;
+
+  restart)
+    check_name "${1:-}"
+    systemctl restart "$(unit_name "$1")"
+    echo "OK app $1 direstart"
+    ;;
+
+  status)
+    check_name "${1:-}"
+    U="$(unit_name "$1")"
+    if systemctl is-active --quiet "$U"; then echo "running"; else echo "stopped"; fi
+    ;;
+
+  logs)
+    check_name "${1:-}"
+    N="${2:-60}"
+    [[ "$N" =~ $PAT_INT ]] || die "jumlah baris tidak valid"
+    journalctl -u "$(unit_name "$1")" -n "$N" --no-pager 2>/dev/null || true
+    ;;
+
+  remove)
+    check_name "${1:-}"
+    U="$(unit_name "$1")"
+    systemctl stop "$U" >/dev/null 2>&1 || true
+    systemctl disable "$U" >/dev/null 2>&1 || true
+    rm -f "/etc/systemd/system/$U"
+    systemctl daemon-reload
+    echo "OK app $1 dihapus"
+    ;;
+
+  list)
+    systemctl list-units --type=service --no-legend --no-pager \
+      | awk '$1 ~ /^fpanel-app-/ {print $1, $3, $4}' || true
+    ;;
+
+  ping)
+    echo OK
+    ;;
+
+  *)
+    echo "ERR: subcommand tidak dikenal: '$cmd'" >&2
+    echo "ERR: yang valid: start|stop|restart|status|logs|remove|list|ping" >&2
+    exit 2
+    ;;
+esac

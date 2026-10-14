@@ -1,0 +1,98 @@
+/* Bangun assets/js/icons.js hanya dari ikon yang benar-benar dipakai.
+   Sumber: node_modules/lucide/dist/esm/icons/<nama>.mjs (Lisensi ISC, open source).
+   Mengganti bundel lucide penuh (~444 KB) dengan subset (~5 KB). */
+import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { join, dirname, basename } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const MOCKUP = join(ROOT, "web/mockup");
+const ICON_DIR = join(ROOT, "node_modules/lucide/dist/esm/icons");
+
+/* 1) kumpulkan nama ikon yang terpakai di seluruh mockup */
+const used = new Set();
+const walk = (dir) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) { if (e.name !== "vendor") walk(p); continue; }
+    if (!/\.(php|js|html)$/.test(e.name)) continue;
+    const s = readFileSync(p, "utf8");
+    // PHP di app memakai quote satu juga: 'icon' => 'package'
+    for (const m of s.matchAll(/data-lucide=["']([a-z0-9-]+)["']/g)) used.add(m[1]);
+    for (const m of s.matchAll(/\bicon['"]?\s*=>\s*["']([a-z0-9-]+)["']/g)) used.add(m[1]);
+    for (const m of s.matchAll(/\bicon:\s*["']([a-z0-9-]+)["']/g)) used.add(m[1]);
+  }
+};
+walk(MOCKUP);
+/* Aplikasi nyata juga wajib dipindai. Sebelumnya HANYA mockup yang discan,
+   sehingga ikon yang dipakai di app/views tidak pernah masuk bundel dan
+   tampil kosong di browser. */
+walk(join(ROOT, "app/views"));
+walk(join(ROOT, "app/src"));
+walk(join(ROOT, "app/public/assets/js"));
+const iconsPath = join(MOCKUP, "data/features.json");
+for (const m of readFileSync(iconsPath, "utf8").matchAll(/"icon":\s*"([a-z0-9-]+)"/g)) used.add(m[1]);
+
+/* 2) import modul ikon lucide satu per satu */
+const map = {};
+const missing = [];
+for (const name of [...used].sort()) {
+  const file = join(ICON_DIR, name + ".mjs");
+  if (!existsSync(file)) { missing.push(name); continue; }
+  const mod = await import(pathToFileURL(file).href);
+  map[name] = mod.default;
+}
+
+/* 3) emit bundle kecil: peta ikon + implementasi createIcons */
+const out = `/* DIBUAT OTOMATIS oleh tools/build-icons.mjs - jangan diedit manual.
+   Ikon: Lucide (ISC, https://lucide.dev) - hanya ${Object.keys(map).length} ikon yang dipakai. */
+window.FPANEL_ICON_NAMES = ${JSON.stringify(Object.keys(map))};
+window.FPANEL_ICON_DATA = ${JSON.stringify(map)};
+
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  var DEFAULTS = { xmlns: NS, width: 24, height: 24, viewBox: "0 0 24 24", fill: "none",
+                   stroke: "currentColor", "stroke-width": 2, "stroke-linecap": "round",
+                   "stroke-linejoin": "round" };
+
+  function build(iconNode, attrs) {
+    var svg = document.createElementNS(NS, "svg");
+    Object.keys(DEFAULTS).forEach(function (k) { svg.setAttribute(k, DEFAULTS[k]); });
+    Object.keys(attrs || {}).forEach(function (k) { svg.setAttribute(k, attrs[k]); });
+    iconNode.forEach(function (pair) {
+      var tag = pair[0], a = pair[1] || {};
+      var el = document.createElementNS(NS, tag);
+      Object.keys(a).forEach(function (k) { el.setAttribute(k, a[k]); });
+      svg.appendChild(el);
+    });
+    return svg;
+  }
+
+  function createIcons(root) {
+    var scope = root || document;
+    var nodes = scope.querySelectorAll("[data-lucide]");
+    Array.prototype.forEach.call(nodes, function (el) {
+      var name = el.getAttribute("data-lucide");
+      var data = window.FPANEL_ICON_DATA[name];
+      if (!data) { console.warn("[fpanel] ikon tidak ditemukan:", name); return; }
+      var attrs = {};
+      Array.prototype.forEach.call(el.attributes, function (a) {
+        if (a.name !== "data-lucide") attrs[a.name] = a.value;
+      });
+      el.parentNode.replaceChild(build(data, attrs), el);
+    });
+  }
+
+  window.fpanelIcons = { createIcons: createIcons, has: function (n) { return !!window.FPANEL_ICON_DATA[n]; } };
+  document.addEventListener("DOMContentLoaded", function () { createIcons(); });
+})();
+`;
+/* Tulis ke app nyata DAN mockup. Sebelumnya hanya mockup, jadi ikon yang
+   dipakai app/views tidak pernah sampai ke browser. */
+const dests = [
+  join(ROOT, "app/public/assets/js/icons.js"),
+  join(MOCKUP, "assets/js/icons.js"),
+];
+for (const dest of dests) writeFileSync(dest, out);
+console.log("icons.js ditulis ke", dests.length, "tujuan:", Object.keys(map).length, "ikon,", (out.length / 1024).toFixed(1) + " KB");
+if (missing.length) console.log("  TIDAK ADA di lucide:", missing.join(", "));

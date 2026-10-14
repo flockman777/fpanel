@@ -1,0 +1,5 @@
+# FPanel: backup harian data panel (SQLite, /var/www, database, konfigurasi, sertifikat).
+# Dijalankan sebagai root; helper yang menangani logika dan hak akses.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+17 3 * * * root /usr/local/sbin/fpanel-backup create 7 >>/var/log/fpanel-backup.log 2>&1

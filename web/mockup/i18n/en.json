@@ -1,0 +1,81 @@
+{
+  "app.name": "fpanel",
+  "app.tagline": "Hosting Panel",
+  "common.save": "Save", "common.cancel": "Cancel", "common.delete": "Delete", "common.edit": "Edit",
+  "common.create": "Create", "common.search": "Search", "common.actions": "Actions", "common.back": "Back",
+  "common.loading": "Loading…", "common.noData": "No data yet", "common.home": "Home",
+  "common.language": "Language", "common.theme": "Theme", "common.light": "Light", "common.dark": "Dark",
+  "common.logout": "Log out", "common.profile": "Profile", "common.changePassword": "Change Password",
+  "common.on": "On", "common.off": "Off", "common.status": "Status", "common.name": "Name",
+  "common.type": "Type", "common.date": "Date", "common.add": "Add",
+
+  "search.placeholder": "Search features… try typing “ssl”",
+  "search.empty": "No matching feature.",
+  "search.hint": "Type to search features in the panel",
+
+  "home.greeting": "Hello, {name}",
+  "home.subtitle": "Manage your hosting from one place.",
+  "home.allCategories": "All categories",
+
+  "cat.files": "Files", "cat.databases": "Databases", "cat.domains": "Domains",
+  "cat.email": "Email", "cat.security": "Security", "cat.software": "Software",
+
+  "tile.fileManager": "File Manager", "tile.backup": "Backup", "tile.ftpAccounts": "FTP Accounts",
+  "tile.diskUsage": "Disk Usage", "tile.mariadb": "MariaDB Databases", "tile.dbUsers": "DB Users",
+  "tile.phpmyadmin": "phpMyAdmin", "tile.domains": "Domains", "tile.subdomains": "Subdomains",
+  "tile.redirects": "Redirects", "tile.dnsZone": "DNS Zone", "tile.emailAccounts": "Email Accounts",
+  "tile.forwarders": "Forwarders", "tile.autoresponders": "Autoresponders", "tile.spamFilters": "Spam Filters",
+  "tile.sslTls": "SSL/TLS", "tile.ipBlocker": "IP Blocker", "tile.hotlink": "Hotlink / Directory Privacy",
+  "tile.phpSelector": "PHP Selector", "tile.cronJobs": "Cron Jobs", "tile.terminal": "Terminal",
+  "tile.errorLogs": "Error Logs",
+
+  "side.accountInfo": "Account Information", "side.username": "Username", "side.primaryDomain": "Primary Domain",
+  "side.ip": "Server IP", "side.statistics": "Statistics", "side.disk": "Disk", "side.bandwidth": "Bandwidth",
+  "side.domainsCount": "Domains", "side.databasesCount": "Databases", "side.emailsCount": "Emails",
+  "side.phpVersion": "PHP Version", "side.serverInfo": "Server Information", "side.hostname": "Hostname",
+  "side.os": "Operating System", "side.usedOf": "{used} of {total}", "side.viewAll": "View all",
+
+  "domains.title": "Domains", "domains.desc": "Manage your domains and subdomains.",
+  "domains.create": "Create Domain", "domains.domain": "Domain", "domains.documentRoot": "Document Root",
+  "domains.ip": "IP", "domains.status": "Status", "domains.autoSsl": "Auto SSL", "domains.created": "Created",
+  "domains.empty": "No domains yet. Click “Create Domain” to add one.",
+  "domains.count": "{n} domains",
+
+  "domainCreate.title": "Create Domain", "domainCreate.desc": "The domain must already point (A record) to the server IP before it can be activated.",
+  "domainCreate.field.domain": "Domain", "domainCreate.field.root": "Document Root",
+  "domainCreate.field.autoSsl": "Enable automatic SSL (Let's Encrypt)",
+  "domainCreate.field.email": "Send notification to email",
+  "domainCreate.submit": "Create Domain", "domainCreate.cancel": "Cancel",
+  "domainCreate.hint.domain": "Example: shop.com or app.shop.com",
+  "domainCreate.hint.root": "Leave empty to use the default Document Root.",
+  "domainCreate.preview": "Preview", "domainCreate.secure": "SSL will be active",
+  "domainCreate.httpOnly": "HTTP only for now",
+
+  "email.title": "Email Accounts", "email.desc": "Manage email addresses and mail settings for your domains.",
+  "email.create": "Create Email Account", "email.address": "Address", "email.domain": "Domain",
+  "email.password": "Password", "email.quota": "Quota", "email.usage": "Usage", "email.forwardTo": "Forward To",
+  "email.empty": "No email accounts yet.", "email.statusActive": "Active", "email.statusSuspended": "Suspended",
+
+  "db.title": "MariaDB Databases", "db.desc": "Create databases and database users for your applications.",
+  "db.create": "Create Database", "db.name": "Database Name", "db.users": "Users", "db.size": "Size",
+  "db.tables": "Tables", "db.created": "Created", "db.empty": "No databases yet.", "db.manage": "Manage",
+
+  "dbUser.title": "DB Users", "dbUser.create": "Create DB User", "dbUser.name": "Username",
+  "dbUser.host": "Host", "dbUser.dbs": "Databases", "dbUser.perm": "Privileges", "dbUser.all": "All privileges",
+
+  "admin.dashboard": "Dashboard", "admin.accountFunctions": "Account Functions", "admin.packages": "Packages",
+  "admin.dns": "DNS", "admin.services": "Services", "admin.securityCenter": "Security Center",
+  "admin.serverStatus": "Server Status", "admin.logs": "Logs",
+  "admin.title": "Server Dashboard", "admin.welcome": "Server overview",
+  "admin.load": "Load", "admin.ram": "RAM", "admin.cpu": "CPU", "admin.disk": "Disk",
+  "admin.accounts": "Accounts", "admin.servicesStatus": "Service Status",
+  "admin.uptime": "Uptime", "admin.version": "Version", "admin.refresh": "Refresh",
+  "admin.serviceApache": "Apache", "admin.serviceMaria": "MariaDB", "admin.serviceBind": "BIND",
+  "admin.serviceExim": "Exim", "admin.serviceDovecot": "Dovecot", "admin.servicePhpFpm": "PHP-FPM",
+
+  "login.title": "Sign in to fpanel", "login.subtitle": "Your hosting control panel.",
+  "login.username": "Username", "login.password": "Password", "login.submit": "Sign in",
+  "login.remember": "Remember me", "login.forgot": "Forgot password?",
+  "login.hintDemo": "Demo account: username <b>demo</b> · password <b>demo1234</b> (mockup, no real login).",
+  "login.language": "Language"
+}

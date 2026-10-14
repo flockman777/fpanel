@@ -1,0 +1,19 @@
+{
+  "name": "fpanel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FPanel - panel kontrol hosting. Paket ini hanya untuk tooling build aset (Tailwind, Lucide).",
+  "scripts": {
+    "build": "./tools/build-css.sh && node tools/build-icons.mjs && node tools/build-features.mjs",
+    "build:css": "./tools/build-css.sh",
+    "watch:css": "tailwindcss -c assets-src/tailwind.config.js -i assets-src/app.css -o app/public/assets/css/app.css --watch",
+    "build:icons": "node tools/build-icons.mjs",
+    "build:features": "node tools/build-features.mjs"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  },
+  "dependencies": {
+    "lucide": "^1.48.0"
+  }
+}

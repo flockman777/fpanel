@@ -1,0 +1,39 @@
+#!/bin/bash
+# FPanel: kirim arsip backup terbaru ke bucket offsite, lalu pangkas yang lama.
+#
+# Dipanggil dari cron sebagai root. Root dibutuhkan karena arsip backup ada di
+# direktori 0700 root dan offsite.conf juga hanya root yang bisa baca. Semua
+# logika signature S3 dan enkripsi tetap di aplikasi (bin/fpanel), di sini
+# hanya dicari nama arsip terbaru lalu commercialization.
+set -uo pipefail
+
+BACKUP_DIR=/var/backups/fpanel
+PAT='^fpanel-[0-9]{8}-[0-9]{6}\.tar\.gz$'
+LOG=/var/log/fpanel-offsite.log
+
+log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >> "$LOG"; }
+
+if [ ! -f /etc/fpanel/offsite.conf ]; then
+  log "lewati: /etc/fpanel/offsite.conf belum ada"
+  exit 0
+fi
+
+latest="$(find "$BACKUP_DIR" -maxdepth 1 -name 'fpanel-*.tar.gz' -printf '%f\n' 2>/dev/null \
+  | grep -E "$PAT" | sort | tail -1)"
+if [ -z "$latest" ]; then
+  log "lewati: tidak ada arsip backup untuk dikirim"
+  exit 0
+fi
+
+log "mengirim $latest"
+if out="$(/usr/bin/php /srv/fpanel/bin/fpanel offsite:upload "$latest" 2>&1)"; then
+  log "OK $out"
+else
+  log "GAGAL: $out"
+  exit 1
+fi
+
+# Pangkas offsite setelah upload sukses: kalau upload gagal, arsip lama masih
+# utuh dan tidak ikut hilang karena job berhenti di titik ini.
+/usr/bin/php /srv/fpanel/bin/fpanel offsite:prune 14 >>"$LOG" 2>&1 \
+  && log "pangkas offsite OK" || log "pangkas offsite GAGAL"
