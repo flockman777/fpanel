@@ -315,8 +315,11 @@ ok "cron dipasang di /etc/cron.d/fpanel-*"
 # =============================================================================
 if [ "$WITH_PMA" = "1" ] && [ -d /usr/share/phpmyadmin ]; then
   info "Memasang front controller phpMyAdmin"
-  install -d -o root -g www-data -m 2770 /etc/phpmyadmin 2>/dev/null || true
-  install -d -o root -g www-data -m 2770 /etc/phpmyadmin/conf.d
+  install -d -o root -g www-data -m 2770 /etc/phpmyadmin /etc/phpmyadmin/conf.d
+  # Paket phpmyadmin bisa sudah membuat direktori ini dengan izin lain;
+  # pastikan izinnya sesuai (www-data perlu menulis file token di sini).
+  chown root:www-data /etc/phpmyadmin /etc/phpmyadmin/conf.d
+  chmod 2770 /etc/phpmyadmin /etc/phpmyadmin/conf.d
   install -o root -g root -m 0644 \
     "$SRC/install/phpmyadmin/fpma-index.php" /usr/share/phpmyadmin/fpma-index.php
   ok "phpMyAdmin siap (/pma/<token>)"
