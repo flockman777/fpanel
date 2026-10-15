@@ -237,6 +237,7 @@ rsync -a --delete \
   --exclude 'node_modules/' \
   --exclude '.git/' \
   --exclude 'install/' \
+  --exclude 'config/local.php' \
   --exclude '*.bak' --exclude '*.bak-*' \
   "$SRC/" "$FPANEL_ROOT/"
 

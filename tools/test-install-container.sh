@@ -66,8 +66,8 @@ tar --exclude='./.git' --exclude='./node_modules' --exclude='./var' \
   | docker exec -i "$NAME" tar -xf - -C /src
 ok "repositori tersalin ($(dex 'find /src -type f | wc -l' | tr -d '\r') berkas)"
 
-step "Jalankan installer (--yes)"
-if docker exec "$NAME" bash -lc 'cd /src && bash install/install.sh --yes' \
+step "Jalankan installer (--yes --domain panel.ujicoba.test)"
+if docker exec "$NAME" bash -lc 'cd /src && bash install/install.sh --yes --domain panel.ujicoba.test' \
      > /tmp/fpanel-install.log 2>&1; then
   ok "installer selesai tanpa error"
 else
@@ -109,7 +109,11 @@ eq  "path terlarang ditolak" "403" 'curl -s -o /dev/null -w "%{http_code}" http:
 eq  "install/ ditolak"      "403" 'curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8090/install/install.sh'
 
 has "migrasi ulang aman"    'sudo -u www-data php /srv/fpanel/bin/fpanel db:migrate'
-has "installer bisa diulang" 'cd /src && bash install/install.sh --yes --skip-packages'
+has "installer bisa diulang" 'cd /src && bash install/install.sh --yes --skip-packages --domain panel.ujicoba.test'
+has "local.php selamat"      'grep -q panel.ujicoba.test /srv/fpanel/config/local.php'
+eq  "domain terbaca app"     "https://panel.ujicoba.test" \
+    'sudo -u www-data php -r "require \"/srv/fpanel/app/bootstrap.php\"; echo Fpanel\Support\Config::get(\"app.base_url\",\"\");"'
+eq  "user admin tidak dobel" "1" 'php /srv/fpanel/bin/fpanel user:list | wc -l | tr -d " "'
 
 step "Pemeriksaan dari host (port ${HOST_PORT})"
 CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${HOST_PORT}/api/health" || echo 000)"
