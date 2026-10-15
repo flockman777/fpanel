@@ -11,12 +11,12 @@ StartLimitBurst=5
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/var/www/admin/nodejs.fpanel.my.id/public/app
+WorkingDirectory=/var/www/admin/app.example.tld/public/app
 Environment=PORT=30000
 Environment=NODE_ENV=production
 Environment=HOME=/var/www/admin
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/usr/bin/node /var/www/admin/nodejs.fpanel.my.id/public/app/server.js
+ExecStart=/usr/bin/node /var/www/admin/app.example.tld/public/app/server.js
 Restart=always
 RestartSec=3
 StandardOutput=journal

@@ -13,7 +13,20 @@ final class Config
         self::$root = $root;
         $file = $root . '/config/fpanel.php';
         $cfg  = is_file($file) ? (require $file) : [];
-        self::$data = is_array($cfg) ? $cfg : [];
+        $cfg  = is_array($cfg) ? $cfg : [];
+
+        // Override lokal per-server (domain panel, email, dst). Berkas ini
+        // ditulis installer dan TIDAK ikut ke Git, sehingga nilai bawaan di
+        // repositori tetap generik untuk semua orang.
+        $local = $root . '/config/local.php';
+        if (is_file($local)) {
+            $ov = require $local;
+            if (is_array($ov)) {
+                $cfg = array_replace_recursive($cfg, $ov);
+            }
+        }
+
+        self::$data = $cfg;
     }
 
     public static function root(string $append = ''): string

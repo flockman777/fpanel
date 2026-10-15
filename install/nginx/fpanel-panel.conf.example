@@ -4,7 +4,7 @@
 server {
     listen 80;
     listen [::]:80;
-    server_name fpanel.my.id www.fpanel.my.id;
+    server_name panel.example.tld www.panel.example.tld;
 
     root /var/www/acme/challenges;
     index index.html;
@@ -23,17 +23,17 @@ server {
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name fpanel.my.id www.fpanel.my.id;
+    server_name panel.example.tld www.panel.example.tld;
 
-    ssl_certificate     /etc/letsencrypt/live/fpanel.my.id/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/fpanel.my.id/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/panel.example.tld/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/panel.example.tld/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 1d;
     ssl_stapling on;
     ssl_stapling_verify on;
-    ssl_trusted_certificate /etc/letsencrypt/live/fpanel.my.id/fullchain.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/panel.example.tld/fullchain.pem;
 
     # Header keamanan TIDAK didefinisikan di sini. Aplikasi sudah mengirimnya
     # sendiri, dan dua add_header untuk kunci yang sama menghasilkan header

@@ -49,11 +49,15 @@ final class Panel
         $alerts[] = 'Email belum aktif di shared IP (port 25 diblokir).';
 
         // "Domain utama" untuk user = domain miliknya. Untuk admin yang tidak
-        // punya domain (panel ini melayani fpanel.my.id lewat vhost terpisah,
-        // bukan lewat tabel domains), tampilkan domain panel dari base_url
+        // punya domain (panel melayani dirinya sendiri lewat vhost terpisah,
+        // bukan lewat tabel domains), tampilkan domain panel dari base_url.
+        // Kalau base_url belum diatur (instalasi baru), pakai host permintaan
         // supaya kartu tidak kosong dan '-'.
         $primaryUser = Stats::primaryDomain($uid);
         $panelHost   = (string)(parse_url((string)Config::get('app.base_url', ''), PHP_URL_HOST) ?: '');
+        if ($panelHost === '' && PHP_SAPI !== 'cli') {
+            $panelHost = (string)preg_replace('/[^A-Za-z0-9.\-:]/', '', (string)($_SERVER['HTTP_HOST'] ?? ''));
+        }
         $primaryIsUser = $primaryUser !== null;
         $primary = $primaryIsUser ? $primaryUser : $panelHost;
 

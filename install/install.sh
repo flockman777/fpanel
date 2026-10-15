@@ -142,7 +142,18 @@ if [ "$SKIP_PACKAGES" = "0" ]; then
     certbot python3-certbot-nginx \
     curl ca-certificates gnupg openssl rsync unzip acl \
     build-essential python3-venv python3-pip \
-    acl gawk debconf-utils ssl-cert
+    gawk debconf-utils ssl-cert software-properties-common lsb-release
+
+  # Versi PHP di luar bawaan distro (mis. 7.4/8.4) hanya ada di PPA ondrej.
+  for v in $PHP_VERSIONS; do
+    if ! apt-cache show "php${v}-fpm" >/dev/null 2>&1; then
+      info "PHP $v tidak ada di repo bawaan — menambah PPA ondrej/php"
+      add-apt-repository -y ppa:ondrej/php >/dev/null 2>&1 \
+        || warn "gagal menambah PPA ondrej/php; PHP $v mungkin tidak tersedia"
+      apt-get update -qq || true
+      break
+    fi
+  done
 
   info "Memasang PHP $PHP_VERSIONS"
   for v in $PHP_VERSIONS; do
@@ -150,7 +161,7 @@ if [ "$SKIP_PACKAGES" = "0" ]; then
       "php${v}-cli" "php${v}-fpm" "php${v}-common" "php${v}-opcache" \
       "php${v}-mbstring" "php${v}-curl" "php${v}-sqlite3" "php${v}-zip" \
       "php${v}-gd" "php${v}-intl" "php${v}-bcmath" "php${v}-mysql" \
-      "php${v}-xml" "php${v}-soap" "php${v}-sodium" \
+      "php${v}-xml" "php${v}-soap" \
       || warn "sebagian paket php${v} gagal dipasang (lanjut)"
     # Extension opsional (bisa dimatikan-nyalakan lewat panel).
     apt-get install -y -qq --no-install-recommends \
@@ -327,7 +338,34 @@ else
 fi
 
 # =============================================================================
-#  7. nginx: vhost panel
+#  7. Konfigurasi lokal (domain panel) — TIDAK ikut repositori
+# =============================================================================
+if [ -n "$PANEL_DOMAIN" ] || [ -n "$PANEL_EMAIL" ]; then
+  info "Menulis config/local.php (domain & email panel)"
+  {
+    echo '<?php'
+    echo '// Dibuat otomatis oleh install/install.sh — TIDAK ikut ke Git.'
+    echo '// Nilai di sini menimpa config/fpanel.php untuk server ini saja.'
+    echo 'return ['
+    echo "    'app' => ["
+    echo "        'base_url' => 'https://${PANEL_DOMAIN}',"
+    echo '    ],'
+    if [ -n "$PANEL_EMAIL" ]; then
+      echo "    'letsencrypt' => ["
+      echo "        'email' => '${PANEL_EMAIL}',"
+      echo '    ],'
+    fi
+    echo '];'
+  } > "$FPANEL_ROOT/config/local.php"
+  chown root:www-data "$FPANEL_ROOT/config/local.php"
+  chmod 0640 "$FPANEL_ROOT/config/local.php"
+  ok "config/local.php ditulis"
+else
+  info "Tanpa --domain: panel memakai host permintaan (IP:${PANEL_PORT})"
+fi
+
+# =============================================================================
+#  8. nginx: vhost panel
 # =============================================================================
 info "Memasang konfigurasi nginx panel"
 sed "s#/srv/fpanel#$FPANEL_ROOT#g; s/8090/$PANEL_PORT/g" \
@@ -355,7 +393,7 @@ else
 fi
 
 # =============================================================================
-#  8. Database panel + akun admin
+#  9. Database panel + akun admin
 # =============================================================================
 info "Menjalankan migrasi database panel"
 sudo -u www-data php "$FPANEL_ROOT/bin/fpanel" db:migrate
@@ -381,7 +419,7 @@ else
 fi
 
 # =============================================================================
-#  9. Layanan
+# 10. Layanan
 # =============================================================================
 info "Mengaktifkan layanan"
 systemctl enable --now nginx mariadb redis-server >/dev/null 2>&1 || true
@@ -392,12 +430,12 @@ systemctl restart nginx >/dev/null 2>&1 || true
 ok "layanan aktif"
 
 # =============================================================================
-# 10. Domain + SSL (opsional)
+# 11. Domain + SSL (opsional)
 # =============================================================================
 if [ -n "$PANEL_DOMAIN" ]; then
   info "Menyiapkan vhost domain $PANEL_DOMAIN"
   tmp="$(mktemp)"
-  sed "s#/srv/fpanel#$FPANEL_ROOT#g; s#fpanel\.my\.id#$PANEL_DOMAIN#g" \
+  sed "s#/srv/fpanel#$FPANEL_ROOT#g; s#panel\.example\.tld#$PANEL_DOMAIN#g" \
     "$SRC/install/nginx/fpanel-panel.conf.example" > "$tmp"
   install -o root -g root -m 0644 "$tmp" /etc/nginx/sites-available/fpanel-panel.conf
   rm -f "$tmp"
@@ -422,7 +460,7 @@ if [ -n "$PANEL_DOMAIN" ]; then
 fi
 
 # =============================================================================
-# 11. Ringkasan
+# 12. Ringkasan
 # =============================================================================
 ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo

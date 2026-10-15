@@ -23,17 +23,20 @@ final class LetsEncrypt
     /**
      * Email pendaftaran akun Let's Encrypt.
      *
-     * Diambil dari config `letsencrypt.email` (bisa lewat env
-     * FPANEL_LETSENCRYPT_EMAIL). Kalau kosong, diturunkan dari host
-     * `app.base_url` supaya instalasi baru tidak perlu diatur manual.
+     * Urutan: config `letsencrypt.email` (bisa lewat env
+     * FPANEL_LETSENCRYPT_EMAIL) → host `app.base_url` → domain yang sedang
+     * diminta sertifikatnya. Jadi instalasi baru tetap jalan tanpa diatur.
      */
-    public static function registerEmail(): string
+    public static function registerEmail(string $forDomain = ''): string
     {
         $email = trim((string)\Fpanel\Support\Config::get('letsencrypt.email', ''));
         if ($email !== '') {
             return $email;
         }
         $host = (string)(parse_url((string)\Fpanel\Support\Config::get('app.base_url', ''), PHP_URL_HOST) ?: '');
+        if ($host === '') {
+            $host = $forDomain;
+        }
         return $host !== '' ? 'admin@' . $host : 'admin@localhost';
     }
 
@@ -172,7 +175,7 @@ final class LetsEncrypt
             '--webroot', '--webroot-path', self::WEBROOT,
             '--cert-name', self::certName($domain),
             '--non-interactive', '--agree-tos',
-            '-m', self::registerEmail(),
+            '-m', self::registerEmail($domain),
             '--keep-until-expiring',
         ];
         foreach ($hosts as $h) {

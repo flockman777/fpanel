@@ -119,11 +119,23 @@ lewat variabel lingkungan `FPANEL_*` (lihat `install/env.example`):
 
 | Env | Default | Guna |
 |---|---|---|
-| `FPANEL_BASE_URL` | `https://fpanel.my.id` | URL absolut panel |
+| `FPANEL_BASE_URL` | — (auto) | URL absolut panel |
 | `FPANEL_APP_DEBUG` | `0` | Mode debug |
 | `FPANEL_CF_API_TOKEN` | — | Token Cloudflare (SSL DNS-01) |
 | `FPANEL_CF_ZONE_ID` | — | Zone Cloudflare |
 | `FPANEL_MAIL_RELAY_*` | — | SMTP relay untuk notifikasi |
+
+Nilai khusus server (mis. domain panel & email SSL) ditulis installer ke
+`config/local.php`. Berkas itu **tidak** ikut ke Git, sehingga nilai bawaan di
+repositori tetap generik untuk semua orang:
+
+```php
+<?php
+return [
+    'app'         => ['base_url' => 'https://panel.contoh.tld'],
+    'letsencrypt' => ['email'    => 'admin@contoh.tld'],
+];
+```
 
 Rahasia disimpan **di luar** repositori:
 

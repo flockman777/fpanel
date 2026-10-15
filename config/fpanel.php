@@ -6,8 +6,10 @@ return [
         'debug'    => (getenv('FPANEL_APP_DEBUG') ?: '0') === '1',
         'timezone' => 'Asia/Jakarta',
         // Domain utama panel, dipakai untuk link absolut dan redirect.
+        // Kosong = pakai host dari permintaan (web) / tidak ada (CLI).
+        // Installer mengisinya lewat config/local.php sesuai --domain.
         // Port 8090 hanya fallback saat panel belum punya sertifikat.
-        'base_url' => getenv('FPANEL_BASE_URL') ?: 'https://fpanel.my.id',
+        'base_url' => getenv('FPANEL_BASE_URL') ?: '',
     ],
     'db' => [
         'file' => FPANEL_ROOT . '/var/db/fpanel.sqlite',

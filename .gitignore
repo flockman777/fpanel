@@ -21,6 +21,12 @@
 !.env.example
 
 # ---------------------------------------------------------------------------
+# Konfigurasi lokal per-server (dibuat installer, mis. domain panel).
+# Nilai bawaan di config/fpanel.php tetap generik untuk semua orang.
+# ---------------------------------------------------------------------------
+/config/local.php
+
+# ---------------------------------------------------------------------------
 # Cadangan & berkas sementara
 # ---------------------------------------------------------------------------
 *.bak
