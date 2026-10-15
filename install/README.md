@@ -27,6 +27,22 @@ sudo ./install/install.sh
 
 Installer interaktif akan meminta konfirmasi sebelum mengubah sistem.
 
+## Prasyarat
+
+| Hal | Keterangan |
+|---|---|
+| Sistem | Ubuntu 24.04 (atau Debian turunannya) yang masih didukung |
+| Akses | root (atau `sudo`), plus koneksi internet |
+| Ruang | ±1.5 GB untuk paket + aplikasi |
+| Port | `8090` untuk panel; `80`/`443` hanya bila memakai domain |
+| Domain | opsional — panel tetap jalan lewat `IP:8090` |
+
+Paket yang dibutuhkan installer dipasang otomatis (`sudo`, `sqlite3`,
+`nginx`, MariaDB, Redis, certbot, PHP-FPM, phpMyAdmin, WP-CLI, Node.js).
+Untuk PHP di luar bawaan distro (7.4–8.4 non-default) installer menambahkan
+PPA `ondrej/php` sendiri. Kalau server sudah siap, lewati pemasangan paket
+dengan `--skip-packages` — installer tetap memeriksa perangkat wajibnya.
+
 ### Non-interaktif
 
 ```bash
@@ -48,23 +64,31 @@ sudo ./install/install.sh --yes --admin-pass 'Sandi!Kuat123'
 
 1. **Prasyarat** — cek root, distro, dan keberadaan kode.
 2. **Paket** — nginx, MariaDB, Redis, certbot, PHP-FPM (multi-versi),
-   phpMyAdmin, WP-CLI, Node.js (opsional).
-3. **Direktori** — `/var/www`, `/var/log/nginx/fpanel`,
+   phpMyAdmin, WP-CLI, Node.js (opsional). Setelah itu semua perangkat wajib
+   (`nginx`, `php`, `rsync`, `sudo`, `visudo`, `sqlite3`, `unzip`, `curl`)
+   diperiksa; kalau ada yang kurang installer berhenti dengan pesan jelas.
+3. **Layanan dasar** — nginx, MariaDB, Redis, dan php-fpm diaktifkan lebih
+   dulu supaya kegagalan layanan ketahuan di awal (helper database butuh
+   MariaDB hidup).
+4. **Direktori** — `/var/www`, `/var/log/nginx/fpanel`,
    `/etc/nginx/sites-available/fpanel-domains`, conf.d per versi PHP,
    `/var/lib/fpanel`, `/etc/fpanel`, `/var/backups/fpanel`.
-4. **Aplikasi** — rsync repositori → `/srv/fpanel` (tanpa `var/`,
-   `node_modules/`, `.git/`, `install/`).
-5. **Helper + sudoers + cron + logrotate** — dipasang ke lokasi sistem.
+5. **Aplikasi** — rsync repositori → `/srv/fpanel` (tanpa `var/`,
+   `node_modules/`, `.git/`, `install/`, `config/local.php`).
+6. **Helper + sudoers + cron + logrotate** — dipasang ke lokasi sistem.
    Aturan sudo divalidasi `visudo -c`; kalau tidak valid, semuanya dibatalkan.
-6. **phpMyAdmin** — front controller token `/pma/<token>/`.
-7. **Kunci panel** — `/etc/fpanel/app-key` (32 byte acak, mode 0640).
-8. **nginx** — vhost panel port `8090`, snippet SSL, catch-all.
-9. **Database** — `db:migrate` + akun admin.
-10. **Domain + SSL** (opsional) — vhost 443 + certbot webroot.
-11. **Ringkasan** — URL panel dan kredensial admin.
+7. **phpMyAdmin** — front controller token `/pma/<token>/`.
+8. **Kunci panel** — `/etc/fpanel/app-key` (32 byte acak, mode 0640).
+9. **nginx** — vhost panel port `8090`, snippet SSL, catch-all.
+10. **Database** — `db:migrate` + akun admin.
+11. **Domain + SSL** (opsional) — vhost port 80 dipasang lebih dulu, lalu
+    sertifikat lewat certbot webroot; vhost 443 hanya diaktifkan kalau
+    sertifikatnya benar-benar ada (kalau tidak, `nginx -t` bisa gagal).
+12. **Ringkasan** — URL panel dan kredensial admin.
 
 Installer **aman dijalankan berulang**: konfigurasi ditimpa dengan versi repo,
-tetapi database, `/var/www`, sertifikat, dan kunci panel tidak diubah.
+tetapi database, `/var/www`, sertifikat, kunci panel, dan `config/local.php`
+tidak diubah.
 
 ---
 
@@ -106,3 +130,17 @@ Semua rahasia berada **di luar repositori**:
 | `/srv/fpanel/var/db/fpanel.sqlite` | database panel | `0750 www-data` |
 
 Jangan pernah `git add` berkas-berkas ini — `.gitignore` sudah menutupinya.
+
+---
+
+## Menguji installer tanpa server
+
+```bash
+# butuh Docker (macOS: brew install colima docker && colima start)
+./tools/test-install-container.sh
+```
+
+Skrip itu menjalankan installer di container Ubuntu 24.04 yang bersih (systemd
+aktif), lalu memeriksa layanan, kunci panel, database, sudoers, respons HTTP,
+dan mengulang installer untuk memastikan idempotensi. Tidak menyentuh server
+produksi dan tidak butuh domain/SSL.

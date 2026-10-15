@@ -1,0 +1,24 @@
+# FPanel - vhost domain panel, tahap pertama (port 80 saja)
+#
+# Dipasang installer SEBELUM sertifikat ada, karena vhost 443 yang menunjuk
+# sertifikat belum ada membuat `nginx -t` gagal dan seluruh nginx ikut mati.
+# Setelah certbot berhasil, berkas ini ditimpa versi lengkap 80 + 443
+# (fpanel-panel.conf.example).
+server {
+    listen 80;
+    listen [::]:80;
+    server_name panel.example.tld www.panel.example.tld;
+
+    root /var/www/acme/challenges;
+    index index.html;
+
+    # Tantangan ACME dilayani apa adanya sebelum redirect, kalau tidak
+    # renewal certbot akan ikut dialihkan ke HTTPS dan gagal.
+    location ^~ /.well-known/acme-challenge/ {
+        alias /var/www/acme/challenges/.well-known/acme-challenge/;
+        default_type "text/plain";
+        try_files $uri =404;
+    }
+
+    location / { return 301 https://$host$request_uri; }
+}

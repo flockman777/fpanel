@@ -139,7 +139,7 @@ return [
 
 Rahasia disimpan **di luar** repositori:
 
-- `/etc/fpanel/app-key` — kunci enkripsi (SecretBox), mode `0750 root:www-data`;
+- `/etc/fpanel/app-key` — kunci enkripsi (SecretBox), mode `0640 root:www-data`;
 - `/etc/fpanel/offsite.conf` — kredensial S3 offsite, mode `0600 root`.
 
 ---
@@ -172,6 +172,17 @@ sudo tests/run.sh
 
 Suite uji integrasi menjalankan ±657 assertion yang mencakup alur domain,
 database, SSL, backup, dan keamanan.
+
+Installer bisa diuji di container bersih tanpa menyentuh server:
+
+```bash
+# butuh Docker (di macOS bisa lewat: brew install colima docker && colima start)
+./tools/test-install-container.sh
+```
+
+Skrip itu menjalankan `install/install.sh` di Ubuntu 24.04 + systemd, lalu
+memeriksa layanan, kunci panel, database, aturan sudo, dan respons HTTP —
+termasuk memastikan installer aman dijalankan dua kali.
 
 ---
 

@@ -53,6 +53,10 @@ server {
     location = /favicon.svg { alias /srv/fpanel/app/public/assets/img/favicon.svg; }
     location = /favicon.ico { alias /srv/fpanel/app/public/assets/img/favicon.ico; }
 
+    # ---- tolak berkas internal (harus sebelum location .php$) -------------
+    location ~ /\.                                          { deny all; }
+    location ~* ^/(var|config|bin|tests|install|node_modules|app/src)/ { deny all; }
+
     location / { try_files $uri $uri/ /index.php?$query_string; }
 
         
@@ -99,7 +103,4 @@ server {
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     }
-
-    location ~ /\.                                          { deny all; }
-    location ~* ^/(var|config|bin|tests|node_modules|app/src)/ { deny all; }
 }

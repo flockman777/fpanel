@@ -30,6 +30,7 @@ WITH_NODE="${WITH_NODE:-1}"
 WITH_PMA="${WITH_PMA:-1}"
 ASSUME_YES="${ASSUME_YES:-0}"
 SKIP_PACKAGES="${SKIP_PACKAGES:-0}"
+CERT_OK=0
 
 # Akar repositori = satu direktori di atas install/
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -140,7 +141,7 @@ if [ "$SKIP_PACKAGES" = "0" ]; then
   apt-get install -y -qq --no-install-recommends \
     nginx mariadb-server redis-server \
     certbot python3-certbot-nginx \
-    curl ca-certificates gnupg openssl rsync unzip acl \
+    curl ca-certificates gnupg openssl rsync unzip acl sudo sqlite3 \
     build-essential python3-venv python3-pip \
     gawk debconf-utils ssl-cert software-properties-common lsb-release
 
@@ -197,8 +198,49 @@ else
   info "Melewati pemasangan paket (--skip-packages)"
 fi
 
+# Perangkat wajib. Dicek setelah paket dipasang supaya kegagalan seperti
+# "visudo tidak ada" ketahuan di sini, bukan di tengah jalan.
+MISSING=""
+for bin in nginx php rsync sudo visudo sqlite3 unzip curl; do
+  command -v "$bin" >/dev/null 2>&1 || MISSING="$MISSING $bin"
+done
+for v in $PHP_VERSIONS; do
+  [ -d "/etc/php/$v/fpm" ] || MISSING="$MISSING php${v}-fpm"
+done
+if [ -n "$MISSING" ]; then
+  die "perangkat wajib belum ada:$MISSING — jalankan tanpa --skip-packages atau pasang manual dulu"
+fi
+ok "perangkat wajib lengkap"
+
 # =============================================================================
-#  2. Direktori infrastruktur
+#  2. Layanan dasar
+# =============================================================================
+# Dinyalakan SEBELUM migrasi database: helper fpanel-dbadmin butuh MariaDB
+# hidup, dan kegagalan layanan sebaiknya ketahuan di awal, bukan di akhir.
+info "Menyalakan layanan dasar"
+systemctl enable --now nginx mariadb redis-server >/dev/null 2>&1 || true
+for v in $PHP_VERSIONS; do
+  systemctl enable --now "php${v}-fpm" >/dev/null 2>&1 || true
+done
+
+DOWN=""
+for s in nginx mariadb redis-server; do
+  systemctl is-active --quiet "$s" || DOWN="$DOWN $s"
+done
+for v in $PHP_VERSIONS; do
+  systemctl is-active --quiet "php${v}-fpm" || DOWN="$DOWN php${v}-fpm"
+done
+if [ -n "$DOWN" ]; then
+  warn "layanan belum aktif:$DOWN"
+  for s in $DOWN; do
+    systemctl status "$s" --no-pager -l 2>&1 | tail -3 | sed 's/^/     /'
+  done
+else
+  ok "layanan dasar aktif"
+fi
+
+# =============================================================================
+#  3. Direktori infrastruktur
 # =============================================================================
 info "Menyiapkan direktori"
 
@@ -227,7 +269,7 @@ install -d -o root    -g root     -m 0700 /var/cache/fpanel/wp 2>/dev/null || tr
 ok "direktori siap"
 
 # =============================================================================
-#  3. Salin aplikasi ke /srv/fpanel
+#  4. Salin aplikasi ke /srv/fpanel
 # =============================================================================
 info "Menyalin aplikasi ke $FPANEL_ROOT"
 install -d -o root -g www-data -m 0755 "$FPANEL_ROOT"
@@ -256,7 +298,7 @@ find "$FPANEL_ROOT/app" -type f -exec chmod 0644 {} +
 ok "aplikasi tersalin"
 
 # =============================================================================
-#  4. Helper privileged + sudoers + systemd + cron + logrotate
+#  5. Helper privileged + sudoers + systemd + cron + logrotate
 # =============================================================================
 info "Memasang helper root"
 install -d -o root -g root -m 0755 /usr/local/sbin
@@ -312,7 +354,7 @@ ok "cron dipasang di /etc/cron.d/fpanel-*"
 }
 
 # =============================================================================
-#  5. phpMyAdmin (front controller token)
+#  6. phpMyAdmin (front controller token)
 # =============================================================================
 if [ "$WITH_PMA" = "1" ] && [ -d /usr/share/phpmyadmin ]; then
   info "Memasang front controller phpMyAdmin"
@@ -329,7 +371,7 @@ else
 fi
 
 # =============================================================================
-#  6. Kunci enkripsi panel
+#  7. Kunci enkripsi panel
 # =============================================================================
 if [ ! -s /etc/fpanel/app-key ]; then
   info "Membuat kunci enkripsi panel"
@@ -342,7 +384,7 @@ else
 fi
 
 # =============================================================================
-#  7. Konfigurasi lokal (domain panel) — TIDAK ikut repositori
+#  8. Konfigurasi lokal (domain panel) — TIDAK ikut repositori
 # =============================================================================
 if [ -n "$PANEL_DOMAIN" ] || [ -n "$PANEL_EMAIL" ]; then
   info "Menulis config/local.php (domain & email panel)"
@@ -369,7 +411,7 @@ else
 fi
 
 # =============================================================================
-#  8. nginx: vhost panel
+#  9. nginx: vhost panel
 # =============================================================================
 info "Memasang konfigurasi nginx panel"
 sed "s#/srv/fpanel#$FPANEL_ROOT#g; s/8090/$PANEL_PORT/g" \
@@ -397,7 +439,7 @@ else
 fi
 
 # =============================================================================
-#  9. Database panel + akun admin
+# 10. Database panel + akun admin
 # =============================================================================
 info "Menjalankan migrasi database panel"
 sudo -u www-data php "$FPANEL_ROOT/bin/fpanel" db:migrate
@@ -407,9 +449,16 @@ if [ -z "$ADMIN_PASS" ]; then
   # Penuhi aturan: >=10 karakter, ada huruf besar, huruf kecil, angka.
   ADMIN_PASS="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | cut -c1-16)Aa9"
 fi
-[ -n "$ADMIN_EMAIL" ] || ADMIN_EMAIL="${PANEL_EMAIL:-admin@localhost}"
-if [ "$ADMIN_EMAIL" = "admin@localhost" ]; then
-  warn "email admin default 'admin@localhost' — ganti lewat dasbor nanti"
+[ -n "$ADMIN_EMAIL" ] || ADMIN_EMAIL="${PANEL_EMAIL:-}"
+if [ -z "$ADMIN_EMAIL" ]; then
+  # Panel menolak email tanpa titik (mis. admin@localhost), jadi jangan pakai
+  # itu sebagai default. Domain panel dipakai bila ada.
+  if [ -n "$PANEL_DOMAIN" ]; then
+    ADMIN_EMAIL="admin@$PANEL_DOMAIN"
+  else
+    ADMIN_EMAIL="admin@example.tld"
+    warn "email admin default 'admin@example.tld' — ganti lewat dasbor setelah masuk"
+  fi
 fi
 
 info "Membuat akun admin '$ADMIN_USER'"
@@ -423,44 +472,69 @@ else
 fi
 
 # =============================================================================
-# 10. Layanan
-# =============================================================================
-info "Mengaktifkan layanan"
-systemctl enable --now nginx mariadb redis-server >/dev/null 2>&1 || true
-for v in $PHP_VERSIONS; do
-  systemctl enable --now "php${v}-fpm" >/dev/null 2>&1 || true
-done
-systemctl restart nginx >/dev/null 2>&1 || true
-ok "layanan aktif"
-
-# =============================================================================
 # 11. Domain + SSL (opsional)
 # =============================================================================
 if [ -n "$PANEL_DOMAIN" ]; then
-  info "Menyiapkan vhost domain $PANEL_DOMAIN"
-  tmp="$(mktemp)"
-  sed "s#/srv/fpanel#$FPANEL_ROOT#g; s#panel\.example\.tld#$PANEL_DOMAIN#g" \
-    "$SRC/install/nginx/fpanel-panel.conf.example" > "$tmp"
-  install -o root -g root -m 0644 "$tmp" /etc/nginx/sites-available/fpanel-panel.conf
-  rm -f "$tmp"
-  ln -sf /etc/nginx/sites-available/fpanel-panel.conf /etc/nginx/sites-enabled/fpanel-panel
+  CERT_DIR="/etc/letsencrypt/live/$PANEL_DOMAIN"
+  install -d -o www-data -g www-data -m 0755 /var/www/acme/challenges
 
-  if [ -n "$PANEL_EMAIL" ]; then
-    info "Meminta sertifikat Let's Encrypt untuk $PANEL_DOMAIN"
-    install -d -o www-data -g www-data -m 0755 /var/www/acme/challenges
-    nginx -t >/dev/null 2>&1 && systemctl reload nginx
-    if certbot certonly --webroot -w /var/www/acme/challenges \
-        -d "$PANEL_DOMAIN" -d "www.$PANEL_DOMAIN" \
-        --non-interactive --agree-tos -m "$PANEL_EMAIL" --keep-until-expiring; then
-      nginx -t >/dev/null 2>&1 && systemctl reload nginx
-      ok "sertifikat SSL terpasang"
-    else
-      warn "gagal mendapatkan sertifikat — panel tetap bisa diakses lewat :$PANEL_PORT"
-    fi
+  if [ -f "$CERT_DIR/fullchain.pem" ]; then
+    # Sertifikat sudah ada (dari instalasi sebelumnya atau jalur DNS-01):
+    # jangan menurunkan konfigurasi ke port 80 saja, langsung pakai 443.
+    CERT_OK=1
+    ok "sertifikat $PANEL_DOMAIN sudah ada"
   else
-    warn "tanpa --email, SSL dilewati (A record $PANEL_DOMAIN harus mengarah ke IP ini)"
+    # Tahap 1: vhost port 80 saja dulu. Vhost 443 yang menunjuk sertifikat
+    # belum ada membuat `nginx -t` gagal dan seluruh nginx ikut mati.
+    info "Memasang vhost port 80 untuk $PANEL_DOMAIN"
+    tmp="$(mktemp)"
+    sed "s#panel\.example\.tld#$PANEL_DOMAIN#g" \
+      "$SRC/install/nginx/fpanel-panel-acme.conf.example" > "$tmp"
+    install -o root -g root -m 0644 "$tmp" /etc/nginx/sites-available/fpanel-panel.conf
+    rm -f "$tmp"
+    ln -sf /etc/nginx/sites-available/fpanel-panel.conf /etc/nginx/sites-enabled/fpanel-panel
+
+    if nginx -t >/dev/null 2>&1; then
+      systemctl reload nginx
+      ok "vhost port 80 aktif"
+    else
+      nginx -t || true
+      die "konfigurasi nginx untuk $PANEL_DOMAIN tidak valid"
+    fi
+
+    # Tahap 2: sertifikat (butuh --email dan A record yang sudah mengarah kemari).
+    if [ -n "$PANEL_EMAIL" ]; then
+      info "Meminta sertifikat Let's Encrypt untuk $PANEL_DOMAIN"
+      if certbot certonly --webroot -w /var/www/acme/challenges \
+          -d "$PANEL_DOMAIN" -d "www.$PANEL_DOMAIN" \
+          --non-interactive --agree-tos -m "$PANEL_EMAIL" --keep-until-expiring; then
+        CERT_OK=1
+        ok "sertifikat SSL terpasang"
+      else
+        warn "gagal mendapatkan sertifikat — panel tetap bisa diakses lewat :$PANEL_PORT"
+      fi
+    else
+      warn "tanpa --email, SSL dilewati (A record $PANEL_DOMAIN harus mengarah ke IP ini)"
+    fi
   fi
-  nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
+
+  # Tahap 3: vhost final — 443 kalau sertifikat benar-benar ada.
+  if [ "$CERT_OK" = "1" ]; then
+    info "Mengaktifkan vhost 443 untuk $PANEL_DOMAIN"
+    tmp="$(mktemp)"
+    sed "s#/srv/fpanel#$FPANEL_ROOT#g; s#panel\.example\.tld#$PANEL_DOMAIN#g" \
+      "$SRC/install/nginx/fpanel-panel.conf.example" > "$tmp"
+    install -o root -g root -m 0644 "$tmp" /etc/nginx/sites-available/fpanel-panel.conf
+    rm -f "$tmp"
+    ln -sf /etc/nginx/sites-available/fpanel-panel.conf /etc/nginx/sites-enabled/fpanel-panel
+    if nginx -t >/dev/null 2>&1; then
+      systemctl reload nginx
+      ok "vhost 443 aktif"
+    else
+      nginx -t || true
+      warn "vhost 443 tidak valid — panel tetap lewat :$PANEL_PORT"
+    fi
+  fi
 fi
 
 # =============================================================================
@@ -472,7 +546,13 @@ echo "==========================================================================
 printf '  %sFPanel selesai dipasang%s\n' "$c_grn" "$c_reset"
 echo "============================================================================="
 printf '  Panel        : http://%s:%s\n' "${ip:-<ip-server>}" "$PANEL_PORT"
-[ -n "$PANEL_DOMAIN" ] && printf '  Domain       : https://%s\n' "$PANEL_DOMAIN"
+if [ -n "$PANEL_DOMAIN" ]; then
+  if [ "$CERT_OK" = "1" ]; then
+    printf '  Domain       : https://%s\n' "$PANEL_DOMAIN"
+  else
+    printf '  Domain       : %s (vhost port 80 siap; sertifikat belum ada)\n' "$PANEL_DOMAIN"
+  fi
+fi
 printf '  Kode         : %s\n' "$FPANEL_ROOT"
 printf '  CLI          : php %s/bin/fpanel help\n' "$FPANEL_ROOT"
 echo

@@ -95,6 +95,8 @@ t "php8.3-fpm aktif"   'systemctl is-active --quiet php8.3-fpm'
 t "mariadb aktif"      'systemctl is-active --quiet mariadb'
 t "redis aktif"        'systemctl is-active --quiet redis-server'
 t "socket fpm ada"     '[ -S /run/php/php8.3-fpm.sock ]'
+t "konfig nginx valid" 'nginx -t 2>/dev/null'
+t "vhost 443 belum ada" '! grep -q ssl_certificate /etc/nginx/sites-enabled/fpanel-panel'
 
 # --- berkas aplikasi -------------------------------------------------------
 t "/srv/fpanel ada"    '[ -f /srv/fpanel/app/bootstrap.php ]'
@@ -134,11 +136,12 @@ t "conf.d milik www-data" '[ "$(stat -c %G /etc/phpmyadmin/conf.d)" = "www-data"
 
 # --- HTTP ------------------------------------------------------------------
 h "http://127.0.0.1:8090/api/health" 200 "health 200"
-t "health db=ok"          'curl -s --max-time 10 http://127.0.0.1:8090/api/health | grep -q "db=ok"'
+t "health db=ok"          "curl -s --max-time 10 http://127.0.0.1:8090/api/health | grep -q '\"db\":\"ok\"'"
 h "http://127.0.0.1:8090/login" 200 "halaman login 200"
 h "http://127.0.0.1:8090/config/local.php" 403 "config/ ditolak"
 h "http://127.0.0.1:8090/install/install.sh" 403 "install/ ditolak"
 h "http://127.0.0.1:8090/var/db/fpanel.sqlite" 403 "var/ ditolak"
+h "http://127.0.0.1:8090/bin/fpanel" 403 "bin/ ditolak"
 h "http://127.0.0.1:8090/pma" 404 "pma tanpa token 404"
 
 # --- idempotensi: installer dijalankan ulang -------------------------------
@@ -150,7 +153,7 @@ else
 fi
 t "local.php selamat"      'grep -q panel.ujicoba.test /srv/fpanel/config/local.php'
 e "1" "user tidak dobel"   'php /srv/fpanel/bin/fpanel user:list | wc -l'
-t "panel masih hidup"      'curl -s --max-time 10 http://127.0.0.1:8090/api/health | grep -q "db=ok"'
+t "panel masih hidup"      "curl -s --max-time 10 http://127.0.0.1:8090/api/health | grep -q '\"db\":\"ok\"'"
 
 # --- WP-CLI & Node ---------------------------------------------------------
 t "wp-cli terpasang"       '[ -x /usr/local/bin/wp ]'
