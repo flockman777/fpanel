@@ -22,6 +22,17 @@ final class Housekeeping
     /** Umur minimum file log (hari) sebelum dianggap layak dihapus. */
     public const LOG_MIN_AGE_DAYS = 3;
 
+    /**
+     * Umur minimum (jam) berkas temp upload offsite sebelum dianggap yatim.
+     *
+     * Upload normal selesai dalam hitungan menit; berkas yang masih ada
+     * setelah beberapa jam berarti prosesnya mati di tengah jalan.
+     */
+    public const TEMP_UPLOAD_MIN_AGE_HOURS = 6;
+
+    /** Awalan berkas temp yang dibuat Offsite::encryptFile() lewat tempnam(). */
+    public const TEMP_UPLOAD_PREFIX = 'fp-enc-';
+
     private function __construct(private readonly string $logDir) {}
 
     public static function make(?string $logDir = null): self
@@ -81,8 +92,56 @@ final class Housekeeping
             // pembersihan DB yang sudah berhasil.
             $warnings[] = 'Log nginx dilewati: ' . $e->getMessage();
         }
+        try {
+            $counts['temp_uploads'] = $this->pruneTempUploads($dryRun);
+        } catch (\Throwable $e) {
+            $warnings[] = 'Berkas temp dilewati: ' . $e->getMessage();
+        }
 
         return ['ok' => true, 'counts' => $counts, 'warnings' => $warnings];
+    }
+
+    /**
+     * Berkas sementara enkripsi upload offsite (fp-enc-*) yang ditinggalkan
+     * proses yang berhenti di tengah jalan.
+     *
+     * Jalur normal selalu menghapusnya lewat blok finally di Offsite::upload();
+     * yang bisa tersisa adalah sisa proses yang dihentikan paksa (reboot, OOM,
+     * timeout jaringan). Berkas yang baru dibuat tidak disentuh supaya upload
+     * yang sedang berjalan tidak terganggu, dan nama selain awalan milik panel
+     * tidak pernah dihapus.
+     */
+    public function pruneTempUploads(bool $dryRun = false): int
+    {
+        // TMPDIR bisa berakhiran garis miring; dirapikan supaya jalurnya tidak
+        // menjadi "//fp-enc-*" saat digabung.
+        $dir = rtrim(sys_get_temp_dir(), '/');
+        if ($dir === '') {
+            $dir = '/';
+        }
+        if (!is_dir($dir)) {
+            return 0;
+        }
+        $limit = time() - self::TEMP_UPLOAD_MIN_AGE_HOURS * 3600;
+        $pattern = '/^' . preg_quote(self::TEMP_UPLOAD_PREFIX, '/') . '[A-Za-z0-9]+$/';
+        $n = 0;
+        foreach ((array)glob($dir . '/' . self::TEMP_UPLOAD_PREFIX . '*') as $f) {
+            // Hanya berkas biasa; symlink/berkas bernama mirip tidak disentuh.
+            if (!is_file($f) || is_link($f)) {
+                continue;
+            }
+            if (!preg_match($pattern, basename($f))) {
+                continue;
+            }
+            if ((int)@filemtime($f) > $limit) {
+                continue;
+            }
+            $n++;
+            if (!$dryRun) {
+                @unlink($f);
+            }
+        }
+        return $n;
     }
 
     // ------------------------------------------------------------------ database

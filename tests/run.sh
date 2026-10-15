@@ -1564,6 +1564,15 @@ foreach (['hk-orphan.test.access.log', 'hk-orphan.test.error.log', 'hk-rotated.t
 // Domain nyata harus lognya tetap utuh setelah job jalan.
 file_put_contents($logDir . '/demo.fpanel.my.id.access.log', "asli\n");
 
+// Berkas temp upload offsite: yang yatim (tua) harus dibuang, yang masih baru
+// tidak boleh disentuh karena bisa sedang dipakai upload berjalan, dan nama
+// yang tidak mengikuti pola tempnam panel tidak pernah dihapus.
+file_put_contents('/tmp/fp-enc-hk001', 'yatim');
+file_put_contents('/tmp/fp-enc-hk002', 'baru');
+file_put_contents('/tmp/fp-enc-.jangan-hapus', 'asing');
+@touch('/tmp/fp-enc-hk001', time() - 86400);
+@touch('/tmp/fp-enc-hk002', time() - 60);
+
 // auditDays=1: baris 'ok' yang lebih tua dari 1 hari harus hilang, tapi baris
 // 'denied' (insiden keamanan) bertahan sampai 3x lipat waktunya.
 $r = Housekeeping::make($logDir)->run(false, ['auditDays' => 1, 'attemptDays' => 1]);
@@ -1608,6 +1617,13 @@ eq "log hasil rotasi ikut dibuang" \
   "$([ -f /var/log/nginx/fpanel/hk-rotated.test.access.log.1 ] && echo ada || echo tidak)" "tidak"
 eq "log domain aktif tidak ikut terhapus" \
   "$([ -f /var/log/nginx/fpanel/demo.fpanel.my.id.access.log ] && echo ada || echo tidak)" "ada"
+eq "temp upload yatim dihapus" \
+  "$([ -f /tmp/fp-enc-hk001 ] && echo ada || echo bersih)" "bersih"
+eq "temp upload yang masih baru dipertahankan" \
+  "$([ -f /tmp/fp-enc-hk002 ] && echo ada || echo bersih)" "ada"
+eq "nama di luar pola temp panel tidak disentuh" \
+  "$([ -f /tmp/fp-enc-.jangan-hapus ] && echo ada || echo bersih)" "ada"
+rm -f /tmp/fp-enc-hk002 /tmp/fp-enc-.jangan-hapus
 
 eq "housekeeping idempoten (dijalankan lagi = 0)" \
   "$(php /srv/fpanel/bin/fpanel housekeeping:run 2>&1 | grep -c 'sessions=0')" 1
@@ -1811,7 +1827,12 @@ $out[] = Offsite::decryptFile($src, '/tmp/t-enc-x.bin') ? 'diterima' : 'ditolak'
 // Terpotong di tengah blok.
 file_put_contents('/tmp/t-enc-trunc.enc', substr((string)file_get_contents($tmp), 0, 100));
 $out[] = Offsite::decryptFile('/tmp/t-enc-trunc.enc', '/tmp/t-enc-y.bin') ? 'diterima' : 'ditolak';
+// Nama berkas temp keluaran encryptFile dicatat supaya uji bisa membuktikan
+// berkas itu benar-benar dibersihkan (dulu tertinggal dan menumpuk di /tmp).
+// Penanda memakai garis bawah supaya tidak ikut terhapus oleh glob di bawah.
+file_put_contents('/tmp/t_enc-last.txt', (string)basename((string)$tmp));
 foreach (glob('/tmp/t-enc-*') as $f) { @unlink($f); }
+@unlink($tmp);
 echo implode(' ', $out);
 ENCPHP
 ENC_RAW=$(sudo -u www-data php /tmp/t_enc.php 2>&1)
@@ -1825,6 +1846,9 @@ eq "Offsite: file korup ditolak"         "${6:-}" "ditolak"
 eq "Offsite: file hasil yang korup dibuang" "${7:-}" "bersih"
 eq "Offsite: file asing ditolak"         "${8:-}" "ditolak"
 eq "Offsite: file terpotong ditolak"     "${9:-}" "ditolak"
+eq "Offsite: temp enkripsi tidak ditinggalkan uji" \
+  "$([ -f "/tmp/$(cat /tmp/t_enc-last.txt 2>/dev/null)" ] && echo ada || echo bersih)" "bersih"
+rm -f /tmp/t_enc-last.txt /tmp/t_enc.php
 
 # Kalau offsite belum dikonfigurasi, status harus melapor dengan jelas, bukan error.
 if [ -r "$CONF" ]; then
