@@ -6,26 +6,26 @@ use Fpanel\Database\Connection;
 use Fpanel\Support\Audit;
 
 /**
- * Manajemen domain: validasi kuota -> docroot -> vhost nginx -> reload.
- * Urutan penting: DB LAST, supaya kalau langkah sistem gagal tidak ada baris yatim.
+ * Domain management: quota validation -> docroot -> nginx vhost -> reload.
+ * Order matters: DB LAST, so a failed system step never leaves an orphan row.
  */
 final class DomainManager
 {
     /**
-     * Tipe domain yang valid.
+     * Valid domain types.
      *
-     * Hanya dua: static dan php. Node.js dan Python BUKAN tipe domain --
-     * keduanya aplikasi runtime yang menempel pada domain, dan statusnya
-     * disimpan di tabel runtime_apps lewat kolom domain_id. Domain tidak
-     * pernah "berjenis node"; domain selalu punya docroot, lalu opsional
-     * punya aplikasi yang dilayani nginx lewat proxy.
+     * Only two: static and php. Node.js and Python are NOT domain types --
+     * they are runtime applications attached to a domain, and their status
+     * is stored in the runtime_apps table via the domain_id column. A domain is
+     * never "of type node"; a domain always has a docroot, and optionally
+     * has an application served by nginx through a proxy.
      *
-     * Nilai lama masih mungkin ada di database yang belum dimigrasi;
-     * db:migrate-domain-type yang membersihkannya.
+     * Legacy values may still exist in databases that have not been migrated;
+     * db:migrate-domain-type cleans them up.
      */
     public const TYPES = ['static', 'php'];
 
-    /** Nilai historis yang dipetakan ke php saat migrasi. */
+    /** Legacy values mapped to php during migration. */
     public const LEGACY_TYPES = ['node', 'python', 'binary'];
 
     /** @return array{ok:bool,error?:string,domain?:array} */
@@ -37,7 +37,7 @@ final class DomainManager
             return ['ok' => false, 'error' => $v];
         }
         if (!in_array($type, self::TYPES, true)) {
-            return ['ok' => false, 'error' => 'Tipe domain tidak dikenal: ' . $type];
+            return ['ok' => false, 'error' => 'Unknown domain type: ' . $type];
         }
 
         $installed = Panel::installedPhp();
@@ -46,7 +46,7 @@ final class DomainManager
                 $php = (string)Config::get('php.default', '8.3');
             }
             if (!in_array($php, $installed, true)) {
-                return ['ok' => false, 'error' => "PHP {$php} belum terinstall di server."];
+                return ['ok' => false, 'error' => "PHP {$php} is not installed on the server."];
             }
         } else {
             $php = null;
@@ -59,12 +59,12 @@ final class DomainManager
         );
         $used  = Stats::usedDomains($userId);
         if ($quota > 0 && $used >= $quota) {
-            return ['ok' => false, 'error' => "Kuota domain penuh ({$used}/{$quota})."];
+            return ['ok' => false, 'error' => "Domain quota is full ({$used}/{$quota})."];
         }
 
         $exists = Connection::value('SELECT id FROM domains WHERE name = :n', ['n' => $name]);
         if ($exists !== null) {
-            return ['ok' => false, 'error' => "Domain {$name} sudah dipakai."];
+            return ['ok' => false, 'error' => "Domain {$name} is already in use."];
         }
 
         try {
@@ -78,24 +78,24 @@ final class DomainManager
 
         // 1. docroot
         if (!is_dir($parent) && !@mkdir($parent, 0750, true) && !is_dir($parent)) {
-            return ['ok' => false, 'error' => "Gagal membuat {$parent}."];
+            return ['ok' => false, 'error' => "Failed to create {$parent}."];
         }
         if (!is_dir($docroot) && !@mkdir($docroot, 0755, true) && !is_dir($docroot)) {
-            return ['ok' => false, 'error' => "Gagal membuat docroot {$docroot}."];
+            return ['ok' => false, 'error' => "Failed to create docroot {$docroot}."];
         }
         @chown($parent, 'www-data');
         @chown($docroot, 'www-data');
         @chmod($parent, 0750);
 
-        // 2. placeholder supaya domain langsung merespons. Tipe static TIDAK
-        // boleh dapat .php sama sekali: docroot static tidak punya handler
-        // PHP di vhost, jadi file itu cuma sampah yang membingungkan user
-        // yang mengira situs statisnya bisa menjalankan PHP.
+        // 2. placeholder so the domain responds right away. The static type
+        // must NOT get a .php file at all: a static docroot has no PHP
+        // handler in the vhost, so such a file is just junk that confuses users
+        // who think their static site can run PHP.
         if ($type === 'php') {
             if (!is_file($docroot . '/index.php')) {
-                $phpinfo = "<?php\n// Halaman awal otomatis. Hapus untuk mulai membangun situs.\n"
+                $phpinfo = "<?php\n// Automatic start page. Delete this file to start building your site.\n"
                     . "header('Content-Type: text/plain; charset=utf-8');\n"
-                    . "echo \"FPanel: domain {$name} aktif. \\n\";\n"
+                    . "echo \"FPanel: domain {$name} is active. \\n\";\n"
                     . "echo 'PHP: ' . PHP_VERSION . \"\\n\";\n"
                     . "echo 'Docroot: ' . __DIR__ . \"\\n\";\n";
                 @file_put_contents($docroot . '/index.php', $phpinfo, 0644);
@@ -104,7 +104,7 @@ final class DomainManager
         } else {
             if (!is_file($docroot . '/index.html')) {
                 $esc = htmlspecialchars($name, ENT_QUOTES);
-                $html = "<!doctype html>\n<html lang=\"id\">\n<head>\n"
+                $html = "<!doctype html>\n<html lang=\"en\">\n<head>\n"
                     . "<meta charset=\"utf-8\">\n"
                     . "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
                     . "<title>{$esc}</title>\n"
@@ -114,8 +114,8 @@ final class DomainManager
                     . "h1{font-size:1.25rem;margin:0 0 .5rem}\n"
                     . "p{margin:0;color:#64748b;font-size:.875rem}</style>\n"
                     . "</head>\n<body><div class=\"b\">\n"
-                    . "<h1>{$esc} aktif</h1>\n"
-                    . "<p>Upload berkas lewat File Manager untuk mulai.</p>\n"
+                    . "<h1>{$esc} is active</h1>\n"
+                    . "<p>Upload files through the File Manager to get started.</p>\n"
                     . "</div></body>\n</html>\n";
                 @file_put_contents($docroot . '/index.html', $html, 0644);
                 @chown($docroot . '/index.html', 'www-data');
@@ -124,7 +124,7 @@ final class DomainManager
         if ($type === 'php' && $php !== null) {
             $ini = Vhost::iniDir($name, $php);
             if (!is_dir($ini) && !@mkdir($ini, 0755, true) && !is_dir($ini)) {
-                return ['ok' => false, 'error' => "Gagal membuat dir ekstensi {$ini}."];
+                return ['ok' => false, 'error' => "Failed to create the extension dir {$ini}."];
             }
         }
 
@@ -140,7 +140,7 @@ final class DomainManager
             return ['ok' => false, 'error' => $e->getMessage()];
         }
 
-        // 4. DB (terakhir)
+        // 4. DB (last)
         try {
             $id = Connection::insert('domains', [
                 'user_id'     => $userId,
@@ -154,13 +154,13 @@ final class DomainManager
             ]);
         } catch (\Throwable $e) {
             Vhost::remove($name);
-            return ['ok' => false, 'error' => 'Gagal menyimpan domain: ' . $e->getMessage()];
+            return ['ok' => false, 'error' => 'Failed to save the domain: ' . $e->getMessage()];
         }
 
         Audit::log('domain.create', $userId, $username, 'domain', $id, '', 'ok', ['name' => $name, 'type' => $type, 'php' => $php]);
 
-        // HTTPS opsional. Kegagalan sertifikat TIDAK boleh membatalkan pembuatan
-        // domain: user tetap punya HTTP dan bisa menekan "Terbitkan SSL" lagi.
+        // HTTPS is optional. A certificate failure must NOT abort domain
+        // creation: the user still has HTTP and can click "Issue SSL" again.
         $ssl = null;
         if ($issueTls === true) {
             $ssl = self::issueCertificate($id, $name, $username, $userId);
@@ -175,8 +175,8 @@ final class DomainManager
     }
 
     /**
-     * Terbitkan sertifikat untuk satu domain lalu pasang blok 443-nya.
-     * Kembalikan ['ok'=>bool,'message'=>string]; tidak melempar exception.
+     * Issue a certificate for one domain and then install its 443 block.
+     * Returns ['ok'=>bool,'message'=>string]; does not throw an exception.
      */
     public static function issueCertificate(int $domainId, string $name, string $username, int $userId): array
     {
@@ -184,21 +184,21 @@ final class DomainManager
 
         $res = LetsEncrypt::issue($name);
         if (($res['ok'] ?? false) !== true) {
-            $msg = mb_substr((string)($res['error'] ?? 'Gagal menerbitkan SSL.'), 0, 500);
+            $msg = mb_substr((string)($res['error'] ?? 'Failed to issue SSL.'), 0, 500);
             Connection::update('domains', ['ssl_status' => 'error', 'ssl_error' => $msg], 'id = :i', ['i' => $domainId]);
             Audit::log('domain.ssl.error', $userId, $username, 'domain', $domainId, '', 'error', ['name' => $name, 'error' => $msg]);
             return ['ok' => false, 'message' => $msg];
         }
 
-        // Sertifikat sudah ada, tapi vhost masih serves HTTP saja. Bangun ulang
-        // supaya blok 443 ikut, tanpa ini SSL terpasang tapi tidak terpakai.
+        // The certificate already exists, but the vhost still serves HTTP only.
+        // Rebuild it so the 443 block is included; without this SSL is installed but unused.
         try {
             $d = Connection::one('SELECT * FROM domains WHERE id = :i', ['i' => $domainId]);
             if (is_array($d)) {
                 self::deployWithDerived((string)$d['name'], $username, $d);
             }
         } catch (\Throwable $e) {
-            $msg = mb_substr('Sertifikat terbit tapi vhost gagal: ' . $e->getMessage(), 0, 500);
+            $msg = mb_substr('Certificate issued but the vhost failed: ' . $e->getMessage(), 0, 500);
             Connection::update('domains', ['ssl_status' => 'error', 'ssl_error' => $msg], 'id = :i', ['i' => $domainId]);
             return ['ok' => false, 'message' => $msg];
         }
@@ -211,10 +211,10 @@ final class DomainManager
             ['i' => $domainId]
         );
         Audit::log('domain.ssl.issue', $userId, $username, 'domain', $domainId, '', 'ok', ['name' => $name, 'days' => $days]);
-        return ['ok' => true, 'message' => 'Sertifikat terbit' . ($days !== null ? ', berlaku ' . $days . ' hari.' : '.')];
+        return ['ok' => true, 'message' => 'Certificate issued' . ($days !== null ? ', valid for ' . $days . ' days.' : '.')];
     }
 
-    /** Cabut sertifikat domain. true = bersih, false = masih tertinggal. */
+    /** Revoke the domain certificate. true = clean, false = something left behind. */
     public static function revokeCertificate(int $domainId, string $name): bool
     {
         $ok = LetsEncrypt::revoke($name);
@@ -222,7 +222,7 @@ final class DomainManager
             'domains',
             $ok
                 ? ['ssl_status' => 'none', 'ssl_issued_at' => null, 'ssl_error' => null]
-                : ['ssl_status' => 'error', 'ssl_error' => 'Sertifikat tidak bisa dicabut. Hapus manual: certbot delete --cert-name ' . $name],
+                : ['ssl_status' => 'error', 'ssl_error' => 'The certificate could not be revoked. Delete it manually: certbot delete --cert-name ' . $name],
             'id = :i',
             ['i' => $domainId]
         );
@@ -231,19 +231,19 @@ final class DomainManager
 
 
     /**
-     * Deploy vhost dengan semua info turunan yang dibutuhkan.
+     * Deploy a vhost with all the derived info it needs.
      *
-     * Vhost::deploy() butuh dua hal yang TIDAK ada di baris domains:
-     *   - override php.ini per domain (kolom php_ini)
-     *   - port app runtime, kalau domain-nya bertipe node/python
-     * Diteruskan lewat satu helper supaya tidak ada call site yang lupa,
-     * dan domain type node tidak pernah ter-deploy tanpa proxy ke app-nya.
+     * Vhost::deploy() needs two things that are NOT in the domains row:
+     *   - per-domain php.ini override (php_ini column)
+     *   - runtime app port, if the domain is of type node/python
+     * Both are passed through one helper so no call site forgets them,
+     * and a node-type domain is never deployed without a proxy to its app.
      */
     /**
-     * Bangun ulang vhost dari baris domain yang sudah diambil.
+     * Rebuild the vhost from an already-fetched domain row.
      *
-     * Dipakai dari luar (mis. setelah app runtime dibuat) supaya domain
-     * type node/python ikut ter-proxy ke port app yang baru.
+     * Used from outside (e.g. after a runtime app is created) so a
+     * node/python type domain is proxied to the new app port too.
      */
     public static function rebuildFor(string $username, array $d): void
     {
@@ -260,9 +260,9 @@ final class DomainManager
                 $phpIni = $decoded;
             }
         }
-        // Port diambil dari runtime_apps, bukan dari domains.type. Domain
-        // bertipe php pun boleh punya app Node di subdomainnya, jadi sumber
-        // kebenaran hanya satu: app yang benar-benar ada.
+        // The port comes from runtime_apps, not from domains.type. Even a
+        // php-type domain may have a Node app on its subdomain, so there is
+        // only one source of truth: the app that actually exists.
         $port = AppRuntime::portForDomain((int)$d['id']);
         Vhost::deploy(
             $name,
@@ -282,7 +282,7 @@ final class DomainManager
             ['i' => $domainId, 'u' => $userId]
         );
         if ($d === null) {
-            return ['ok' => false, 'error' => 'Domain tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Domain not found.'];
         }
         $name    = (string)$d['name'];
         $docroot = (string)$d['docroot'];
@@ -295,9 +295,9 @@ final class DomainManager
                 @rmdir($ini);
             }
         }
-        // Hapus isi docroot. File milik root (mis. hasil upload lama) tidak
-        // bisa di-unlink oleh www-data, dan '@' dulu menelan error itu
-        // sehingga delete dilaporkan sukses padahal data tertinggal.
+        // Remove the docroot contents. Root-owned files (e.g. leftover uploads)
+        // cannot be unlinked by www-data, and '@' used to swallow that error
+        // so the delete was reported as successful while data was left behind.
         $parent  = dirname($docroot);
         $leftover = [];
         if (str_starts_with($docroot, Vhost::WWW_ROOT . '/' . $username . '/') && is_dir($parent)) {
@@ -316,15 +316,15 @@ final class DomainManager
             }
         }
 
-        // Cabut sertifikat lebih dulu. Kalau certbot delete gagal (mis. sudah
-        // tidak ada), itu bukan alasan membatalkan penghapusan domain.
+        // Revoke the certificate first. If certbot delete fails (e.g. it is
+        // already gone), that is no reason to abort the domain deletion.
         if (LetsEncrypt::revoke($name) === false) {
-            $leftover[] = 'sertifikat TLS ' . $name;
+            $leftover[] = 'TLS certificate ' . $name;
         }
 
-        // Log nginx ikut dibuang. Kalau tidak, file access/error log domain ini
-        // menggantung di disk sampai housekeeping berikutnya, padahal tidak ada
-        // lagi pemiliknya.
+        // nginx logs are removed as well. Otherwise this domain's access/error log
+        // files linger on disk until the next housekeeping run, even though
+        // nothing owns them anymore.
         $logsRemoved = Housekeeping::make()->purgeDomainLogs($name);
 
         Connection::run('DELETE FROM domains WHERE id = :i', ['i' => $domainId]);
@@ -346,9 +346,9 @@ final class DomainManager
         if ($leftover !== []) {
             return [
                 'ok'    => true,
-                'error' => 'Domain dihapus, tapi ada ' . count($leftover)
-                    . ' berkas yang tidak bisa dihapus (biasanya milik root). '
-                    . 'Hapus manual: ' . implode(', ', array_slice($leftover, 0, 3)),
+                'error' => 'Domain deleted, but ' . count($leftover)
+                    . ' files could not be deleted (usually owned by root). '
+                    . 'Delete them manually: ' . implode(', ', array_slice($leftover, 0, 3)),
             ];
         }
         return ['ok' => true];

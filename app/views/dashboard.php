@@ -13,9 +13,9 @@ $tiles = static function (string $k): string {
   <div class="min-w-0 space-y-4">
     <div>
       <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-2xl">
-        Halo, <?= htmlspecialchars($me['username']) ?>
+        Hello, <?= htmlspecialchars($me['username']) ?>
       </h1>
-      <p class="mt-0.5 text-sm text-slate-500">Kelola hosting Anda dari satu tempat.</p>
+      <p class="mt-0.5 text-sm text-slate-500">Manage your hosting from one place.</p>
     </div>
 
     <?php if ($s['alerts'] !== []): ?>
@@ -32,8 +32,8 @@ $tiles = static function (string $k): string {
     <?php if ($catalog === []): ?>
     <section class="card p-8 text-center">
       <i data-lucide="mouse-pointer-click" class="mx-auto h-8 w-8 text-slate-300"></i>
-      <p class="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">Tidak ada fitur aktif di paket kamu.</p>
-      <p class="mt-1 text-sm text-slate-500">Hubungi admin untuk mengubah paket.</p>
+      <p class="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">No features are enabled in your plan.</p>
+      <p class="mt-1 text-sm text-slate-500">Contact the admin to change your plan.</p>
     </section>
     <?php endif; ?>
 

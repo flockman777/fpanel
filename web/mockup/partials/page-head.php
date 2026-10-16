@@ -1,4 +1,4 @@
-<?php /* Judul halaman + tombol aksi. $titleText, $descText, $btnHref, $btnText, $btnIcon */ ?>
+<?php /* Page title + action button. $titleText, $descText, $btnHref, $btnText, $btnIcon */ ?>
 <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
   <div>
     <h1 class="text-xl font-bold text-slate-900 dark:text-white" data-i18n="<?= htmlspecialchars($titleText) ?>"><?= htmlspecialchars($titleText) ?></h1>

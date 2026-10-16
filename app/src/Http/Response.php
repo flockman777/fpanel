@@ -44,21 +44,22 @@ final class Response
     }
 
     /**
-     * Kirim berkas dari disk sebagai unduhan.
+     * Send a file from disk as a download.
      *
-     * Isi dibaca per blok, bukan sekaligus dimasukkan ke memori: file 500 MB
-     * tidak boleh membuat PHP-FPM kehabisan RAM. Nama file disanitasi supaya
-     * header Content-Disposition tidak bisa diselipkan CR/LF.
+     * The contents are read block by block, not loaded into memory all at
+     * once: a 500 MB file must not make PHP-FPM run out of RAM. The filename
+     * is sanitized so the Content-Disposition header cannot be injected with
+     * CR/LF.
      */
     public static function download(string $path, string $filename, ?string $mime = null): self
     {
         $r = new self();
         $size = @filesize($path);
         if ($size === false) {
-            return self::text('Berkas tidak bisa dibaca.', 404);
+            return self::text('File cannot be read.', 404);
         }
 
-        // Nama header hanya boleh karakter ASCII tanpa newline/quotes.
+        // The header filename may only contain ASCII characters without newline/quotes.
         $safe = preg_replace('/[^A-Za-z0-9._-]/', '_', $filename) ?? 'download';
         $safe = ltrim($safe, '.') ?: 'download';
         if ($safe === '') {
@@ -67,10 +68,10 @@ final class Response
 
         $fh = @fopen($path, 'rb');
         if ($fh === false) {
-            return self::text('Berkas tidak bisa dibaca.', 404);
+            return self::text('File cannot be read.', 404);
         }
-        // Deteksi mime dari isi kalau tidak diberikan, bukan dari ekstensi
-        // yang dik attackers (mis. .php yg sebenarnya HTML).
+        // Detect the mime from the contents when not provided, not from the
+        // extension supplied by attackers (e.g. .php that is really HTML).
         if ($mime === null) {
             $fi = @finfo_open(FILEINFO_MIME_TYPE);
             $mime = $fi !== false ? (@finfo_file($fi, $path) ?: null) : null;
@@ -84,7 +85,7 @@ final class Response
         $r->headers['X-Content-Type-Options'] = 'nosniff';
         $r->headers['Cache-Control'] = 'private, no-store';
 
-        // Simpan handle, bukan isi, supaya send() yang men-stream.
+        // Store the handle, not the contents, so send() does the streaming.
         $r->streamPath = $path;
         $r->streamHandle = $fh;
         return $r;
@@ -108,7 +109,7 @@ final class Response
             }
         }
         if ($this->streamPath !== null && is_resource($this->streamHandle)) {
-            // chunks 256 KB: cukup besar untuk I/O, cukup kecil untuk RAM
+            // 256 KB chunks: big enough for I/O, small enough for RAM
             while (!feof($this->streamHandle)) {
                 $buf = fread($this->streamHandle, 262144);
                 if ($buf === false) {

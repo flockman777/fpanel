@@ -2,7 +2,7 @@
 declare(strict_types=1);
 namespace Fpanel\Support;
 
-/** Konfigurasi: file PHP + override env. Tidak ada dependency luar. */
+/** Configuration: PHP file + env overrides. No external dependencies. */
 final class Config
 {
     private static array $data = [];
@@ -15,9 +15,9 @@ final class Config
         $cfg  = is_file($file) ? (require $file) : [];
         $cfg  = is_array($cfg) ? $cfg : [];
 
-        // Override lokal per-server (domain panel, email, dst). Berkas ini
-        // ditulis installer dan TIDAK ikut ke Git, sehingga nilai bawaan di
-        // repositori tetap generik untuk semua orang.
+        // Per-server local overrides (panel domain, email, etc). This file
+        // is written by the installer and is NOT committed to Git, so the
+        // defaults in the repository stay generic for everyone.
         $local = $root . '/config/local.php';
         if (is_file($local)) {
             $ov = require $local;

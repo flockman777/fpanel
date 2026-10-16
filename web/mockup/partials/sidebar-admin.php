@@ -1,4 +1,4 @@
-<?php /* Sidebar kiri ala WHM (navy #0B1B34): menu bertingkat + kotak pencarian (dummy) */
+<?php /* Left WHM-style sidebar (navy #0B1B34): nested menu + search box (dummy) */
 $q = $q ?? '';
 $adminMenu = [
   ['key' => 'admin.accountFunctions', 'icon' => 'users',      'items' => ['Create Account','List Accounts','Suspend Account','Change Package']],

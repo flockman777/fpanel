@@ -1,11 +1,11 @@
 <?php
 /**
- * File Manager: browse, upload, edit teks, rename, hapus.
+ * File Manager: browse, upload, edit text, rename, delete.
  *
  * @var string $csrf
  * @var array $me, array $s
- * @var array $list  hasil FileManager::listing()
- * @var array|null $edit  hasil FileManager::readText() atau null
+ * @var array $list  result of FileManager::listing()
+ * @var array|null $edit  result of FileManager::readText() or null
  * @var string $used
  * @var string|null $error, string|null $ok
  */
@@ -19,8 +19,8 @@ $cur   = (string)($list['path'] ?? '.');
 $okOk  = !empty($list['ok']);
 $sz    = static fn (int $b): string => FileManager::humanSize($b);
 
-// Hanya ekstensi teks/bebas-yang-aman boleh dibuka di editor. File .php
-// ditolak FileManager::readText(), jadi jangan tawarkan edit untuknya.
+// Only text (and otherwise safe) extensions may be opened in the editor. .php
+// files are rejected by FileManager::readText(), so do not offer editing for them.
 $TEXT_EXT = ['txt','md','markdown','json','xml','yml','yaml','csv','log','ini','conf','cfg',
              'htaccess','html','htm','css','js','svg','map','sql','sh','env','gitignore'];
 $isText = static function (string $name) use ($TEXT_EXT): bool {
@@ -44,9 +44,9 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
       </span>
       <div class="min-w-0 flex-1">
         <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-2xl">File Manager</h1>
-        <p class="mt-0.5 text-sm text-slate-500">Kelola berkas situs Anda. Dipakai <strong><?= $e($used) ?></strong>.</p>
+        <p class="mt-0.5 text-sm text-slate-500">Manage your site files. Using <strong><?= $e($used) ?></strong>.</p>
       </div>
-      <a href="/files" class="btn-icon" title="Muat ulang"><i data-lucide="refresh-cw" class="h-4 w-4"></i></a>
+      <a href="/files" class="btn-icon" title="Reload"><i data-lucide="refresh-cw" class="h-4 w-4"></i></a>
     </div>
 
     <?php if (($error ?? '') !== ''): ?>
@@ -65,8 +65,8 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
     <?php if (!$okOk): ?>
       <section class="card p-10 text-center">
         <i data-lucide="folder-x" class="mx-auto h-8 w-8 text-slate-300"></i>
-        <p class="mt-3 text-sm text-slate-500"><?= $e((string)($list['error'] ?? 'Folder tidak dapat dibuka.')) ?></p>
-        <a href="/files" class="btn-primary mt-4 inline-flex">Kembali ke Home</a>
+        <p class="mt-3 text-sm text-slate-500"><?= $e((string)($list['error'] ?? 'Unable to open the folder.')) ?></p>
+        <a href="/files" class="btn-primary mt-4 inline-flex">Back to Home</a>
       </section>
     <?php else: ?>
 
@@ -88,21 +88,21 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
     <section class="card p-3">
       <div class="flex flex-wrap items-center gap-2">
         <?php if (!empty($list['parent']) || $cur !== '.'): ?>
-          <a href="/files?path=<?= $q((string)$list['parent']) ?>" class="btn-icon" title="Naik satu level"><i data-lucide="corner-left-up" class="h-4 w-4"></i></a>
+          <a href="/files?path=<?= $q((string)$list['parent']) ?>" class="btn-icon" title="Up one level"><i data-lucide="corner-left-up" class="h-4 w-4"></i></a>
         <?php endif; ?>
 
         <form method="post" action="/files/mkdir" class="flex items-center gap-1.5">
           <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
           <input type="hidden" name="path" value="<?= $e($cur === '.' ? '' : $cur) ?>">
-          <input name="name" placeholder="nama-folder" class="input h-9 w-36 text-sm" required>
-          <button class="btn-primary h-9 px-3 text-sm" title="Buat folder"><i data-lucide="folder-plus" class="h-4 w-4"></i><span class="hidden sm:inline">Folder</span></button>
+          <input name="name" placeholder="folder-name" class="input h-9 w-36 text-sm" required>
+          <button class="btn-primary h-9 px-3 text-sm" title="Create folder"><i data-lucide="folder-plus" class="h-4 w-4"></i><span class="hidden sm:inline">Folder</span></button>
         </form>
 
         <form method="post" action="/files/newfile" class="flex items-center gap-1.5">
           <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
           <input type="hidden" name="path" value="<?= $e($cur === '.' ? '' : $cur) ?>">
-          <input name="name" placeholder="nama.txt" class="input h-9 w-36 text-sm" required>
-          <button class="btn-primary h-9 px-3 text-sm" title="Buat file teks"><i data-lucide="file-plus" class="h-4 w-4"></i><span class="hidden sm:inline">File</span></button>
+          <input name="name" placeholder="name.txt" class="input h-9 w-36 text-sm" required>
+          <button class="btn-primary h-9 px-3 text-sm" title="Create text file"><i data-lucide="file-plus" class="h-4 w-4"></i><span class="hidden sm:inline">File</span></button>
         </form>
 
         <form method="post" action="/files/upload" enctype="multipart/form-data" class="flex items-center gap-1.5">
@@ -115,27 +115,27 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
         <form method="post" action="/files/zip" class="flex items-center gap-1.5">
           <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
           <input type="hidden" name="path" value="<?= $e($cur === '.' ? '' : $cur) ?>">
-          <input name="name" placeholder="nama-item" class="input h-9 w-36 text-sm" required>
-          <button class="btn-primary h-9 px-3 text-sm" title="Kompres jadi .zip (asli tetap ada)"><i data-lucide="file-archive" class="h-4 w-4"></i><span class="hidden sm:inline">Kompres</span></button>
+          <input name="name" placeholder="item-name" class="input h-9 w-36 text-sm" required>
+          <button class="btn-primary h-9 px-3 text-sm" title="Compress into .zip (originals kept)"><i data-lucide="file-archive" class="h-4 w-4"></i><span class="hidden sm:inline">Kompres</span></button>
         </form>
 
         <form method="post" action="/files/unzip" class="flex items-center gap-1.5">
           <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
           <input type="hidden" name="path" value="<?= $e($cur === '.' ? '' : $cur) ?>">
-          <input name="name" placeholder="arsip.zip" class="input h-9 w-36 text-sm" required>
-          <input name="to" placeholder="folder-tujuan" class="input h-9 w-36 text-sm">
-          <button class="btn-primary h-9 px-3 text-sm" title="Ekstrak .zip ke folder tujuan"><i data-lucide="folder-input" class="h-4 w-4"></i><span class="hidden sm:inline">Ekstrak</span></button>
+          <input name="name" placeholder="archive.zip" class="input h-9 w-36 text-sm" required>
+          <input name="to" placeholder="target-folder" class="input h-9 w-36 text-sm">
+          <button class="btn-primary h-9 px-3 text-sm" title="Extract the .zip into the target folder"><i data-lucide="folder-input" class="h-4 w-4"></i><span class="hidden sm:inline">Ekstrak</span></button>
         </form>
       </div>
     </section>
 
     <?php if (is_array($edit)): ?>
-    <!-- Editor teks -->
+    <!-- Text editor -->
     <section class="card overflow-hidden">
       <header class="flex items-center gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
         <i data-lucide="file-code-2" class="h-4 w-4 text-brand-600"></i>
         <h2 class="text-[15px] font-semibold text-slate-800 dark:text-slate-100">Edit: <?= $e($edit['name']) ?></h2>
-        <a href="/files?path=<?= $q($cur === '.' ? '' : $cur) ?>" class="btn-icon ml-auto" title="Tutup editor"><i data-lucide="x" class="h-4 w-4"></i></a>
+        <a href="/files?path=<?= $q($cur === '.' ? '' : $cur) ?>" class="btn-icon ml-auto" title="Close editor"><i data-lucide="x" class="h-4 w-4"></i></a>
       </header>
       <form method="post" action="/files/save" class="p-4">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
@@ -143,13 +143,13 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
         <input type="hidden" name="name" value="<?= $e($edit['name']) ?>">
         <textarea name="body" rows="20" spellcheck="false" class="input w-full font-mono text-[13px] leading-relaxed"><?= $e($edit['body']) ?></textarea>
         <div class="mt-3 flex justify-end">
-          <button class="btn-primary"><i data-lucide="save" class="h-4 w-4"></i> Simpan</button>
+          <button class="btn-primary"><i data-lucide="save" class="h-4 w-4"></i> Save</button>
         </div>
       </form>
     </section>
     <?php endif; ?>
 
-    <!-- Daftar isi -->
+    <!-- Directory listing -->
     <section class="card overflow-hidden">
       <form method="post" action="/files/delete" id="delForm">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
@@ -159,16 +159,16 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
           <thead class="border-b border-slate-100 bg-slate-50/70 text-left text-[13px] text-slate-500 dark:border-slate-800 dark:bg-slate-800/40">
             <tr>
               <th class="w-10 px-3 py-2.5"></th>
-              <th class="px-3 py-2.5 font-medium">Nama</th>
-              <th class="hidden w-24 px-3 py-2.5 font-medium sm:table-cell">Ukuran</th>
-              <th class="hidden w-20 px-3 py-2.5 font-medium lg:table-cell">Izin</th>
-              <th class="hidden w-40 px-3 py-2.5 font-medium md:table-cell">Diubah</th>
-              <th class="w-40 px-3 py-2.5 text-right font-medium">Aksi</th>
+              <th class="px-3 py-2.5 font-medium">Name</th>
+              <th class="hidden w-24 px-3 py-2.5 font-medium sm:table-cell">Size</th>
+              <th class="hidden w-20 px-3 py-2.5 font-medium lg:table-cell">Permissions</th>
+              <th class="hidden w-40 px-3 py-2.5 font-medium md:table-cell">Modified</th>
+              <th class="w-40 px-3 py-2.5 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
             <?php if ($dirs === [] && $files === []): ?>
-              <tr><td colspan="6" class="px-3 py-10 text-center text-slate-500">Folder ini kosong.</td></tr>
+              <tr><td colspan="6" class="px-3 py-10 text-center text-slate-500">This folder is empty.</td></tr>
             <?php endif; ?>
 
             <?php
@@ -192,7 +192,7 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
                         <i data-lucide="link" class="h-3.5 w-3.5 shrink-0 text-sky-500" title="Symlink"></i>
                       <?php endif; ?>
                       <?php if (!empty($row['writable'])): ?>
-                        <i data-lucide="lock-open" class="h-3.5 w-3.5 shrink-0 text-emerald-500" title="Bisa ditulis"></i>
+                        <i data-lucide="lock-open" class="h-3.5 w-3.5 shrink-0 text-emerald-500" title="Writable"></i>
                       <?php endif; ?>
                     <?php endif; ?>
                   </div>
@@ -208,35 +208,35 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
                     <?php endif; ?>
                     <?php if (!$isDir): ?>
                       <a href="/files/download?path=<?= $q($cur === '.' ? '' : $cur) ?>&name=<?= $q($row['name']) ?>"
-                         class="btn-icon" title="Unduh"><i data-lucide="download" class="h-3.5 w-3.5"></i></a>
+                         class="btn-icon" title="Download"><i data-lucide="download" class="h-3.5 w-3.5"></i></a>
                     <?php endif; ?>
                     <button type="submit" formaction="/files/chmod" name="name" value="<?= $e($row['name']) ?>"
                             formmethod="post" formnovalidate
-                            onclick="this.form.mode.value=prompt('Permission oktal untuk <?= $e(addslashes($row['name'])) ?> (mis. 644)','<?= $e((string)($row['mode'] ?? '0644')) ?>');return !!this.form.mode.value"
-                            class="btn-icon" title="Ubah permission">
+                            onclick="this.form.mode.value=prompt('Octal permission for <?= $e(addslashes($row['name'])) ?> (mis. 644)','<?= $e((string)($row['mode'] ?? '0644')) ?>');return !!this.form.mode.value"
+                            class="btn-icon" title="Change permissions">
                       <input type="hidden" name="mode"><i data-lucide="shield-half" class="h-3.5 w-3.5"></i>
                     </button>
                     <button type="submit" formaction="/files/copy" name="name" value="<?= $e($row['name']) ?>"
                             formmethod="post" formnovalidate
-                            onclick="this.form.to.value=prompt('Salin ke folder mana? (Kosongkan untuk folder ini)','');return true"
-                            class="btn-icon" title="Salin ke folder lain">
+                            onclick="this.form.to.value=prompt('Copy to which folder? (leave empty for this folder)','');return true"
+                            class="btn-icon" title="Copy to another folder">
                       <input type="hidden" name="to"><i data-lucide="copy" class="h-3.5 w-3.5"></i>
                     </button>
                     <button type="submit" formaction="/files/move" name="name" value="<?= $e($row['name']) ?>"
                             formmethod="post" formnovalidate
-                            onclick="this.form.to.value=prompt('Pindahkan ke folder mana? (Kosongkan untuk folder ini)','');return true"
-                            class="btn-icon" title="Pindahkan ke folder lain">
+                            onclick="this.form.to.value=prompt('Move to which folder? (leave empty for this folder)','');return true"
+                            class="btn-icon" title="Move to another folder">
                       <input type="hidden" name="to"><i data-lucide="folder-symlink" class="h-3.5 w-3.5"></i>
                     </button>
                     <button type="submit" formaction="/files/rename" name="from" value="<?= $e($row['name']) ?>"
                             formmethod="post" formnovalidate
-                            onclick="this.form.to.value=prompt('Nama baru untuk <?= $e(addslashes($row['name'])) ?>');return !!this.form.to.value"
-                            class="btn-icon" title="Ubah nama">
+                            onclick="this.form.to.value=prompt('New name for <?= $e(addslashes($row['name'])) ?>');return !!this.form.to.value"
+                            class="btn-icon" title="Rename">
                       <input type="hidden" name="to"><i data-lucide="file-cog" class="h-3.5 w-3.5"></i>
                     </button>
                     <button type="submit" name="name" value="<?= $e($row['name']) ?>" formmethod="post"
-                            onclick="return confirm('Hapus <?= $e(addslashes($row['name'])) ?>?')"
-                            class="btn-icon text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10" title="Hapus">
+                            onclick="return confirm('Delete <?= $e(addslashes($row['name'])) ?>?')"
+                            class="btn-icon text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10" title="Delete">
                       <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
                     </button>
                   </div>
@@ -258,8 +258,8 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
           <div class="flex items-center justify-between gap-2 border-t border-slate-100 px-3 py-2.5 dark:border-slate-800">
             <p class="text-xs text-slate-500"><?= count($dirs) ?> folder, <?= count($files) ?> file</p>
             <button type="submit" class="btn-primary h-8 px-3 text-xs"
-                    onclick="return confirm('Hapus semua item terpilih?')">
-              <i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Hapus terpilih
+                    onclick="return confirm('Delete all selected items?')">
+              <i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Delete selected
             </button>
           </div>
         <?php endif; ?>
@@ -267,8 +267,8 @@ $isText = static function (string $name) use ($TEXT_EXT): bool {
     </section>
 
     <p class="text-xs text-slate-400">
-      Upload .php diblokir demi keamanan. Berkas &gt; 64 MB ditolak.
-      Kompres membuat <code>.zip</code> baru dan <strong>tidak</strong> menghapus aslinya.
+      Uploading .php is blocked for safety. Files &gt; 64 MB are rejected.
+      Compress creates a new <code>.zip</code> and <strong>does not</strong> delete the originals.
     </p>
     <?php endif; ?>
   </div>

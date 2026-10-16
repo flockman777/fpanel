@@ -6,22 +6,22 @@ namespace Fpanel\Service;
 use Fpanel\Database\Connection;
 
 /**
- * Pemakaian resource per domain: disk, bandwidth, jumlah request, dan error.
+ * Resource usage per domain: disk, bandwidth, request count, and errors.
  *
- * Angka diambil dari sumber nyata: `du` untuk disk dan access log nginx untuk
- * bandwidth. Access log dirotasi harian (logrotate compress), jadi file
- * hasil rotasi juga ikut dihitung agar angkanya tidak reset setiap hari.
+ * Numbers come from real sources: `du` for disk and the nginx access log
+ * for bandwidth. The access log rotates daily (logrotate compress), so
+ * rotated files count too, keeping the numbers from resetting every day.
  *
- * Penghitungan ini relatif berat, jadi dijalankan dari cron per jam lewat CLI
- * (bin/fpanel usage:collect) dan hasilnya disimpan di tabel domain_usage. Halaman
- * cukup membaca tabel, tidak menjalankan `du`/awk per visitor.
+ * This computation is relatively heavy, so it runs hourly from cron through
+ * the CLI (bin/fpanel usage:collect) and the result lands in the domain_usage
+ * table. The page only reads the table; it never runs `du`/awk per visitor.
  */
 final class Usage
 {
-    /** Logrotate menyimpan 14 hari; pakai 45 supaya aman kalau config berubah. */
+    /** Logrotate keeps 14 days; 45 is used for safety when the config changes. */
     private const MAX_LOG_AGE_DAYS = 45;
 
-    /** Berapa banyak path teratas yang disimpan per domain. */
+    /** How many top paths are stored per domain. */
     private const TOP_PATHS = 5;
 
     public const LOG_DIR = '/var/log/nginx/fpanel';
@@ -29,7 +29,7 @@ final class Usage
     // ------------------------------------------------------------------ public
 
     /**
-     * Kumpulkan semua statistik domain lalu simpan ke tabel.
+     * Collect every domain's statistics and store them in the table.
      *
      * @return array{ok: bool, error: string|null, message: string|null, domains?: int}
      */
@@ -79,7 +79,7 @@ final class Usage
             $touched++;
         }
 
-        // Domain yang dihapus tidak boleh meninggalkan baris usage yatim.
+        // A deleted domain must not leave an orphaned usage row behind.
         $ids = array_map(static fn (array $d): int => (int)$d['id'], $domains);
         if ($ids === []) {
             Connection::run('DELETE FROM domain_usage');
@@ -90,11 +90,11 @@ final class Usage
 
         self::refreshUserTotals();
 
-        return ['ok' => true, 'error' => null, 'message' => "Statistik $touched domain dikumpulkan.", 'domains' => $touched];
+        return ['ok' => true, 'error' => null, 'message' => "Statistics collected for $touched domain(s).", 'domains' => $touched];
     }
 
     /**
-     * Daftar pemakaian per domain milik satu user.
+     * Usage listing per domain for a single user.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -123,7 +123,7 @@ final class Usage
     }
 
     /**
-     * Total pemakaian + kuota paket user.
+     * Total usage + the user's plan quota.
      *
      * @return array<string, int>
      */
@@ -161,7 +161,7 @@ final class Usage
         ];
     }
 
-    /** Waktu pengukuran terakhir (UTC), atau null kalau belum pernah. */
+    /** Time of the last measurement (UTC), or null when there is none. */
     public static function lastCollected(): ?string
     {
         $v = Connection::value('SELECT MAX(measured_at) FROM domain_usage');
@@ -170,7 +170,7 @@ final class Usage
 
     // ------------------------------------------------------------------ helpers
 
-    /** Ukuran docroot dalam byte. Path diambil dari database, bukan dari user. */
+    /** Docroot size in bytes. The path comes from the database, not from the user. */
     public static function diskBytes(string $docroot): int
     {
         if ($docroot === '' || str_contains($docroot, '..')) {
@@ -184,10 +184,10 @@ final class Usage
     }
 
     /**
-     * Bandwidth, jumlah request, dan error dari access log nginx.
+     * Bandwidth, request count, and errors from the nginx access log.
      *
-     * File hasil rotasi (`.1`, `.1.gz`) ikut dihitung, kalau tidak bandwidth
-     * akan terlihat turun setiap kali log dirotasi.
+     * Rotated files (`.1`, `.1.gz`) count too, otherwise bandwidth would
+     * appear to drop every time the log rotates.
      *
      * @return array{bandwidth: int, requests: int, e4: int, e5: int,
      *               updated: string|null, top_paths: array<int, array{path: string, bytes: int}>}
@@ -197,8 +197,8 @@ final class Usage
         $out = ['bandwidth' => 0, 'requests' => 0, 'e4' => 0, 'e5' => 0,
                 'updated' => null, 'top_paths' => []];
 
-        // Nama domain dipakai untuk menyusun nama file; karakter yang bisa
-        // menembus path dicegah di sini.
+        // The domain name is used to build the file name; characters that
+        // could break out of the path are blocked here.
         if (preg_match('/^[a-z0-9.-]{1,190}$/i', $domain) !== 1) {
             return $out;
         }
@@ -222,12 +222,12 @@ final class Usage
         foreach ($files as $f) {
             $mtime = (int)@filemtime($f);
             if ($mtime < $cut) {
-                continue;   // terlalu lama, sudah melewati batas retensi
+                continue;   // too old, past the retention limit
             }
             $newest = max($newest, $mtime);
 
             $isGz = str_ends_with($f, '.gz');
-            // Kolom: $9 = status, $10 = byte yang dikirim.
+            // Fields: $9 = status, $10 = bytes sent.
             $awk = 'BEGIN{FS=" "} {n++; b+=($10=="-"?0:$10); '
                  . 's=$9+0; if(s>=500) e5++; else if(s>=400) e4++; '
                  . 'p=$7; if(p!="" && ($10!="-")) {agg[p]+=($10+0); cnt[p]++}} '
@@ -243,7 +243,7 @@ final class Usage
             $out['e4']        += $e4;
             $out['e5']        += $e5;
 
-            // Path teratas: agregasi per path lalu ambil yang terbesar.
+            // Top paths: aggregate per path, then take the largest.
             $topCmd = ($isGz ? 'zcat ' : 'cat ') . escapeshellarg($f) . ' 2>/dev/null'
                 . ' | awk \'{ if ($7 != "" && $10 != "-") print $10+0 "\\t" $7 }\''
                 . ' | sort -rn | head -n ' . self::TOP_PATHS;
@@ -274,10 +274,10 @@ final class Usage
     }
 
     /**
-     * Jumlahkan domain_usage ke resource_usage per user.
+     * Sum domain_usage into resource_usage per user.
      *
-     * Tabel resource_usage sudah dipakai dashboard, jadi nilainya ikut
-     * diperbarui agar dua sumber tidak berbeda.
+     * The dashboard already reads resource_usage, so it is updated too
+     * so the two sources do not disagree.
      */
     public static function refreshUserTotals(): void
     {
@@ -307,11 +307,11 @@ final class Usage
     }
 
     /**
-     * Jalankan perintah dan kembalikan stdout.
+     * Run a command and return stdout.
      *
-     * Perintah dibungkus kurung kurung agar stderr SELURUH pipeline hilang.
-     * Tanpa itu, `sort` yang dipotong `head` menulis "Broken pipe" ke stderr
-     * dan jadi membocorkan pesan ke output CLI.
+     * The command is wrapped in parentheses so stderr from the WHOLE pipeline
+     * disappears. Without that, a `sort` cut off by `head` writes "Broken
+     * pipe" to stderr and leaks that message into the CLI output.
      */
     private static function shell(string $cmd): string
     {
@@ -321,13 +321,13 @@ final class Usage
         return implode("\n", $out);
     }
 
-    /** Format byte -> human, sama seperti Stats::bytes(). */
+    /** Format bytes -> human, same as Stats::bytes(). */
     public static function bytes(int $b): string
     {
         return Stats::bytes($b);
     }
 
-    /** Persentase pemakaian, 0-100 (dibatasi agar bar tidak meluber). */
+    /** Usage percentage, 0-100 (clamped so the bar does not overflow). */
     public static function percent(int $used, int $max): int
     {
         if ($max <= 0) {

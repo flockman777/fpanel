@@ -1,12 +1,12 @@
--- FPanel schema v1 (SQLite). Prinsip: quota di package, runtime di domain,
--- semua aksi destruktif masuk audit_log, kerja berat masuk jobs.
+-- FPanel schema v1 (SQLite). Principle: quota in the package, runtime in the domain,
+-- all destructive actions go into audit_log, heavy work goes into jobs.
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version     TEXT PRIMARY KEY,
   applied_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- ============ PAKET & PENGGUNA ============
+-- ============ PACKAGES & USERS ============
 CREATE TABLE IF NOT EXISTS packages (
   id                INTEGER PRIMARY KEY,
   name              TEXT NOT NULL UNIQUE,
@@ -51,29 +51,29 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS ix_users_role ON users(role);
 
 -- ============ DOMAIN & RUNTIME ============
--- type menentukan cara nginx melayani: root / fastcgi / proxy_pass
+-- type determines how nginx serves it: root / fastcgi / proxy_pass
 CREATE TABLE IF NOT EXISTS domains (
   id             INTEGER PRIMARY KEY,
   user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name           TEXT NOT NULL UNIQUE,
-  -- Hanya dua tipe. Node.js dan Python bukan tipe domain: keduanya aplikasi
-  -- runtime yang menempel pada domain lewat runtime_apps.domain_id.
+  -- Only two types. Node.js and Python are not domain types: they are runtime
+  -- apps attached to a domain through runtime_apps.domain_id.
   type           TEXT NOT NULL DEFAULT 'php'
                  CHECK (type IN ('static','php')),
   is_subdomain   INTEGER NOT NULL DEFAULT 0,
   parent_domain  TEXT,
   docroot        TEXT NOT NULL,
-  php_version    TEXT,               -- diisi bila type=php
-  node_version   TEXT,               -- versi Node untuk app yang menempel
-  runtime_port   INTEGER,            -- port app runtime yang menempel
-  app_id         TEXT,               -- id katalog bila di-deploy dari App Catalog
+  php_version    TEXT,               -- filled in when type=php
+  node_version   TEXT,               -- Node version for the attached app
+  runtime_port   INTEGER,            -- port of the attached runtime app
+  app_id         TEXT,               -- catalog id when deployed from the App Catalog
   status         TEXT NOT NULL DEFAULT 'active'
                  CHECK (status IN ('active','suspended','error')),
-  has_wellknown  INTEGER NOT NULL DEFAULT 0,   -- .well-known tidak diblokir HTTPS
+  has_wellknown  INTEGER NOT NULL DEFAULT 0,   -- .well-known is not blocked for HTTPS
   ssl_status     TEXT NOT NULL DEFAULT 'none'
                  CHECK (ssl_status IN ('none','pending','active','error','revoked')),
-  ssl_issued_at  TEXT,               -- waktu sertifikat terakhir terbit
-  ssl_error      TEXT,               -- pesan error terakhir (display ke user)
+  ssl_issued_at  TEXT,               -- when the certificate was last issued
+  ssl_error      TEXT,               -- last error message (shown to the user)
   created_at     TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -134,8 +134,8 @@ CREATE TABLE IF NOT EXISTS ssl_certs (
 );
 CREATE INDEX IF NOT EXISTS ix_ssl_domain ON ssl_certs(domain_id);
 
--- ============ ANTREAN PEKERJAAN ============
--- Semua yang lama/berat WAJIB lewat sini, tidak boleh blocking HTTP request.
+-- ============ JOB QUEUE ============
+-- Everything slow/heavy MUST go through here, it must not block an HTTP request.
 CREATE TABLE IF NOT EXISTS jobs (
   id            INTEGER PRIMARY KEY,
   user_id       INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS ix_jobs_pick ON jobs(status, priority, id);
 CREATE INDEX IF NOT EXISTS ix_jobs_user ON jobs(user_id, id DESC);
 
--- ============ KEAMANAN & AUDIT ============
+-- ============ SECURITY & AUDIT ============
 CREATE TABLE IF NOT EXISTS sessions (
   id           INTEGER PRIMARY KEY,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -241,7 +241,7 @@ CREATE TABLE IF NOT EXISTS apps_installed (
 );
 CREATE INDEX IF NOT EXISTS ix_apps_user ON apps_installed(user_id);
 
--- Cache metadata plugin & theme dari api.wordpress.org (dipinjol worker)
+-- Cache of plugin & theme metadata from api.wordpress.org (pulled by the worker)
 CREATE TABLE IF NOT EXISTS catalog_items (
   id            INTEGER PRIMARY KEY,
   kind          TEXT NOT NULL CHECK (kind IN ('plugin','theme')),
@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS wp_sites (
 );
 CREATE INDEX IF NOT EXISTS ix_wp_user ON wp_sites(user_id);
 
--- ============ PENGGUNAAN & ALERT ============
+-- ============ USAGE & ALERTS ============
 CREATE TABLE IF NOT EXISTS resource_usage (
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   disk_bytes   INTEGER NOT NULL DEFAULT 0,
@@ -299,14 +299,14 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- App runtime per domain (Node.js / Python). Satu app = satu systemd unit
--- fpanel-app-<nama>.service; port dipakai nginx untuk proxy ke app tersebut.
+-- App runtime per domain (Node.js / Python). One app = one systemd unit
+-- fpanel-app-<name>.service; nginx uses the port to proxy to that app.
 CREATE TABLE IF NOT EXISTS runtime_apps (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   username TEXT NOT NULL,
-  -- Domain tempat app ini dilayani. ON DELETE CASCADE supaya app ikut hilang
-  -- bersama domainnya. Kolom ini yang jadi sumber kebenaran runtime, bukan
+  -- Domain where this app is served. ON DELETE CASCADE so the app goes away
+  -- with its domain. This column is the source of truth for the runtime, not
   -- domains.type.
   domain_id INTEGER REFERENCES domains(id) ON DELETE CASCADE,
   name TEXT NOT NULL,

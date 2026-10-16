@@ -1,12 +1,12 @@
 <?php
 /**
- * Resource Usage — pemakaian per domain.
+ * Resource Usage — usage per domain.
  *
  * @var string $csrf
  * @var array $me, array $s
- * @var array $rows    pemakaian per domain
- * @var array $summary total pemakaian + kuota
- * @var string|null $lastRun waktu pengukuran terakhir
+ * @var array $rows    usage per domain
+ * @var array $summary total usage + quota
+ * @var string|null $lastRun time of the last measurement
  * @var string|null $error, string|null $ok
  */
 use Fpanel\Service\Usage;
@@ -45,18 +45,18 @@ $bar = static function (int $pct, string $tone = 'brand'): string {
       <div class="min-w-0 flex-1">
         <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-2xl">Resource Usage</h1>
         <p class="mt-0.5 text-sm text-slate-500">
-          Disk, bandwidth, dan jumlah request per domain.
+          Disk, bandwidth, and request count per domain.
           <?php if ($lastRun !== ''): ?>
-            Diukur terakhir <?= $e($lastRun) ?> UTC.
+            Last measured <?= $e($lastRun) ?> UTC.
           <?php else: ?>
-            Belum pernah diukur.
+            Never measured.
           <?php endif; ?>
         </p>
       </div>
       <?php if ($isAdmin): ?>
         <form method="post" action="/usage/collect">
           <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
-          <button class="btn-secondary h-9 px-3 text-sm"><i data-lucide="refresh-cw" class="h-4 w-4"></i><span>Hitung ulang</span></button>
+          <button class="btn-secondary h-9 px-3 text-sm"><i data-lucide="refresh-cw" class="h-4 w-4"></i><span>Recalculate</span></button>
         </form>
       <?php endif; ?>
     </div>
@@ -69,18 +69,18 @@ $bar = static function (int $pct, string $tone = 'brand'): string {
       <?php endif; ?>
     <?php endforeach; ?>
 
-    <!-- ===== total + kuota ===== -->
+    <!-- ===== totals + quota ===== -->
     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <?php
       $cards = [
-          ['Disk', Usage::bytes((int)$sum['disk']), 'dokumen di semua domain', $diskPct,
-           (int)$sum['max_disk'] > 0 ? Usage::bytes((int)$sum['max_disk']) . ' kuota' : 'tanpa kuota'],
-          ['Bandwidth', Usage::bytes((int)$sum['bandwidth']), 'dari access log', $bwPct,
-           (int)$sum['max_bandwidth'] > 0 ? Usage::bytes((int)$sum['max_bandwidth']) . ' kuota' : 'tanpa kuota'],
-          ['Requests', number_format((int)$sum['requests'], 0, ',', '.'), 'total request', null, 'semua status'],
+          ['Disk', Usage::bytes((int)$sum['disk']), 'documents across all domains', $diskPct,
+           (int)$sum['max_disk'] > 0 ? Usage::bytes((int)$sum['max_disk']) . ' quota' : 'no quota'],
+          ['Bandwidth', Usage::bytes((int)$sum['bandwidth']), 'from the access log', $bwPct,
+           (int)$sum['max_bandwidth'] > 0 ? Usage::bytes((int)$sum['max_bandwidth']) . ' quota' : 'no quota'],
+          ['Requests', number_format((int)$sum['requests'], 0, ',', '.'), 'total requests', null, 'all statuses'],
           ['Error', number_format((int)$sum['errors_4xx'] + (int)$sum['errors_5xx'], 0, ',', '.'),
            number_format((int)$sum['errors_4xx'], 0, ',', '.') . '× 4xx &middot; '
-           . number_format((int)$sum['errors_5xx'], 0, ',', '.') . '× 5xx', null, 'dari access log'],
+           . number_format((int)$sum['errors_5xx'], 0, ',', '.') . '× 5xx', null, 'from the access log'],
       ];
       foreach ($cards as [$label, $value, $sub, $pct, $foot]): ?>
         <section class="card p-4">
@@ -108,7 +108,7 @@ $bar = static function (int $pct, string $tone = 'brand'): string {
               <th class="px-4 py-2.5 font-semibold">Bandwidth</th>
               <th class="px-4 py-2.5 font-semibold">Requests</th>
               <th class="px-4 py-2.5 font-semibold">Error</th>
-              <th class="px-4 py-2.5 font-semibold">Log terakhir</th>
+              <th class="px-4 py-2.5 font-semibold">Last log</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -127,7 +127,7 @@ $bar = static function (int $pct, string $tone = 'brand'): string {
                 <?php $top = (array)$r['top_paths']; ?>
                 <?php if ($top !== []): ?>
                   <details class="mt-1">
-                    <summary class="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">path teratas</summary>
+                    <summary class="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">top paths</summary>
                     <ul class="mt-1 space-y-0.5">
                       <?php foreach ($top as $t): ?>
                         <li class="truncate font-mono text-[11px] text-slate-500">
@@ -160,7 +160,7 @@ $bar = static function (int $pct, string $tone = 'brand'): string {
             </tr>
             <?php endforeach; ?>
             <?php if ($rows === []): ?>
-              <tr><td colspan="6" class="px-4 py-10 text-center text-sm text-slate-500">Belum ada domain.</td></tr>
+              <tr><td colspan="6" class="px-4 py-10 text-center text-sm text-slate-500">No domains yet.</td></tr>
             <?php endif; ?>
           </tbody>
         </table>
@@ -168,8 +168,8 @@ $bar = static function (int $pct, string $tone = 'brand'): string {
     </section>
 
     <p class="text-xs text-slate-500">
-      Angka diambil dari access log nginx (termasuk file hasil rotasi) dan <code class="font-mono">du</code> pada docroot.
-      Penghitungan normal berjalan otomatis setiap jam.
+      Numbers come from the nginx access log (including rotated files) and <code class="font-mono">du</code> on the docroot.
+      Normal collection runs automatically every hour.
     </p>
   </div>
 </main>

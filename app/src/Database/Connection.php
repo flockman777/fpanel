@@ -6,7 +6,7 @@ use PDO;
 use Fpanel\Support\Config;
 use RuntimeException;
 
-/** Koneksi SQLite tunggal: WAL + foreign keys ON. */
+/** Single SQLite connection: WAL + foreign keys ON. */
 final class Connection
 {
     private static ?PDO $pdo = null;
@@ -18,11 +18,11 @@ final class Connection
         }
         $file = Config::get('db.file');
         if (!is_string($file) || $file === '') {
-            throw new RuntimeException('Config db.file belum diset');
+            throw new RuntimeException('Config db.file is not set');
         }
         $dir = dirname($file);
         if (!is_dir($dir) && !mkdir($dir, 0700, true) && !is_dir($dir)) {
-            throw new RuntimeException("Gagal membuat direktori DB: $dir");
+            throw new RuntimeException("Failed to create the DB directory: $dir");
         }
         self::$pdo = new PDO('sqlite:' . $file, null, null, [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
@@ -80,7 +80,7 @@ final class Connection
         return self::run($sql, $data + $whereParams)->rowCount();
     }
 
-    /** Dipakai test: buang seluruh data lalu jalankan schema lagi. */
+    /** Used by tests: wipe all data then run the schema again. */
     public static function reset(): void
     {
         self::$pdo = null;

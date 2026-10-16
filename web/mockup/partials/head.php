@@ -1,5 +1,5 @@
 <?php
-/* $page = id halaman, $title = judul, $bodyAttrs = atribut body, $area = user|admin */
+/* $page = page id, $title = title, $bodyAttrs = body attributes, $area = user|admin */
 $area  = $area  ?? 'user';
 $page  = $page  ?? '';
 $title = $title ?? 'fpanel';
@@ -7,7 +7,7 @@ $bodyAttrs = $bodyAttrs ?? '';
 $__vf = dirname(__DIR__) . '/assets/VERSION';
 $__v = trim(@file_get_contents($__vf) ?: '') ?: '1';
 ?><!doctype html>
-<html lang="id" class="h-full">
+<html lang="en" class="h-full">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,7 +18,7 @@ $__v = trim(@file_get_contents($__vf) ?: '') ?: '1';
 <link rel="shortcut icon" href="assets/img/favicon.ico?v=<?= $__v ?>">
 <link rel="stylesheet" href="assets/css/app.css?v=<?= $__v ?>">
 <script>
-/* anti-flash: terapkan tema sebelum render pertama */
+/* anti-flash: apply the theme before the first render */
 (function(){var m=localStorage.getItem('fpanel.theme')||'light';
 if(m==='dark'){document.documentElement.classList.add('dark');}
 document.documentElement.style.colorScheme=m;})();

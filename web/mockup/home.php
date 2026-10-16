@@ -18,9 +18,9 @@ $allFeatures = $catalog['features'];
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 class="text-xl font-bold text-slate-900 dark:text-white">
-            <span x-text="$store.i18n.t('home.greeting', { name: 'demo' })">Halo, demo</span>
+            <span x-text="$store.i18n.t('home.greeting', { name: 'demo' })">Hello, demo</span>
           </h1>
-          <p class="text-sm text-slate-500" data-i18n="home.subtitle">Kelola hosting Anda dari satu tempat.</p>
+          <p class="text-sm text-slate-500" data-i18n="home.subtitle">Manage your hosting from one place.</p>
         </div>
         <a href="domain-create.php" class="btn-primary">
           <i data-lucide="plus" class="h-4 w-4"></i>

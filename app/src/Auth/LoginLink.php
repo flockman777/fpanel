@@ -5,23 +5,23 @@ namespace Fpanel\Auth;
 use Fpanel\Database\Connection;
 
 /**
- * Link login sekali pakai.
+ * Single-use login link.
  *
- * Dipakai untuk masuk dari perangkat atau browser baru tanpa mengetik password:
- * panel mengirim tautan, pengguna membukanya, lalu langsung masuk.
+ * Used to sign in from a new device or browser without typing a password:
+ * the panel sends the link, the user opens it, and is signed in right away.
  *
- * Dua aturan yang membuat ini tetap aman meski tautannya bocor:
- *   - hanya hash token yang disimpan, jadi bocornya isi database tidak langsung
- *     berarti punya akses
- *   - token hangus begitu dipakai (DELETE di dalam transaksi yang sama), jadi
- *     tautan yang ikut ter-copy tidak bisa dipakai ulang
+ * Two rules keep this safe even if the link leaks:
+ *   - only the token hash is stored, so a database leak does not directly
+ *     mean access
+ *   - the token dies as soon as it is used (DELETE in the same transaction), so
+ *     a link that gets copied around cannot be reused
  *
- * Masa berlaku pendek (15 menit) supaya tautan yang tertinggal di inbox atau
- * riwayat unduhan cepat kehilangan artinya.
+ * Short lifetime (15 minutes) so links left behind in an inbox or download
+ * history quickly lose their meaning.
  */
 final class LoginLink
 {
-    /** Menit sebelum tautan kedaluwarsa. */
+    /** Minutes before the link expires. */
     public const TTL_MIN = 15;
 
     private const PREFIX = 'fpl_';
@@ -29,7 +29,7 @@ final class LoginLink
     private function __construct() {}
 
     /**
-     * Terbitkan tautan baru untuk satu user.
+     * Issue a new link for one user.
      *
      * @return array{ok:bool,error?:string,token?:string,expires_at?:string}
      */
@@ -39,10 +39,10 @@ final class LoginLink
             'SELECT id FROM users WHERE username = :u', ['u' => $username]
         );
         if ($uid < 1) {
-            return ['ok' => false, 'error' => 'User tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'User not found.'];
         }
-        // Token lama dicabut dulu: hanya satu tautan aktif per akun, supaya
-        // tautan yang bocor tidak bisa dipakai bareng dengan tautan baru.
+        // Revoke old tokens first: only one active link per account, so a
+        // leaked link cannot be used alongside a new one.
         Connection::run('DELETE FROM login_links WHERE user_id = :u', ['u' => $uid]);
 
         $token = self::PREFIX . bin2hex(random_bytes(24));
@@ -57,10 +57,10 @@ final class LoginLink
     }
 
     /**
-     * Tukar token jadi user id, sekaligus membakar tokennya.
+     * Exchange the token for a user id, burning the token in the process.
      *
-     * Penghapusan dan pembacaan terjadi dalam satu transaksi: kalau dua
-     * permintaan tiba bersamaan, hanya yang pertama yang dapat user id.
+     * The deletion and the read happen in one transaction: if two requests
+     * arrive at the same time, only the first one gets the user id.
      */
     public static function redeem(string $token, string $ip = ''): ?int
     {
@@ -98,7 +98,7 @@ final class LoginLink
         }
     }
 
-    /** Jumlah tautan yang masih bisa dipakai. */
+    /** Number of links that can still be used. */
     public static function activeCount(): int
     {
         return (int)Connection::value(
@@ -107,7 +107,7 @@ final class LoginLink
         );
     }
 
-    /** Cabut semua tautan aktif satu user (mis. setelah ganti password). */
+    /** Revoke all active links for one user (e.g. after a password change). */
     public static function revokeAll(int $userId): int
     {
         return Connection::run(
@@ -117,11 +117,11 @@ final class LoginLink
     }
 
     /**
-     * Bersihkan tautan kedaluwarsa / sudah dipakai.
+     * Clean up expired / already-used links.
      *
-     * Dipanggil housekeeping: baris `used_at` perlu disimpan sebentar supaya
-     * percobaan pakai ulang bisa dibedakan dari token yang salah, tapi tidak
-     * perlu disimpan selamanya.
+     * Called by housekeeping: `used_at` rows need to be kept for a while so
+     * reuse attempts can be told apart from wrong tokens, but they do not need
+     * to be kept forever.
      */
     public static function prune(int $keepUsedDays = 7): int
     {

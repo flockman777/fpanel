@@ -19,12 +19,12 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') document.querySelectorAll('[data-dd-menu]').forEach(function (m) { m.hidden = true; });
     });
-    // konfirmasi untuk aksi destruktif
+    // confirmation for destructive actions
     document.addEventListener('submit', function (e) {
       var f = e.target;
       if (f.dataset.confirm && !window.confirm(f.dataset.confirm)) e.preventDefault();
     });
-    // tampil/sembunyikan password
+    // show/hide password
     var pwBtn = document.querySelector('[data-pw-toggle]');
     if (pwBtn) {
       pwBtn.addEventListener('click', function () {
@@ -32,11 +32,11 @@
         if (!input) return;
         var show = input.type === 'password';
         input.type = show ? 'text' : 'password';
-        pwBtn.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Tampilkan password');
+        pwBtn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
       });
     }
 
-    // pencarian global: fitur, domain, database milik user sendiri
+    // global search: features, domains, and the user's own databases
     var sForm = document.querySelector('[data-search]');
     if (sForm) {
       var sInput = sForm.querySelector('[data-search-input]');
@@ -112,7 +112,7 @@
       });
     }
 
-    // sidebar navigasi (mobile)
+    // navigation sidebar (mobile)
     var nav = document.getElementById('fp-nav');
     var backdrop = document.querySelector('[data-nav-backdrop]');
     if (nav && backdrop) {
@@ -130,7 +130,7 @@
       backdrop.addEventListener('click', function () { setNav(false); });
       document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setNav(false); });
     }
-    // sembunyikan baris "versi PHP" kalau tipe bukan php
+    // hide the "PHP version" row when the type is not php
     var sel = document.querySelector('[data-type-select]');
     var phpRow = document.querySelector('[data-php-row]');
     if (sel && phpRow) {

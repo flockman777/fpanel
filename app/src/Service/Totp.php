@@ -8,13 +8,13 @@ use Fpanel\Database\Connection;
 /**
  * Two-Factor Authentication (TOTP, RFC 6238).
  *
- * Dihitung sendiri tanpa library: yang dibutuhkan cuma HMAC-SHA1 dari hash
- * bawaan PHP. QR code dirender di server memakai biner qrencode, jadi RAHASIA
- * TOTP tidak pernah dikirim ke layanan pihak ketiga.
+ * Implemented here without a library: all it needs is HMAC-SHA1 from PHP's
+ * built-in hash functions. The QR code is rendered on the server with the
+ * qrencode binary, so the TOTP SECRET never goes to a third-party service.
  *
- * Rahasia disimpan polos di tabel users (dipakai untuk memverifikasi kode).
- * Itu konsekuensi standar TOTP; yang penting kolom itu tidak pernah tampil di
- * halaman mana pun dan tidak ikut dibackup ke tempat publik.
+ * The secret is stored in the users table (used to verify codes). That is
+ * the standard TOTP trade-off; what matters is that the column is never
+ * rendered on any page and never backed up to a public place.
  */
 final class Totp
 {
@@ -22,20 +22,20 @@ final class Totp
     private const PERIOD   = 30;
     private const DIGITS   = 6;
 
-    /** Berapa langkah sebelum/sesudah yang diterima (untuk toleransi jam). */
+    /** How many steps before/after are accepted (clock tolerance). */
     private const WINDOW = 1;
 
-    /** Berapa kode pemulihan yang dibuat. */
+    /** How many recovery codes are generated. */
     private const RECOVERY_COUNT = 10;
 
-    /** Masa berlaku setup yang belum dikonfirmasi. */
+    /** Validity window of an unconfirmed setup. */
     private const SETUP_TTL_MIN = 15;
 
     public const ISSUER = 'FPanel';
 
     // ------------------------------------------------------------------ secret
 
-    /** Base32 acak, panjang default 32 (160 bit, sesuai rekomendasi). */
+    /** Random base32, default length 32 (160 bit, as recommended). */
     public static function generateSecret(int $length = 32): string
     {
         $out = '';
@@ -46,7 +46,7 @@ final class Totp
         return $out;
     }
 
-    /** Decode base32 ke byte biner. */
+    /** Decode base32 into binary bytes. */
     public static function base32Decode(string $input): string
     {
         $input = strtoupper(preg_replace('/[\s=-]+/', '', $input) ?? '');
@@ -71,7 +71,7 @@ final class Totp
         return $bytes;
     }
 
-    /** Kode TOTP untuk satu timestep. */
+    /** TOTP code for a single timestep. */
     public static function code(string $secret, ?int $timestamp = null): string
     {
         $key = self::base32Decode($secret);
@@ -91,7 +91,7 @@ final class Totp
         return str_pad((string)($value % (10 ** self::DIGITS)), self::DIGITS, '0', STR_PAD_LEFT);
     }
 
-    /** Cek kode, menerima satu langkah sebelum dan sesudah. */
+    /** Check a code, accepting one step before and after. */
     public static function verify(string $secret, string $code, ?int $timestamp = null): bool
     {
         $code = preg_replace('/\D/', '', $code) ?? '';
@@ -108,7 +108,7 @@ final class Totp
         return false;
     }
 
-    /** URI provisioning untuk Google Authenticator, Aegis, dan aplikasi sejenis. */
+    /** Provisioning URI for Google Authenticator, Aegis, and similar apps. */
     public static function provisioningUri(string $secret, string $username): string
     {
         return 'otpauth://totp/' . rawurlencode(self::ISSUER . ':' . $username)
@@ -118,9 +118,9 @@ final class Totp
     }
 
     /**
-     * Render QR code ke SVG memakai biner qrencode di server.
+     * Render a QR code to SVG with the qrencode binary on the server.
      *
-     * Rahasia TOTP tidak keluar dari server sama sekali.
+     * The TOTP secret never leaves the server at all.
      */
     public static function qrSvg(string $uri): ?string
     {
@@ -142,14 +142,14 @@ final class Totp
         if (proc_close($proc) !== 0 || trim($svg) === '' || !str_contains($svg, '<svg')) {
             return null;
         }
-        // Buang komentar metadata qrencode; tidak perlu dan membocorkan versi.
+        // Drop qrencode metadata comments; unnecessary and leaks the version.
         return (string)preg_replace('/<!--.*?-->/s', '', $svg);
     }
 
     // ------------------------------------------------------------------- setup
 
     /**
-     * Mulai setup: simpan secret baru dengan 2FA masih nonaktif.
+     * Start setup: store a fresh secret with 2FA still disabled.
      *
      * @return array{ok: bool, error: string|null, secret?: string, uri?: string}
      */
@@ -157,7 +157,7 @@ final class Totp
     {
         $uid = self::userId($username);
         if ($uid < 1) {
-            return ['ok' => false, 'error' => 'User tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'User not found.'];
         }
         $secret = self::generateSecret();
         Connection::update('users', [
@@ -174,7 +174,7 @@ final class Totp
         ];
     }
 
-    /** Secret yang menunggu konfirmasi (2FA belum aktif). */
+    /** The secret awaiting confirmation (2FA not active yet). */
     public static function pendingSecret(string $username): ?string
     {
         $v = Connection::value(
@@ -196,7 +196,7 @@ final class Totp
     }
 
     /**
-     * Aktifkan 2FA setelah kode dikonfirmasi, lalu buat kode pemulihan.
+     * Enable 2FA once the code is confirmed, then generate recovery codes.
      *
      * @return array{ok: bool, error: string|null, recovery?: array<int, string>}
      */
@@ -207,17 +207,17 @@ final class Totp
             ['u' => $username]
         );
         if ($row === null) {
-            return ['ok' => false, 'error' => 'User tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'User not found.'];
         }
         if ((int)($row['totp_enabled'] ?? 0) === 1) {
-            return ['ok' => false, 'error' => '2FA sudah aktif.'];
+            return ['ok' => false, 'error' => '2FA is already active.'];
         }
         $secret = self::decodeSecret((string)($row['totp_secret'] ?? ''));
         if ($secret === '') {
-            return ['ok' => false, 'error' => 'Belum ada secret. Mulai setup dulu.'];
+            return ['ok' => false, 'error' => 'No secret yet. Start the setup first.'];
         }
         if (!self::verify($secret, $code)) {
-            return ['ok' => false, 'error' => 'Kode salah atau kedaluwarsa.'];
+            return ['ok' => false, 'error' => 'Wrong or expired code.'];
         }
 
         Connection::update('users', [
@@ -229,12 +229,12 @@ final class Totp
         return ['ok' => true, 'error' => null, 'recovery' => $recovery];
     }
 
-    /** Matikan 2FA. Password tetap dicek di route. */
+    /** Disable 2FA. The password is still checked in the route. */
     public static function disable(string $username): array
     {
         $uid = self::userId($username);
         if ($uid < 1) {
-            return ['ok' => false, 'error' => 'User tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'User not found.'];
         }
         Connection::update('users', [
             'totp_secret'  => null,
@@ -248,9 +248,9 @@ final class Totp
     // ---------------------------------------------------------------- recovery
 
     /**
-     * Buat kode pemulihan baru (sekali pakai), kembalikan versi plaintextnya.
+     * Create new single-use recovery codes and return their plaintext values.
      *
-     * Hanya hash yang disimpan; plaintext hanya ditampilkan sekali.
+     * Only hashes are stored; the plaintext is shown just once.
      *
      * @return array<int, string>
      */
@@ -282,7 +282,7 @@ final class Totp
         );
     }
 
-    /** Pakai satu kode pemulihan. True kalau cocok dan belum dipakai. */
+    /** Use one recovery code. True when it matches and was unused. */
     public static function useRecovery(string $username, string $code): bool
     {
         $uid = self::userId($username);
@@ -315,13 +315,13 @@ final class Totp
     // ------------------------------------------------------------------- login
 
     /**
-     * Verifikasi kedua di saat login: kode TOTP, atau kode pemulihan.
+     * Second-factor check at login: a TOTP code, or a recovery code.
      */
     public static function verifyLogin(string $username, string $input): array
     {
         $input = trim($input);
         if ($input === '') {
-            return ['ok' => false, 'error' => 'Masukkan kode dari aplikasi autentikator.', 'method' => null];
+            return ['ok' => false, 'error' => 'Enter the code from your authenticator app.', 'method' => null];
         }
         $secret = self::decodeSecret((string)(Connection::value(
             'SELECT totp_secret FROM users WHERE username = :u',
@@ -333,7 +333,7 @@ final class Totp
         if (preg_match('/^[0-9A-F]{6}-[0-9A-F]{6}$/i', $input) === 1 && self::useRecovery($username, $input)) {
             return ['ok' => true, 'error' => null, 'method' => 'recovery'];
         }
-        return ['ok' => false, 'error' => 'Kode salah atau sudah dipakai.', 'method' => null];
+        return ['ok' => false, 'error' => 'Wrong code, or already used.', 'method' => null];
     }
 
     public static function setupTtlMinutes(): int
@@ -344,11 +344,11 @@ final class Totp
     // ----------------------------------------------------------------- internal
 
     /**
-     * Simpan seed dalam bentuk terenkripsi.
+     * Store the seed in encrypted form.
      *
-     * Kalau kunci tidak tersedia, seed disimpan polos supaya user tidak
-     * terkunci keluar dari akunnya sendiri. Keadaan itu dilaporkan lewat
-     * securityNotice() supaya bisa terlihat di UI.
+     * When the key is unavailable the seed is stored in plain text so the user is
+     * not locked out of their own account. That state is reported through
+     * securityNotice() so it can surface in the UI.
      */
     private static function encodeSecret(string $secret): string
     {
@@ -356,10 +356,10 @@ final class Totp
     }
 
     /**
-     * Baca seed, menerima dua bentuk: terenkripsi (sbx1:) dan polos.
+     * Read the seed, accepting two forms: encrypted (sbx1:) and plain.
      *
-     * Bentuk polos harus tetap diterima karena dipakai CLI migrasi untuk
-     * mengisi nilai yang belum sempat terenkripsi.
+     * The plain form must still be accepted because the migration CLI uses it
+     * to fill values that were not encrypted yet.
      */
     private static function decodeSecret(?string $raw): string
     {
@@ -372,11 +372,11 @@ final class Totp
         return SecretBox::decrypt($raw) ?? '';
     }
 
-    /** Peringatan enkripsi seed untuk ditampilkan di halaman Security. */
+    /** Seed encryption warning to show on the Security page. */
     public static function securityNotice(): ?string
     {
         return SecretBox::available() ? null
-            : 'Kunci enkripsi tidak tersedia (/etc/fpanel/app-key); seed TOTP disimpan tanpa enkripsi.';
+            : 'The encryption key is unavailable (/etc/fpanel/app-key); TOTP seeds are stored unencrypted.';
     }
 
     private static function userId(string $username): int

@@ -5,30 +5,30 @@ namespace Fpanel\Auth;
 use Fpanel\Database\Connection;
 
 /**
- * "Ingat perangkat ini": cookie kedua yang bertahan lama.
+ * "Remember this device": a second, long-lived cookie.
  *
- * Cookie session (fp_session) tetap cookie's utama: itu yang memberi akses.
- * Cookie ini hanya menandai perangkat sebagai tepercaya, dan hanya berguna
- * kalau session sudah tidak ada.
+ * The session cookie (fp_session) remains the main cookie: it grants access.
+ * This cookie only marks the device as trusted, and it is only useful when the
+ * session is already gone.
  *
- * Yang membuatnya aman untuk diperpanjang:
- *   - token diacak penuh, hanya hash-nya yang disimpan
- *   - dibatasi satu token per perangkat, jadi orang yang mencuri cookie lama
- *     tidak bisa memakainya berdampingan dengan pemilik
- *   - bisa dicabut per perangkat atau sekaligus dari halaman Security
+ * What makes it safe to keep around for a long time:
+ *   - the token is fully random, only its hash is stored
+ *   - limited to one token per device, so someone who steals an old cookie
+ *     cannot use it alongside the owner
+ *   - can be revoked per device or all at once from the Security page
  */
 final class RememberDevice
 {
     public const COOKIE = 'fp_device';
 
-    /** Hari sebelum token perangkat dianggap kedaluwarsa. */
+    /** Days before a device token is considered expired. */
     public const TTL_DAYS = 90;
 
     private const PREFIX = 'fpd_';
 
     private function __construct() {}
 
-    /** Set cookie perangkatingat. Dipanggil setelah login berhasil. */
+    /** Set the remember-device cookie. Called after a successful login. */
     public static function issue(int $userId, string $ip, string $userAgent): string
     {
         $token = self::PREFIX . bin2hex(random_bytes(32));
@@ -52,7 +52,7 @@ final class RememberDevice
     }
 
     /**
-     * Device key dari cookie, atau 0 kalau tidak ada/tidak cocok.
+     * Device key from the cookie, or 0 if missing / not matching.
      */
     public static function deviceId(?string $token): int
     {
@@ -69,10 +69,10 @@ final class RememberDevice
     }
 
     /**
-     * Perpanjang masa berlaku satu perangkat.
+     * Extend the validity of one device.
      *
-     * Dipanggil saat memakai remember-me, supaya perangkat yang benar-benar
-     * dipakai tidak diam-diam habis.
+     * Called when remember-me is used, so devices that are actually in use
+     * do not silently expire.
      */
     public static function touch(int $deviceId): bool
     {
@@ -85,7 +85,7 @@ final class RememberDevice
         ) > 0;
     }
 
-    /** Cabut satu perangkat (dipakai tombol "hapus perangkat ini"). */
+    /** Revoke one device (used by the "remove this device" button). */
     public static function revoke(int $deviceId): bool
     {
         if ($deviceId < 1) {
@@ -97,7 +97,7 @@ final class RememberDevice
         return true;
     }
 
-    /** Cabut semua perangkat satu user, lalu hentikan issuance. */
+    /** Revoke all devices of one user, then stop issuance. */
     public static function revokeAll(int $userId): int
     {
         return Connection::run(
@@ -107,7 +107,7 @@ final class RememberDevice
         );
     }
 
-    /** Daftar perangkat aktif untuk UI. */
+    /** List of active devices for the UI. */
     public static function listing(int $userId): array
     {
         $rows = Connection::all(
@@ -138,7 +138,7 @@ final class RememberDevice
         );
     }
 
-    /** Buang cookie di sisi browser. */
+    /** Discard the cookie on the browser side. */
     public static function clearCookie(): void
     {
         if (!headers_sent()) {
@@ -152,13 +152,13 @@ final class RememberDevice
         }
     }
 
-    /** Nama perangkat ringkas dari user agent, tanpa mengirimnya ke mana pun. */
+    /** Short device label from the user agent, without sending it anywhere. */
     public static function describe(string $ua): string
     {
         if ($ua === '') {
-            return 'Perangkat tidak dikenal';
+            return 'Unknown device';
         }
-        $os = 'Sistem tidak dikenal';
+        $os = 'Unknown system';
         if (str_contains($ua, 'Windows'))  { $os = 'Windows'; }
         elseif (str_contains($ua, 'iPhone') || str_contains($ua, 'iPad')) { $os = 'iOS'; }
         elseif (str_contains($ua, 'Android')) { $os = 'Android'; }
@@ -179,7 +179,7 @@ final class RememberDevice
         return explode('.', $v)[0] ?? '';
     }
 
-    /** Buang token kedaluwarsa dan yang sudah dicabut lama. */
+    /** Drop expired tokens and ones revoked long ago. */
     public static function prune(int $keepRevokedDays = 30): int
     {
         return Connection::run(

@@ -1,2 +1,2 @@
-# Bersihkan token phpMyAdmin yang kedaluwarsa.
+# Clean up expired phpMyAdmin tokens.
 */10 * * * * www-data php /srv/fpanel/bin/fpanel pma:sweep >/dev/null 2>&1

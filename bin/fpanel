@@ -31,9 +31,9 @@ switch ($cmd) {
         foreach ([['username', $username, Validator::username($username)],
                   ['email', $email, Validator::email($email)],
                   ['password', $password, Validator::password($password)]] as [$f, $v, $err]) {
-            if ($err !== null) { out("GAGAL ($f): $err"); exit(1); }
+            if ($err !== null) { out("Error ($f): $err"); exit(1); }
         }
-        if (!in_array($role, ['admin', 'user'], true)) { out("GAGAL: role harus admin|user"); exit(1); }
+        if (!in_array($role, ['admin', 'user'], true)) { out("Error: role must be admin|user"); exit(1); }
         $id = Connection::insert('users', [
             'username' => strtolower($username),
             'email' => $email,
@@ -41,79 +41,79 @@ switch ($cmd) {
             'role' => $role,
             'status' => 'active',
         ]);
-        out("OK user #$id dibuat: $username ($role)");
+        out("OK user #$id created: $username ($role)");
         break;
 
-    // Hapus user. refuse menghapus admin terakhir supaya tidak mengunci kita
-    // keluar dari panel sendiri.
+    // Delete a user. Refuses to delete the last admin so we do not lock
+    // ourselves out of the panel.
     case 'user:delete':
         $username = $argvIn[0] ?? '';
-        if ($username === '') { out("GAGAL: pemakaian: user:delete <username>"); exit(1); }
+        if ($username === '') { out("Error: usage: user:delete <username>"); exit(1); }
         $row = Connection::one('SELECT id, role FROM users WHERE username = :u',
             ['u' => strtolower($username)]);
         if ($row === null) {
-            out("GAGAL: user '$username' tidak ada");
+            out("Error: user '$username' does not exist");
             exit(1);
         }
         $admins = (int)Connection::value(
             "SELECT COUNT(*) FROM users WHERE role = 'admin' AND status = 'active'");
         if ($row['role'] === 'admin' && $admins <= 1) {
-            out('GAGAL: ini admin aktif terakhir, tidak boleh dihapus');
+            out('Error: this is the last active admin and cannot be deleted');
             exit(1);
         }
-        // Domain milik user harus pindah dulu; cascade diam-diam akan
-        // membuat situs yatim tanpa docroot.
+        // The user's domains must move first; a silent cascade would
+        // leave sites orphaned without a docroot.
         $domains = Connection::all('SELECT name FROM domains WHERE user_id = :u',
             ['u' => (int)$row['id']]);
         if ($domains !== []) {
             $names = array_map(static fn (array $d): string => (string)$d['name'], $domains);
-            out('GAGAL: user masih memiliki domain: ' . implode(', ', $names));
+            out('Error: user still owns domains: ' . implode(', ', $names));
             exit(1);
         }
         Connection::run('DELETE FROM sessions WHERE user_id = :i', ['i' => (int)$row['id']]);
         Connection::run('DELETE FROM login_attempts WHERE username = :u',
             ['u' => strtolower($username)]);
-        // Tabel tanpa FK ON DELETE CASCADE harus dibersihkan manual. Kalau tidak,
-        // barisnya jadi yatim dan masih bisa dipakai user dengan id yang sama.
+        // Tables without an FK ON DELETE CASCADE must be cleaned up manually.
+        // Otherwise their rows are orphaned and can still be used by a user with the same id.
         foreach (['totp_recovery'] as $t) {
             Connection::run("DELETE FROM $t WHERE user_id = :i", ['i' => (int)$row['id']]);
         }
         Connection::run('DELETE FROM users WHERE id = :i', ['i' => (int)$row['id']]);
-        out("OK user $username dihapus");
+        out("OK user $username deleted");
         break;
 
-    // Rotasi password dari CLI. Sebelumnya tidak ada jalan resmi besides
-    // mengedit tabel users secara manual - rawan hash salah / lupa salt.
+    // Password rotation from the CLI. There used to be no official way besides
+    // editing the users table by hand - prone to a wrong hash / a forgotten salt.
     case 'user:pass':
         $username = $argvIn[0] ?? '';
         $password = $argvIn[1] ?? '';
         if ($username === '' || $password === '') {
-            out("GAGAL:pemakaian: user:pass <username> <password>");
+            out("Error: usage: user:pass <username> <password>");
             exit(1);
         }
         if (($err = Validator::password($password)) !== null) {
-            out("GAGAL (password): $err");
+            out("Error (password): $err");
             exit(1);
         }
         $id = Connection::value('SELECT id FROM users WHERE username = :u',
             ['u' => strtolower($username)]);
         if ($id === null) {
-            out("GAGAL: user '$username' tidak ada");
+            out("Error: user '$username' does not exist");
             exit(1);
         }
         Connection::run('UPDATE users SET password_hash = :h, updated_at = datetime(\'now\') WHERE id = :id',
             ['h' => PasswordHasher::hash($password), 'id' => (int)$id]);
-        // Sesi lama harus mati, kalau tidak password lama masih berlaku di
-        // browser yang sudah login.
+        // Old sessions must die, otherwise the old password still works in
+        // browsers that are already logged in.
         Connection::run('DELETE FROM sessions WHERE user_id = :id', ['id' => (int)$id]);
         Connection::run('DELETE FROM login_attempts WHERE username = :u',
             ['u' => strtolower($username)]);
-        out("OK password $username diganti; sesi lama dicabut");
+        out("OK password for $username changed; old sessions revoked");
         break;
 
-    // config/schema.sql hanya berlaku untuk tabel yang BELUM ada. Instalasi
-    // yang sudah jalan tidak dapat kolom baru dari CREATE TABLE IF NOT EXISTS,
-    // jadi kolom SSL perlu ALTER TABLE eksplisit di sini. Idempotent.
+    // config/schema.sql only applies to tables that do NOT exist yet. A running
+    // installation does not get new columns from CREATE TABLE IF NOT EXISTS,
+    // so the SSL columns need an explicit ALTER TABLE here. Idempotent.
     case 'db:migrate-ssl':
         $pdo = Connection::pdo();
         $have = [];
@@ -130,11 +130,11 @@ switch ($cmd) {
             out("  + {$col}");
             $added++;
         }
-        out($added === 0 ? '  semua kolom SSL sudah ada (idempotent)' : "  {$added} kolom ditambahkan");
+        out($added === 0 ? '  all SSL columns already exist (idempotent)' : "  {$added} column(s) added");
         break;
 
-    // Kuota app Python terpisah dari Node. Kalau keduanya memakai satu kuota,
-    // satu app Node akan menghabiskan kuota Python.
+    // The Python app quota is separate from Node's. If both shared one quota,
+    // a single Node app would exhaust the Python quota.
     case 'db:migrate-pkg':
         $cols  = Connection::all("PRAGMA table_info(packages)");
         $have  = array_column($cols, 'name');
@@ -144,11 +144,11 @@ switch ($cmd) {
             $added++;
             out('+ packages.max_python_apps');
         }
-        out($added === 0 ? 'semua kolom sudah ada' : "$added kolom ditambahkan");
+        out($added === 0 ? 'all columns already exist' : "$added column(s) added");
         break;
 
-    // Tabel untuk app runtime (Node.js / Python). schema.sql hanya CREATE
-    // TABLE IF NOT EXISTS, jadi tabel baru cukup dibuat sekali di sini.
+    // Table for runtime apps (Node.js / Python). schema.sql only does CREATE
+    // TABLE IF NOT EXISTS, so a new table only needs creating once here.
     case 'db:migrate-apps':
         Connection::pdo()->exec(
             "CREATE TABLE IF NOT EXISTS runtime_apps ("
@@ -175,8 +175,8 @@ switch ($cmd) {
         out('OK tabel runtime_apps siap');
         break;
 
-    // Menambah kolom php_ini ke tabel domains. schema.sql hanya CREATE TABLE
-    # IF NOT EXISTS, jadi instalasi lama tidak ikut dapat kolom baru.
+    // Adds the php_ini column to the domains table. schema.sql only CREATE TABLE
+    # IF NOT EXISTS, so existing installations do not get the new column.
     case 'db:migrate-ini':
         $cols = Connection::all("PRAGMA table_info(domains)");
         $have = [];
@@ -189,23 +189,23 @@ switch ($cmd) {
             $added++;
             out('+ domains.php_ini');
         }
-        out($added === 0 ? 'semua kolom sudah ada' : "$added kolom ditambahkan");
+        out($added === 0 ? 'all columns already exist' : "$added column(s) added");
         break;
 
     case 'db:migrate':
         Connection::pdo()->exec((string)file_get_contents(FPANEL_ROOT . '/config/schema.sql'));
-        out("OK schema dijalankan");
+        out("OK schema applied");
         break;
 
     case 'db:reset':
         Connection::reset();
         Connection::pdo()->exec((string)file_get_contents(FPANEL_ROOT . '/config/schema.sql'));
-        out("OK database direset");
+        out("OK database reset");
         break;
 
     case 'login:reset':
         Connection::run("DELETE FROM login_attempts");
-        out("OK login_attempts dikosongkan");
+        out("OK login_attempts cleared");
         break;
 
     case 'login:count':
@@ -237,7 +237,7 @@ switch ($cmd) {
 
     case 'user:hashis':
         $h = (string)Connection::value('SELECT password_hash FROM users WHERE username = :u', ['u'=>$argvIn[0] ?? '']);
-        out(str_starts_with($h, '$argon2') ? 'argon2' : (str_starts_with($h, '$2y') ? 'bcrypt' : 'lainnya'));
+        out(str_starts_with($h, '$argon2') ? 'argon2' : (str_starts_with($h, '$2y') ? 'bcrypt' : 'other'));
         break;
 
     case 'user:list':
@@ -252,7 +252,7 @@ switch ($cmd) {
         out($v === null ? '' : (string)$v);
         break;
 
-    case 'domain:jumlah':
+    case 'domain:count':
         $u = $argvIn[0] ?? null;
         $q = 'SELECT COUNT(*) FROM domains' . ($u === null ? '' : ' WHERE user_id = (SELECT id FROM users WHERE username = :u)');
         $pp = $u === null ? [] : ['u' => $u];
@@ -260,12 +260,12 @@ switch ($cmd) {
         break;
 
     case 'test:quota-park':
-        // Kuota paket admin dinaikkan sementara supaya suite punya
-        // ruang untuk membuat banyak domain uji. Nilai lama disimpan lebih dulu,
-        // jadi test:quota-restore mengembalikan kebijakan produksi apa adanya.ya.
+        // The admin package quota is raised temporarily so the suite has
+        // room to create many test domains. The old values are stored first,
+        // so test:quota-restore restores the production policy exactly as it was.
         //
-        // Dipakai hanya oleh tests/run.sh; dipisah dari CLI biasa supaya
-        // tidak salah dikira fitur produksi.
+        // Used only by tests/run.sh; kept out of the normal CLI so it is
+        // not mistaken for a production feature.
         $pk = Connection::one(
             'SELECT p.id, p.max_domains, p.max_subdomains, p.max_databases,
                     p.max_db_users, p.max_node_apps, p.max_python_apps
@@ -274,7 +274,7 @@ switch ($cmd) {
             ['u' => 'admin']
         );
         if ($pk === null) {
-            out('GAGAL: paket admin tidak ditemukan');
+            out('Error: admin plan not found');
             exit(1);
         }
         $save = '/var/lib/fpanel/test-quota.json';
@@ -282,9 +282,9 @@ switch ($cmd) {
         if (!is_file($save)) {
             file_put_contents($save, json_encode($pk, JSON_PRETTY_PRINT));
         }
-        // Tanpa argumen: kuota jadi (domain terpakai + 5). Dipakai angka tetap
-        // yang jauh lebih besar membuat section yang menguji batas kuota
-        // ikut membuat puluhan domain uji dan meninggalkan residu.
+        // Without an argument: quota becomes (used domains + 5). Using a fixed
+        // number that is far larger would make the section testing quota limits
+        // create dozens of test domains too and leave residue behind.
         $n = (int)($argvIn[0] ?? 0);
         if ($n < 1) {
             $used = (int)Connection::value('SELECT COUNT(*) FROM domains WHERE user_id = :u',
@@ -299,18 +299,18 @@ switch ($cmd) {
             'max_node_apps'  => 10,
             'max_python_apps'=> 10,
         ], 'id = :i', ['i' => (int)$pk['id']]);
-        out('OK kuota sementara dinaikkan ke ' . $n);
+        out('OK temporary quota raised to ' . $n);
         break;
 
     case 'test:quota-restore':
         $save = '/var/lib/fpanel/test-quota.json';
         if (!is_file($save)) {
-            out('OK tidak ada kuota sementara untuk dipulihkan');
+            out('OK no temporary quota to restore');
             break;
         }
         $pk = json_decode((string)file_get_contents($save), true);
         if (!is_array($pk)) {
-            out('GAGAL: file kuota rusak');
+            out('Error: quota file is corrupt');
             exit(1);
         }
         Connection::update('packages', [
@@ -322,12 +322,12 @@ switch ($cmd) {
             'max_python_apps' => (int)$pk['max_python_apps'],
         ], 'id = :i', ['i' => (int)$pk['id']]);
         @unlink($save);
-        out('OK kuota paket dipulihkan: ' . (int)$pk['max_domains'] . ' domain');
+        out('OK plan quota restored: ' . (int)$pk['max_domains'] . ' domain');
         break;
 
     case 'test:quota-park [n] | test:quota-restore | package:domain-quota':
-        // Kuota domain dari paket yang dipegang user. Dipakai test suite
-        // supaya test tidak perlu menebak angka paket secara hardcode.
+        // Domain quota from the package the user holds. Used by the test suite
+        // so tests do not have to guess the package numbers in code.
         $u  = (string)($argvIn[0] ?? '');
         $pk = Connection::one(
             'SELECT p.max_domains FROM users u JOIN packages p ON p.id = u.package_id WHERE u.username = :u',
@@ -337,8 +337,8 @@ switch ($cmd) {
         break;
 
     case 'package:domain-quota':
-        // Kuota domain dari paket yang dipegang user. Dipakai test suite
-        // supaya test tidak perlu menebak angka paket secara hardcode.
+        // Domain quota from the package the user holds. Used by the test suite
+        // so tests do not have to guess the package numbers in code.
         $u  = (string)($argvIn[0] ?? '');
         $pk = Connection::one(
             'SELECT p.max_domains FROM users u JOIN packages p ON p.id = u.package_id WHERE u.username = :u',
@@ -347,15 +347,15 @@ switch ($cmd) {
         out($pk === null ? '5' : (string)(int)$pk['max_domains']);
         break;
 
-    case 'domain:ada':
+    case 'domain:exists':
         $n = (string)($argvIn[0] ?? '');
         out((string)(int)Connection::value('SELECT COUNT(*) FROM domains WHERE name LIKE :n', ['n' => '%' . $n . '%']));
         break;
 
-    // Menyiapkan direktori scan per-domain untuk semua versi PHP yang terpasang.
-    // WAJIB dijalankan sebagai root: /etc/php/<v>/fpm/conf.d dimiliki root,
-    // sedangkan aplikasi berjalan sebagai www-data dan tidak bisa membuatnya.
-    // Tanpa ini, create domain dengan PHP 8.1/8.2/8.4 akan gagal.
+    // Prepares the per-domain scan directory for every installed PHP version.
+    // MUST run as root: /etc/php/<v>/fpm/conf.d is owned by root,
+    // while the app runs as www-data and cannot create it.
+    // Without this, creating a domain with PHP 8.1/8.2/8.4 will fail.
     case 'php:prep':
         $vers = glob('/etc/php/*/fpm', GLOB_ONLYDIR) ?: [];
         $made = 0;
@@ -367,35 +367,35 @@ switch ($cmd) {
             if (is_dir($target)) {
                 continue;
             }
-            // Dibuat milik www-data supaya app bisa membuat subdirektori per domain.
+            // Created as www-data so the app can make per-domain subdirectories.
             if (@mkdir($target, 0755, true) && @chown($target, 'www-data')) {
                 $made++;
                 out("+ {$m[1]} $target");
             } else {
-                out("GAGAL: $target (jalankan sebagai root)");
+                out("Error: $target (run as root)");
                 break;
             }
         }
-        out($made === 0 ? 'semua direktori sudah ada' : "$made direktori dibuat");
+        out($made === 0 ? 'all directories already exist' : "$made directories created");
         break;
 
-    // Backup: buat/daftar/verifikasi/hapus/retensi. Restore SENGAJA tidak
-    // ada di CLI non-interaktif -- restore menimpa database yang hidup, jadi
-    // harus dijalankan manual lewat helper agar operator bisa melihat log.
+    // Backup: create/list/verify/delete/retention. Restore is DELIBERATELY
+    // absent from the non-interactive CLI -- restore overwrites a live database, so
+    // it has to be run manually through the helper so the operator can watch the log.
     case 'backup:create':
         $keep = (string)($argvIn[0] ?? '7');
         $r    = Backup::create((int)$keep);
-        out($r['ok'] ? (string)$r['message'] : ('GAGAL: ' . (string)$r['error']));
+        out($r['ok'] ? (string)$r['message'] : ('Error: ' . (string)$r['error']));
         break;
 
     case 'backup:list':
         $l = Backup::listing();
         if (!$l['ok']) {
-            out('GAGAL: ' . (string)$l['error']);
+            out('Error: ' . (string)$l['error']);
             break;
         }
         if ($l['items'] === []) {
-            out('(belum ada backup)');
+            out('(no backups yet)');
             break;
         }
         foreach ($l['items'] as $b) {
@@ -412,19 +412,19 @@ switch ($cmd) {
 
     case 'backup:delete':
         $r = Backup::delete((string)($argvIn[0] ?? ''));
-        out($r['ok'] ? (string)$r['message'] : ('GAGAL: ' . (string)$r['error']));
+        out($r['ok'] ? (string)$r['message'] : ('Error: ' . (string)$r['error']));
         break;
 
     case 'backup:prune':
         $r = Backup::prune((int)($argvIn[0] ?? '7'));
-        out($r['ok'] ? (string)$r['message'] : ('GAGAL: ' . (string)$r['error']));
+        out($r['ok'] ? (string)$r['message'] : ('Error: ' . (string)$r['error']));
         break;
 
-    // Membersihkan token phpMyAdmin yang sudah lewat TTL. Dipanggil cron
-    // tiap 10 menit; juga dipanggil otomatis setiap kali token baru dibuat.
+    // Cleans up phpMyAdmin tokens that passed their TTL. Called by cron
+    // every 10 minutes; also called automatically whenever a new token is created.
     case 'db:migrate-totp':
-        // Kolom kind membedakan sesi login penuh dengan sesi antar-langkah
-        // (menunggu kode 2FA). Tanpa ini, sesi 2FA bisa ikut dianggap login.
+        // The kind column tells a full login session apart from an intermediate
+        // session (waiting for the 2FA code). Without it, 2FA sessions could count as logins.
         $cols = [];
         foreach (Connection::pdo()->query("PRAGMA table_info(sessions)") as $c) {
             $cols[] = (string)$c['name'];
@@ -434,10 +434,10 @@ switch ($cmd) {
                 "ALTER TABLE sessions ADD COLUMN kind TEXT NOT NULL DEFAULT 'auth'"
             );
         }
-        // Tabel dibuat ulang kalau versi lamanya belum punya foreign key.
-        // Tanpa FK, user:delete meninggalkan kode pemulihan yatim: nilainya
-        // masih bisa dicocokkan begitu ada user baru dengan id yang sama
-        // (SQLite mengizinkan pemakaian ulang id).
+        // The table is rebuilt when its old version has no foreign key.
+        // Without an FK, user:delete leaves orphaned recovery codes: their values
+        // can still be matched once a new user appears with the same id
+        // (SQLite allows id reuse).
         $shape = (string)Connection::value(
             "SELECT COALESCE(sql, '') FROM sqlite_master WHERE type = 'table' AND name = 'totp_recovery'"
         );
@@ -454,7 +454,7 @@ switch ($cmd) {
             . 'created_at TEXT NOT NULL DEFAULT (datetime(\'now\')))'
         );
         if ($shape !== '' && !$hasFk) {
-            // Kode milik user yang masih ada dipertahankan, sisanya dibuang.
+            // Codes belonging to users that still exist are kept, the rest are dropped.
             Connection::pdo()->exec(
                 'INSERT INTO totp_recovery (user_id, code_hash, used_at, created_at) '
                 . 'SELECT user_id, code_hash, used_at, created_at FROM totp_recovery_legacy '
@@ -468,12 +468,12 @@ switch ($cmd) {
         Connection::pdo()->exec(
             'CREATE INDEX IF NOT EXISTS idx_totp_recovery_user ON totp_recovery (user_id)'
         );
-        out('OK 2FA siap (kolom sessions.kind + tabel totp_recovery)');
+        out('OK 2FA ready (sessions.kind column + totp_recovery table)');
         break;
 
     case 'db:migrate-usage':
-        // String literal SQL (datetime('now'), '[]') ditulis dengan kutip
-        // ganda di PHP karena ' bukan escape yang sah di single-quoted PHP.
+        // SQL string literals (datetime('now'), '[]') are written with double
+        // quotes in PHP because ' is not a valid escape in single-quoted PHP.
         Connection::pdo()->exec(
             "CREATE TABLE IF NOT EXISTS domain_usage ("
             . "domain_id INTEGER PRIMARY KEY,"
@@ -486,36 +486,36 @@ switch ($cmd) {
             . "log_updated_at TEXT,"
             . "top_paths TEXT NOT NULL DEFAULT '[]')"
         );
-        // resource_usage dibaca dashboard; satu baris per user.
+        // resource_usage is read by the dashboard; one row per user.
         Connection::pdo()->exec(
             'CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_usage_user ON resource_usage (user_id)'
         );
-        out('OK tabel domain_usage siap');
+        out('OK domain_usage table ready');
         break;
 
     case 'db:migrate-domain-type':
-        // Buang tipe domain 'node'/'python'/'binary'.
+        // Drop the 'node'/'python'/'binary' domain types.
         //
-        // CHECK constraint SQLite tidak bisa diubah tanpa membangun ulang
-        // tabel, jadi langkahnya: rename -> buat ulang -> salin -> buang lama.
-        // Tabel runtime_apps yang jadi sumber kebenaran runtime, jadi nilainya
-        // tidak hilang: app tetap menempel lewat domain_id-nya.
+        // An SQLite CHECK constraint cannot be changed without rebuilding
+        // the table, so the steps are: rename -> recreate -> copy -> drop old.
+        // The runtime_apps table is the source of truth for runtimes, so the value
+        // is not lost: apps stay attached through their domain_id.
         $pdo = Connection::pdo();
         $shape = (string)Connection::value(
             "SELECT COALESCE(sql, '') FROM sqlite_master WHERE type = 'table' AND name = 'domains'"
         );
         if ($shape === '') {
-            out('GAGAL: tabel domains tidak ada');
+            out('Error: domains table does not exist');
             exit(1);
         }
 
         $needsRebuild = str_contains($shape, "'node'");
         if ($needsRebuild) {
-            // Semua langkah di dalam transaksi. DDL SQLite ikut transaksional,
-            // jadi kegagalan di tengah (mis. CHECK constraint) akan rollback
-            // penuh: tabel asli utuh dan tidak ada FK nyasar ke
-            // domains_legacy_type. Tanpa transaksi, kegagalan seperti itu
-            // meninggalkan enam tabel dengan referensi yang rusak.
+            // Every step runs inside a transaction. SQLite DDL is transactional too,
+            // so a failure midway (e.g. a CHECK constraint) rolls back
+            // completely: the original table stays intact and no FK points at
+            // domains_legacy_type. Without a transaction, such a failure
+            // leaves six tables with broken references.
             $pdo->beginTransaction();
         }
         try {
@@ -524,8 +524,8 @@ switch ($cmd) {
             $pdo->exec('PRAGMA foreign_keys = OFF');
             $pdo->exec('ALTER TABLE domains RENAME TO domains_legacy_type');
 
-            // Kolom disalin satu per satu supaya skema lama yang belum punya
-            // kolom baru (mis. app_id) tidak bikin CREATE GAGAL.
+            // Columns are copied one by one so an old schema without a
+            // new column (e.g. app_id) does not make the CREATE FAIL.
             $newCols = [];
             foreach ($pdo->query('PRAGMA table_info(domains_legacy_type)') as $c) {
                 $newCols[(string)$c['name']] = (string)$c['name'];
@@ -557,10 +557,10 @@ switch ($cmd) {
                 . "updated_at TEXT NOT NULL DEFAULT (datetime('now')))"
             );
 
-            // Pemetaan harus terjadi DI DALAM INSERT, bukan sesudahnya.
-            // Tabel baru punya CHECK type IN ('static','php'), jadi menyalin
-            // nilai 'node' apa adanya lebih dulu akan ditolak SQLite dan
-            // menyisakan tabel domains kosong.
+            // The remapping must happen INSIDE the INSERT, not after it.
+            // The new table has CHECK type IN ('static','php'), so copying
+            // the 'node' value as-is first would be rejected by SQLite and
+            // leave the domains table empty.
             $remapSql = "CASE type"
                 . " WHEN 'node' THEN 'php'"
                 . " WHEN 'python' THEN 'php'"
@@ -582,7 +582,7 @@ switch ($cmd) {
             $after = (int)Connection::value('SELECT COUNT(*) FROM domains');
             if ($after !== $before) {
                 throw new \RuntimeException(
-                    'jumlah domain berubah saat migrasi (' . $before . ' -> ' . $after . ')'
+                    'domain count changed during migration (' . $before . ' -> ' . $after . ')'
                 );
             }
         }
@@ -590,19 +590,19 @@ switch ($cmd) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
-            out('GAGAL: ' . $e->getMessage() . ' (perubahan dibatalkan)');
+            out('Error: ' . $e->getMessage() . ' (changes rolled back)');
             exit(1);
         }
         if ($needsRebuild) {
             $pdo->commit();
         }
 
-        // Index lama ikut hilang bersama tabel; dibuat ulang.
+        // The old indexes vanish along with the table; recreate them.
         $pdo->exec('CREATE INDEX IF NOT EXISTS ix_domains_user ON domains(user_id)');
         $pdo->exec('CREATE INDEX IF NOT EXISTS ix_domains_port ON domains(runtime_port)');
 
-        // runtime_apps.domain_id jadi FK sungguhan supaya app ikut terhapus
-        // bersama domainnya (dulu tidak ada FK sama sekali).
+        // runtime_apps.domain_id becomes a real FK so apps get deleted
+        // along with their domain (previously there was no FK at all).
         $appShape = (string)Connection::value(
             "SELECT COALESCE(sql, '') FROM sqlite_master WHERE type = 'table' AND name = 'runtime_apps'"
         );
@@ -642,17 +642,17 @@ switch ($cmd) {
         foreach (Connection::all('SELECT type, COUNT(*) c FROM domains GROUP BY type') as $r) {
             $types[] = (string)$r['type'] . '=' . (int)$r['c'];
         }
-        out('OK tipe domain disederhanakan: ' . implode(' ', $types)
-            . ($left > 0 ? " (masih ada $left nilai tak dikenal)" : ''));
+        out('OK domain types simplified: ' . implode(' ', $types)
+            . ($left > 0 ? " ($left unknown values left)" : ''));
         break;
 
     case 'db:migrate-devices':
-        // Login link sekali pakai dan "ingat perangkat ini".
+        // One-time login links and "remember this device".
         //
-        // Kolom created_at memakai DEFAULT (datetime('now')) yang memang
-        // ekspresi SQLite, tapi TIDAK boleh ditulis sebagai literal string
-        // di dalam PHP: kutip ganda di situ membuat PDO mengirim '"now"' dan
-        // SQLite menolaknya sebagai "default value is not constant".
+        // The created_at column uses DEFAULT (datetime('now')), which is indeed
+        // a SQLite expression, but must NOT be written as a string literal
+        // in PHP: double quotes there make PDO send '"now"' and
+        // SQLite rejects it as "default value is not constant".
         $pdo = Connection::pdo();
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS login_links ('
@@ -680,17 +680,17 @@ switch ($cmd) {
         );
         $pdo->exec('CREATE INDEX IF NOT EXISTS idx_remember_devices_user ON remember_devices (user_id)');
 
-        // Idempoten: kalau tabel sudah ada, perintah CREATE IF NOT EXISTS
-        // di atas dilewati tanpa error.
-        out('OK perangkat & login link siap');
+        // Idempotent: if the table already exists, the CREATE IF NOT EXISTS
+        // statements above are skipped without error.
+        out('OK devices & login links ready');
         break;
 
     case 'totp:encrypt-secrets':
-        // Seed TOTP lama mungkin masih polos di database. Job ini mengubahnya
-        // jadi terenkripsi tanpa menyentuh nilai yang sudah terenkripsi, dan
-        // memverifikasi-roundtrip supaya tidak ada yang gagal baca diam-diam.
+        // Old TOTP seeds may still be plaintext in the database. This job turns
+        // them into encrypted ones without touching already-encrypted values, and
+        // verifies the round-trip so nothing silently fails to read.
         if (!SecretBox::available()) {
-            out('GAGAL: kunci /etc/fpanel/app-key tidak terbaca; seed dibiarkan polos');
+            out('Error: cannot read /etc/fpanel/app-key; seed left as plain text');
             exit(1);
         }
         $rows = Connection::all(
@@ -705,24 +705,24 @@ switch ($cmd) {
             }
             $enc = SecretBox::encrypt($raw);
             if ($enc === null || SecretBox::decrypt($enc) !== $raw) {
-                out('GAGAL: enkripsi gagal untuk ' . (string)$r['username']);
+                out('Error: encryption failed for ' . (string)$r['username']);
                 exit(1);
             }
             Connection::update('users', ['totp_secret' => $enc], 'id = :id', ['id' => (int)$r['id']]);
             $done++;
         }
-        out('OK ' . (string)$done . ' seed dienkripsi dari ' . (string)count($rows) . ' total');
+        out('OK ' . (string)$done . ' secrets encrypted out of ' . (string)count($rows) . ' total');
         break;
 
     case 'login-link:issue':
         $u = (string)($argvIn[0] ?? '');
         if ($u === '') {
-            out('GAGAL: pakai login-link:issue <username>');
+            out('Error: usage: login-link:issue <username>');
             exit(2);
         }
         $r = LoginLink::issue($u);
         if (empty($r['ok'])) {
-            out('GAGAL: ' . (string)$r['error']);
+            out('Error: ' . (string)$r['error']);
             exit(1);
         }
         out((string)$r['token']);
@@ -739,15 +739,15 @@ switch ($cmd) {
     case 'device:revoke-all':
         $u = (string)($argvIn[0] ?? '');
         if ($u === '') {
-            out('GAGAL: pakai device:revoke-all <username>');
+            out('Error: usage: device:revoke-all <username>');
             exit(2);
         }
-        out('OK ' . (string)RememberDevice::revokeAll($u) . ' perangkat dicabut');
+        out('OK ' . (string)RememberDevice::revokeAll($u) . ' devices revoked');
 
     case 'offsite:status':
         $c = Offsite::config();
         if (!$c['configured']) {
-            out('BELUM DIKONFIGURASI: ' . (string)$c['error']);
+            out('NOT CONFIGURED: ' . (string)$c['error']);
             break;
         }
         $s = Offsite::status();
@@ -755,9 +755,9 @@ switch ($cmd) {
         out('bucket   : ' . (string)$c['bucket']);
         out('region   : ' . (string)$c['region']);
         out('key id   : ' . (string)$c['key_id']);
-        out('terjangkau: ' . (!empty($s['reachable']) ? 'ya' : 'TIDAK'));
-        out('arsip    : ' . (string)($s['remote'] ?? 0));
-        out('terbaru  : ' . (string)($s['latest_remote'] ?? '-'));
+        out('reachable: ' . (!empty($s['reachable']) ? 'yes' : 'NO'));
+        out('archives : ' . (string)($s['remote'] ?? 0));
+        out('latest   : ' . (string)($s['latest_remote'] ?? '-'));
         if (!$s['reachable']) {
             out('error    : ' . (string)($s['error'] ?? '-'));
             exit(1);
@@ -765,20 +765,20 @@ switch ($cmd) {
         break;
 
     case 'offsite:upload':
-        // Backup dienkripsi sebelum dikirim; file .enc di bucket tidak bisa
-        // dibaca siapa pun yang hanya punya akses ke storage.
+        // Backups are encrypted before being sent; the .enc file in the bucket cannot
+        // be read by anyone who only has access to the storage.
         $name = (string)($argvIn[0] ?? '');
         if ($name === '') {
-            // Tanpa nama: pakai arsip terbaru yang tersedia.
+            // Without a name: use the latest archive available.
             $name = Backup::latestName();
         }
         if ($name === '') {
-            out('GAGAL: tidak ada arsip backup untuk dikirim');
+            out('Error: no backup archive to upload');
             exit(1);
         }
         $r = Offsite::upload('/var/backups/fpanel/' . $name, $name);
         if (!$r['ok']) {
-            out('GAGAL: ' . (string)$r['error']);
+            out('Error: ' . (string)$r['error']);
             exit(1);
         }
         out('OK ' . (string)$r['message']);
@@ -788,24 +788,24 @@ switch ($cmd) {
         $enc = (string)($argvIn[0] ?? '');
         $dest = (string)($argvIn[1] ?? '');
         if ($enc === '' || $dest === '') {
-            out('GAGAL: pakai offsite:decrypt <file.enc> <tujuan>');
+            out('Error: usage: offsite:decrypt <file.enc> <destination>');
             exit(2);
         }
         if (!is_file($enc)) {
-            out('GAGAL: file tidak ditemukan: ' . $enc);
+            out('Error: file not found: ' . $enc);
             exit(1);
         }
         if (!Offsite::decryptFile($enc, $dest)) {
-            out('GAGAL: dekripsi gagal (MAC tidak cocok atau kunci berbeda)');
+            out('Error: decryption failed (MAC mismatch or wrong key)');
             exit(1);
         }
-        out('OK didekripsi ke ' . $dest);
+        out('OK decrypted to ' . $dest);
         break;
 
     case 'offsite:prune':
         $r = Offsite::pruneRemote((int)($argvIn[0] ?? Offsite::KEEP));
         if (!$r['ok']) {
-            out('GAGAL: ' . (string)$r['error']);
+            out('Error: ' . (string)$r['error']);
             exit(1);
         }
         out('OK ' . (string)$r['message']);
@@ -814,18 +814,18 @@ switch ($cmd) {
     case 'housekeeping:dry':
         $r = Housekeeping::make()->run(true);
         if (!$r['ok']) {
-            out('GAGAL: ' . (string)$r['error']);
+            out('Error: ' . (string)$r['error']);
             exit(1);
         }
         foreach ($r['counts'] as $k => $n) {
-            out('akan dihapus ' . $k . ': ' . (string)$n);
+            out('will be deleted ' . $k . ': ' . (string)$n);
         }
         break;
 
     case 'housekeeping:run':
         $r = Housekeeping::make()->run(false);
         if (!$r['ok']) {
-            out('GAGAL: ' . (string)$r['error']);
+            out('Error: ' . (string)$r['error']);
             exit(1);
         }
         $parts = [];
@@ -833,44 +833,44 @@ switch ($cmd) {
             $parts[] = $k . '=' . (string)$n;
         }
         foreach ($r['warnings'] as $w) {
-            out('PERINGATAN: ' . $w);
+            out('WARNING: ' . $w);
         }
-        out('OK dibersihkan: ' . implode(' ', $parts));
+        out('OK cleaned up: ' . implode(' ', $parts));
         break;
 
     case 'usage:collect':
         $r = Usage::collect();
         if (!$r['ok']) {
-            out('GAGAL: ' . (string)$r['error']);
+            out('Error: ' . (string)$r['error']);
             exit(1);
         }
         out('OK ' . (string)$r['message']);
         break;
 
     case 'wp:update':
-        // Background worker untuk pembaruan core/plugin/tema. CLI ini tidak
-        // dipanggil dari browser; Wp::startUpdate() yang memanggilnya.
+        // Background worker for core/plugin/theme updates. This CLI is not
+        // called from the browser; Wp::startUpdate() calls it.
         $r = Wp::runUpdate(Wp::decodePayload((string)($argvIn[0] ?? '')) ?? []);
         if (!$r['ok']) {
-            out('GAGAL: ' . (string)$r['error']);
+            out('Error: ' . (string)$r['error']);
             exit(1);
         }
         out('OK ' . (string)$r['message']);
         break;
 
     case 'wp:install':
-        // Dipanggil dari Wp::spawn() dengan payload base64url. Installer
-        // sengaja jalan di CLI supaya tidak terkena max_execution_time FPM.
-        // Penting: CLI memindah nama script dan nama command, jadi argumen
-        // pertama ada di $argvIn[0]. $argv[1] berisi "wp:install" itu sendiri.
+        // Called from Wp::spawn() with a base64url payload. The installer
+        // deliberately runs in the CLI so it is not bound by FPM max_execution_time.
+        // Important: the CLI shifts off the script name and command name, so the
+        // first argument is in $argvIn[0]. $argv[1] holds "wp:install" itself.
         $args = Wp::decodePayload((string)($argvIn[0] ?? ''));
         if (!isset($args['username'], $args['domain'])) {
-            out('GAGAL: payload wp:install tidak valid');
+            out('Error: invalid wp:install payload');
             exit(1);
         }
         $r = Wp::runInstall($args);
         if (!$r['ok']) {
-            out('GAGAL: ' . (string)$r['error']);
+            out('Error: ' . (string)$r['error']);
             exit(1);
         }
         out('OK ' . (string)$r['message']);
@@ -887,6 +887,6 @@ switch ($cmd) {
   user:pass <username> <password>
   user:delete <username>
   user:list
-  db:migrate | db:reset | db:migrate-ssl | db:migrate-ini | db:migrate-usage | db:migrate-totp | db:migrate-devices | db:migrate-domain-type\n  php:prep | pma:sweep | usage:collect\n  housekeeping:dry | housekeeping:run | totp:encrypt-secrets\n  login-link:issue <user> | login-link:count | device:count | device:revoke-all <user>\n  offsite:status | offsite:upload [nama] | offsite:decrypt <enc> <tujuan> | offsite:prune [jumlah]\n  wp:install <payload> | wp:update <payload> | backup:create | backup:list | backup:verify | backup:delete | backup:prune\n  domain:id <name> | domain:jumlah [user] | domain:ada <pola>");
+  db:migrate | db:reset | db:migrate-ssl | db:migrate-ini | db:migrate-usage | db:migrate-totp | db:migrate-devices | db:migrate-domain-type\n  php:prep | pma:sweep | usage:collect\n  housekeeping:dry | housekeeping:run | totp:encrypt-secrets\n  login-link:issue <user> | login-link:count | device:count | device:revoke-all <user>\n  offsite:status | offsite:upload [name] | offsite:decrypt <enc> <destination> | offsite:prune [count]\n  wp:install <payload> | wp:update <payload> | backup:create | backup:list | backup:verify | backup:delete | backup:prune\n  domain:id <name> | domain:count [user] | domain:exists <pattern>");
         exit(1);
 }

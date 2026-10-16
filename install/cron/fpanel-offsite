@@ -1,10 +1,10 @@
-# FPanel: kirim arsip backup terbaru ke bucket offsite.
-# Dijalankan 1 jam setelah backup lokal (03:17), supaya arsip yang dikirim
-# sama persis dengan yang sudah diverifikasi di disk.
+# FPanel: send the latest backup archive to the offsite bucket.
+# Runs 1 hour after the local backup (03:17), so the archive sent
+# is exactly the one already verified on disk.
 #
-# www-data cukup untuk Signature S3 dan enkripsi, tapi tidak untuk membaca
-# arsip (direktori 0700 root) dan tidak untuk /etc/fpanel/offsite.conf
-# yang hanya root yang boleh lihat. Karena ituaks ini lewat helper root.
+# www-data is enough for S3 signing and encryption, but not for reading
+# the archives (root 0700 directory) nor for /etc/fpanel/offsite.conf,
+# which only root may read. That is why this action goes through the root helper.
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""

@@ -1,39 +1,40 @@
 # FPanel
 
-Panel kontrol hosting *self-hosted*: kelola domain, PHP, database MariaDB,
-Node.js/Python, backup, dan sertifikat SSL dari satu antarmuka web.
+Self-hosted hosting control panel: manage domains, PHP versions, MariaDB
+databases, Node.js/Python apps, backups, and SSL certificates from a single
+web interface.
 
-Ditulis dengan **PHP 8.3 murni tanpa framework** (tanpa Composer runtime),
-database panel **SQLite**, dan operasi privileged dijalankan lewat helper
-root yang dikunci dengan `sudoers` per-perintah.
+Written in **plain PHP 8.3 without a framework** (no Composer at runtime),
+panel data stored in **SQLite**, and privileged operations executed through
+root helpers locked down with per-command `sudoers` rules.
 
 ---
 
-## Fitur
+## Features
 
-| Area | Yang bisa dilakukan |
+| Area | What it does |
 |---|---|
-| **Domain** | Tambah/hapus vhost nginx, docroot per domain, log akses/error per domain |
-| **PHP** | Multi-versi (7.4–8.4), pool FPM per domain, on/off extension, override `php.ini` |
-| **Database** | Buat/hapus database & user MariaDB, grant/revoke, cek ukuran |
-| **phpMyAdmin** | Akses per-database lewat token sekali pakai (`/pma/<token>/`), token otomatis di-sweep |
-| **SSL** | Let's Encrypt lewat certbot (HTTP-01 & DNS-01 Cloudflare) |
-| **App runtime** | Jalankan app Node.js / Python sebagai unit systemd (`fpanel-app-<nama>`) |
-| **File manager** | Telusur, unggah, ubah, hapus berkas di docroot |
-| **Backup** | Backup lokal (SQLite, `/var/www`, database, konfigurasi, sertifikat) + offsite S3 |
-| **Cron** | Kelola job cron per-user lewat helper root |
-| **WordPress** | Instal & update WordPress via WP-CLI |
-| **Keamanan** | Login + TOTP, remember-device, CSRF, audit log, rate-limit login |
-| **Statistik** | Pemakaian disk/bandwidth/request per domain |
+| **Domains** | Add/remove nginx vhosts, per-domain docroot, per-domain access/error logs |
+| **PHP** | Multi-version (7.4–8.4), FPM pool per domain, extension on/off, `php.ini` overrides |
+| **Databases** | Create/remove MariaDB databases and users, grant/revoke, check size |
+| **phpMyAdmin** | Per-database access with one-time tokens (`/pma/<token>/`), tokens swept automatically |
+| **SSL** | Let's Encrypt through certbot (HTTP-01 and Cloudflare DNS-01) |
+| **App runtime** | Run Node.js / Python apps as systemd units (`fpanel-app-<name>`) |
+| **File manager** | Browse, upload, edit, and delete files inside the docroot |
+| **Backup** | Local backups (SQLite, `/var/www`, databases, config, certificates) + S3 offsite |
+| **Cron** | Per-user cron jobs managed through a root helper |
+| **WordPress** | Install and update WordPress with WP-CLI |
+| **Security** | Login + TOTP, remember-device, CSRF, audit log, login rate limiting |
+| **Statistics** | Per-domain disk, bandwidth, and request usage |
 
 ---
 
-## Arsitektur
+## Architecture
 
 ```
                     ┌─────────────────────────────┐
    Browser  ──────▶ │  nginx  :8090 (panel)       │
-                    │  nginx  :80/443 (domain)    │
+                    │  nginx  :80/443 (domains)   │
                     └──────────────┬──────────────┘
                                    │ fastcgi
                     ┌──────────────▼──────────────┐
@@ -43,56 +44,57 @@ root yang dikunci dengan `sudoers` per-perintah.
              ┌─────────────────────┼─────────────────────┐
              │                     │                     │
      ┌───────▼────────┐  ┌─────────▼─────────┐  ┌────────▼────────┐
-     │ SQLite         │  │ MariaDB + Redis   │  │ helper root     │
-     │ var/db/*.sqlite│  │ (domain, app)     │  │ /usr/local/sbin │
+     │ SQLite         │  │ MariaDB + Redis   │  │ root helpers    │
+     │ var/db/*.sqlite│  │ (domains, apps)   │  │ /usr/local/sbin │
      └────────────────┘  └───────────────────┘  └─────────────────┘
 ```
 
-- **Panel** jalan sebagai user `www-data`, tidak punya akses root langsung.
-- **Aplikasi** memanggil operasi privileged lewat
-  `/usr/local/sbin/fpanel-*` yang diizinkan spesifik di `/etc/sudoers.d/fpanel-*`.
-  Setiap helper memvalidasi argumennya sendiri (nama, path, port) sebelum
-  menyentuh systemd/nginx/MariaDB.
-- **phpMyAdmin** diakses lewat front controller `fpma-index.php` yang
-  memvalidasi token dari URI; tidak ada kredensial yang melewati file ini.
+- The **panel** runs as `www-data` and has no direct root access.
+- The **application** calls privileged operations through
+  `/usr/local/sbin/fpanel-*`, allowed per command in
+  `/etc/sudoers.d/fpanel-*`. Each helper validates its own arguments
+  (name, path, port) before touching systemd/nginx/MariaDB.
+- **phpMyAdmin** is reached through the `fpma-index.php` front controller,
+  which validates the token from the URI; no credentials pass through it.
 
 ---
 
-## Struktur repositori
+## Repository layout
 
 ```
 .
-├── app/                    # aplikasi PHP (autoload SPL, tanpa framework)
-│   ├── bootstrap.php       #   entry point CLI & web (FPANEL_ROOT, autoload, config)
-│   ├── public/             #   docroot: index.php + aset statis
+├── app/                    # PHP application (SPL autoload, no framework)
+│   ├── bootstrap.php       #   entry point for CLI & web (FPANEL_ROOT, autoload, config)
+│   ├── public/             #   docroot: index.php + static assets
 │   ├── src/                #   Auth, Database, Http, Service, View, Support
-│   ├── views/              #   template .php
-│   └── i18n/               #   terjemahan (id)
-├── bin/fpanel              # CLI (migrasi, user, backup, dll)
+│   ├── views/              #   .php templates
+│   └── i18n/               #   translations (id)
+├── bin/fpanel              # CLI (migrate, user, backup, ...)
 ├── config/
-│   ├── fpanel.php          #   konfigurasi utama (bisa di-override env FPANEL_*)
-│   └── schema.sql          #   skema database panel
-├── install/                # INSTALLER + aset sistem
-│   ├── install.sh          #   skrip instalasi utama
+│   ├── fpanel.php          #   main configuration (overridable via FPANEL_* env vars)
+│   └── schema.sql          #   panel database schema
+├── install/                # INSTALLER + system assets
+│   ├── install.sh          #   main install script
 │   ├── helpers/            #   → /usr/local/sbin/fpanel-*
 │   ├── sudoers/            #   → /etc/sudoers.d/fpanel-*
-│   ├── systemd/            #   unit contoh
+│   ├── systemd/            #   example units
 │   ├── cron/               #   → /etc/cron.d/fpanel-*
-│   ├── nginx/              #   vhost panel + snippet + catch-all
+│   ├── nginx/              #   panel vhost + snippet + catch-all
 │   ├── logrotate/          #   → /etc/logrotate.d/fpanel-backup
 │   └── phpmyadmin/         #   → /usr/share/phpmyadmin/fpma-index.php
-├── assets-src/             # sumber Tailwind (kanonik) + config
-├── tools/                  # skrip build (CSS, ikon, fitur)
-├── tests/                  # suite integrasi
-└── web/mockup/             # mockup UI lama (referensi tampilan)
+├── assets-src/             # Tailwind sources (canonical) + config
+├── tools/                  # build scripts (CSS, icons, features)
+├── tests/                  # integration suite
+└── web/mockup/             # legacy UI mockups (visual reference)
 ```
 
 ---
 
-## Instalasi
+## Installation
 
-Prasyarat: **Ubuntu 24.04** (atau Debian turunannya), akses **root**, dan
-koneksi internet. Domain bersifat opsional (panel bisa diakses lewat IP:8090).
+Requirements: **Ubuntu 24.04** (or a Debian derivative), **root** access, and
+an internet connection. A domain is optional (the panel also works over
+`IP:8090`).
 
 ```bash
 git clone https://github.com/flockman777/fpanel.git
@@ -100,56 +102,57 @@ cd fpanel
 sudo ./install/install.sh
 ```
 
-Installer akan memasang paket, membuat direktori, menyalin aplikasi ke
-`/srv/fpanel`, memasang helper + sudoers + cron, membuat database, dan
-membuat akun admin. Lihat [`install/README.md`](install/README.md) untuk opsi
-lanjutan (domain, SSL, non-interaktif).
+The installer installs packages, creates directories, copies the application
+to `/srv/fpanel`, installs the helpers + sudoers + cron, creates the database,
+and creates the admin account. See [`install/README.md`](install/README.md)
+for advanced options (domain, SSL, non-interactive mode).
 
-Setelah selesai, panel dapat dibuka di:
+When it finishes, the panel is available at:
 
-- `http://<ip-server>:8090` — selalu tersedia;
-- `https://<domain-panel>` — setelah domain & SSL dikonfigurasi.
+- `http://<server-ip>:8090` — always available;
+- `https://<panel-domain>` — once a domain and SSL are configured.
 
 ---
 
-## Konfigurasi
+## Configuration
 
-Konfigurasi utama ada di `config/fpanel.php`. Setiap nilai bisa di-override
-lewat variabel lingkungan `FPANEL_*` (lihat `install/env.example`):
+Main configuration lives in `config/fpanel.php`. Every value can be
+overridden through `FPANEL_*` environment variables (see
+`install/env.example`):
 
-| Env | Default | Guna |
+| Env | Default | Purpose |
 |---|---|---|
-| `FPANEL_BASE_URL` | — (auto) | URL absolut panel |
-| `FPANEL_APP_DEBUG` | `0` | Mode debug |
-| `FPANEL_CF_API_TOKEN` | — | Token Cloudflare (SSL DNS-01) |
-| `FPANEL_CF_ZONE_ID` | — | Zone Cloudflare |
-| `FPANEL_MAIL_RELAY_*` | — | SMTP relay untuk notifikasi |
+| `FPANEL_BASE_URL` | — (auto) | Absolute panel URL |
+| `FPANEL_APP_DEBUG` | `0` | Debug mode |
+| `FPANEL_CF_API_TOKEN` | — | Cloudflare token (SSL DNS-01) |
+| `FPANEL_CF_ZONE_ID` | — | Cloudflare zone |
+| `FPANEL_MAIL_RELAY_*` | — | SMTP relay for notifications |
 
-Nilai khusus server (mis. domain panel & email SSL) ditulis installer ke
-`config/local.php`. Berkas itu **tidak** ikut ke Git, sehingga nilai bawaan di
-repositori tetap generik untuk semua orang:
+Server-specific values (such as the panel domain and SSL email) are written
+by the installer to `config/local.php`. That file is **not** part of Git, so
+the defaults committed to the repository stay generic for everyone:
 
 ```php
 <?php
 return [
-    'app'         => ['base_url' => 'https://panel.contoh.tld'],
-    'letsencrypt' => ['email'    => 'admin@contoh.tld'],
+    'app'         => ['base_url' => 'https://panel.example.tld'],
+    'letsencrypt' => ['email'    => 'admin@example.tld'],
 ];
 ```
 
-Rahasia disimpan **di luar** repositori:
+Secrets are stored **outside** the repository:
 
-- `/etc/fpanel/app-key` — kunci enkripsi (SecretBox), mode `0640 root:www-data`;
-- `/etc/fpanel/offsite.conf` — kredensial S3 offsite, mode `0600 root`.
+- `/etc/fpanel/app-key` — encryption key (SecretBox), mode `0640 root:www-data`;
+- `/etc/fpanel/offsite.conf` — S3 offsite credentials, mode `0600 root`.
 
 ---
 
 ## CLI
 
 ```bash
-php bin/fpanel help              # daftar perintah
-php bin/fpanel db:migrate        # jalankan skema
-php bin/fpanel user:create admin 'Sandi!Kuat123' admin@example.tld admin
+php bin/fpanel help              # list commands
+php bin/fpanel db:migrate        # apply the schema
+php bin/fpanel user:create admin 'Strong!Pass123' admin@example.tld admin
 php bin/fpanel user:list
 php bin/fpanel backup:create
 php bin/fpanel pma:sweep
@@ -157,46 +160,46 @@ php bin/fpanel pma:sweep
 
 ---
 
-## Pengembangan
+## Development
 
 ```bash
-# CSS (Tailwind) — hasil dipasang ke app/public & web/mockup
+# CSS (Tailwind) — output goes to app/public & web/mockup
 ./tools/build-css.sh
 
-# Ikon (Lucide)
+# Icons (Lucide)
 node tools/build-icons.mjs
 
-# Uji integrasi (butuh stack terpasang; lihat header tests/run.sh)
+# Integration suite (needs an installed stack; see the header of tests/run.sh)
 sudo tests/run.sh
 ```
 
-Suite uji integrasi menjalankan ±657 assertion yang mencakup alur domain,
-database, SSL, backup, dan keamanan.
+The integration suite runs ~657 assertions covering domains, databases, SSL,
+backup, and security flows.
 
-Installer bisa diuji di container bersih tanpa menyentuh server:
+The installer can be tested in a clean container without touching a server:
 
 ```bash
-# butuh Docker (di macOS bisa lewat: brew install colima docker && colima start)
+# needs Docker (on macOS: brew install colima docker && colima start)
 ./tools/test-install-container.sh
 ```
 
-Skrip itu menjalankan `install/install.sh` di Ubuntu 24.04 + systemd, lalu
-memeriksa layanan, kunci panel, database, aturan sudo, dan respons HTTP —
-termasuk memastikan installer aman dijalankan dua kali.
+That script runs `install/install.sh` on Ubuntu 24.04 + systemd, then checks
+services, the panel key, the database, sudo rules, and HTTP responses —
+including a second installer run to prove it is idempotent.
 
 ---
 
-## Keamanan
+## Security
 
-- Panel tidak pernah menyimpan sandi MariaDB/SSH pengguna dalam bentuk terbuka.
-- Operasi root hanya lewat helper yang diizinkan **per-perintah** di
-  `/etc/sudoers.d/` — bukan `NOPASSWD: ALL`.
-- Semua rahasia (kunci panel, kredensial S3) berada di `/etc/fpanel` dengan
-  izin ketat dan **tidak** ikut ke repositori.
-- Direktori `var/` (database, log, snapshot) diabaikan oleh git.
+- The panel never stores MariaDB/SSH passwords in plain text.
+- Root operations go only through helpers allowed **per command** in
+  `/etc/sudoers.d/` — never `NOPASSWD: ALL`.
+- All secrets (panel key, S3 credentials) live in `/etc/fpanel` with strict
+  permissions and are **never** committed to the repository.
+- The `var/` directory (database, logs, snapshots) is ignored by git.
 
 ---
 
-## Lisensi
+## License
 
 MIT.

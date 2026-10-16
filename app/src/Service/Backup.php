@@ -3,37 +3,37 @@ declare(strict_types=1);
 namespace Fpanel\Service;
 
 /**
- * Backup & restore data panel.
+ * Panel data backup & restore.
  *
- * Arkip dibuat oleh helper root /usr/local/sbin/fpanel-backup (lihat sudoers),
- * berisi snapshot SQLite, /var/www, dump database, konfigurasi nginx, dan
- * sertifikat. Direktori hasil backup 0700 root, jadi PHP (www-data) tidak
- * bisa membaca file-nya langsung — semua operasi lewat helper.
+ * Archives are created by the root helper /usr/local/sbin/fpanel-backup (see
+ * sudoers), and contain a SQLite snapshot, /var/www, database dumps, the nginx
+ * configuration, and certificates. The backup directory is 0700 root, so PHP
+ * (www-data) cannot read the files directly — every operation goes via helper.
  *
- * Restore TIDAK diekspos lewat UI. Restore menimpa database yang sedang
- * hidup, jadi harus dijalankan dari shell (bin/fpanel atau helper) di mana
- * operator bisa melihat seluruh log-nya dan bisa membatalkan.
+ * Restore is NOT exposed through the UI. Restore overwrites the live database,
+ * so it must be run from the shell (bin/fpanel or the helper) where the
+ * operator can see the whole log and can abort.
  */
 final class Backup
 {
     private const HELPER = '/usr/local/sbin/fpanel-backup';
 
-    /** Jumlah arsip yang disimpan oleh jadwal harian. */
+    /** Number of archives kept by the daily schedule. */
     public const KEEP = 7;
 
-    /** Pola nama file; sama persis dengan yang dipakai helper. */
+    /** Filename pattern; exactly the one used by the helper. */
     private const PAT_FILE = '/^fpanel-[0-9]{8}-[0-9]{6}\.tar\.gz$/';
 
-    /** Jalur halaman log cron, supaya UI bisa menampilkan hasil run terakhir. */
+    /** Path of the cron log, so the UI can show the latest run's result. */
     private const CRON_LOG = '/var/log/fpanel-backup.log';
 
-    // ------------------------------------------------------------------- daftar
+    // ------------------------------------------------------------------ listing
 
     /**
-     * Daftar backup yang tersedia.
+     * List the available backups.
      *
-     * Nama file divalidasi lagi di sini meski helper juga memvalidasinya:
-     * output helper adalah input yang masuk ke HTML.
+     * Filenames are validated again here even though the helper validates them
+     * too: helper output is input that ends up in HTML.
      */
     public static function listing(): array
     {
@@ -43,7 +43,7 @@ final class Backup
         }
 
         $items = [];
-        $lines = array_slice(explode("\n", trim($r['out'])), 1);   // lewati header
+        $lines = array_slice(explode("\n", trim($r['out'])), 1);   // skip the header
         foreach ($lines as $line) {
             $line = trim($line);
             if ($line === '') {
@@ -64,7 +64,7 @@ final class Backup
                 'size_human' => self::human($size),
             ];
         }
-        // Terbaru dulu.
+        // Newest first.
         usort($items, static fn (array $a, array $b): int => strcmp($b['name'], $a['name']));
 
         return ['ok' => true, 'error' => null, 'items' => $items,
@@ -73,10 +73,10 @@ final class Backup
     }
 
     /**
-     * Nama arsip terbaru yang tersedia, atau '' kalau belum ada backup.
+     * Name of the newest available archive, or '' if there is no backup yet.
      *
-     * Dipakai CLI offsite:upload supaya arsip terakhir bisa dikirim tanpa
-     * harus menyebut namanya secara manual.
+     * Used by the offsite:upload CLI so the latest archive can be sent without
+     * having to name it manually.
      */
     public static function latestName(): string
     {
@@ -87,22 +87,22 @@ final class Backup
         return (string)$r['items'][0]['name'];
     }
 
-    /** Buat satu backup sekarang. */
+    /** Create one backup now. */
     public static function create(int $keep = self::KEEP): array
     {
         if ($keep < 1 || $keep > 100) {
-            return ['ok' => false, 'error' => 'Jumlah simpanan di luar rentang.'];
+            return ['ok' => false, 'error' => 'Keep count is out of range.'];
         }
         $r = self::helper(['create', (string)$keep]);
         if (!$r['ok']) {
             return ['ok' => false, 'error' => $r['error']];
         }
-        // Helper mencetak ringkasan lalu path di baris terakhir.
+        // The helper prints a summary, then the path on the last line.
         $lines  = array_values(array_filter(explode("\n", trim($r['out']))));
         $path   = (string)end($lines);
         $name   = basename($path);
-        $message = 'Backup selesai: ' . ($name !== '' ? $name : '(nama tidak terbaca)');
-        // Sertakan pesan ringkas dari helper supaya alasannya terlihat di UI.
+        $message = 'Backup finished: ' . ($name !== '' ? $name : '(name unreadable)');
+        // Include the helper's short message so the reason is visible in the UI.
         $summary = trim(implode(' ', array_slice($lines, 0, -1)));
         if ($summary !== '') {
             $message .= ' — ' . $summary;
@@ -110,59 +110,59 @@ final class Backup
         return ['ok' => true, 'error' => null, 'message' => $message, 'name' => $name];
     }
 
-    /** Periksa integritas satu arsip (checksum per bagian + sqlite). */
+    /** Check the integrity of one archive (per-part checksum + sqlite). */
     public static function verify(string $name): array
     {
         if (!preg_match(self::PAT_FILE, $name)) {
-            return ['ok' => false, 'error' => 'Nama backup tidak valid.', 'report' => ''];
+            return ['ok' => false, 'error' => 'Invalid backup name.', 'report' => ''];
         }
         $r = self::helper(['verify', $name]);
-        return ['ok' => $r['ok'], 'error' => $r['ok'] ? null : 'Verifikasi gagal.',
+        return ['ok' => $r['ok'], 'error' => $r['ok'] ? null : 'Verification failed.',
                 'report' => $r['out'] . ($r['err'] !== '' ? "\n" . $r['err'] : '')];
     }
 
-    /** Hapus satu arsip. */
+    /** Delete one archive. */
     public static function delete(string $name): array
     {
         if (!preg_match(self::PAT_FILE, $name)) {
-            return ['ok' => false, 'error' => 'Nama backup tidak valid.'];
+            return ['ok' => false, 'error' => 'Invalid backup name.'];
         }
         $r = self::helper(['delete', $name]);
         return ['ok' => $r['ok'], 'error' => $r['error'],
-                'message' => $r['ok'] ? 'Backup ' . $name . ' dihapus.' : null];
+                'message' => $r['ok'] ? 'Backup ' . $name . ' deleted.' : null];
     }
 
-    /** Jalankan retensi sesuai kebijakan (juga dijalankan otomatis tiap create). */
+    /** Run retention per policy (also runs automatically on every create). */
     public static function prune(int $keep = self::KEEP): array
     {
         if ($keep < 1 || $keep > 100) {
-            return ['ok' => false, 'error' => 'Jumlah simpanan di luar rentang.'];
+            return ['ok' => false, 'error' => 'Keep count is out of range.'];
         }
         $r = self::helper(['prune', (string)$keep]);
         return ['ok' => $r['ok'], 'error' => $r['error'],
-                'message' => $r['ok'] ? 'Retensi dijalankan, sisakan ' . $keep . ' arsip terbaru.' : null];
+                'message' => $r['ok'] ? 'Retention applied, keeping the newest ' . $keep . ' archives.' : null];
     }
 
-    /** Helper tersedia? */
+    /** Is the helper available? */
     public static function available(): bool
     {
         return is_executable(self::HELPER);
     }
 
     /**
-     * Isi log cron terakhir (untuk ditampilkan di UI).
+     * Contents of the latest cron log (for display in the UI).
      *
-     * Log dibaca tanpa sudo: file log dibuat root dengan group adm dan mode
-     * 0640. Kalau tidak terbaca, kembalikan pesan singkat, bukan error fatal.
+     * The log is read without sudo: the log file is created by root with group
+     * adm and mode 0640. If it cannot be read, return a short message, not a fatal error.
      */
     public static function lastLog(int $lines = 25): string
     {
         if (!is_readable(self::CRON_LOG)) {
-            return '(log belum ada; backup akan berjalan otomatis tiap hari pukul 03:17 UTC)';
+            return '(no log yet; backups run automatically every day at 03:17 UTC)';
         }
         $fh = @fopen(self::CRON_LOG, 'r');
         if ($fh === false) {
-            return '(log tidak bisa dibaca oleh www-data)';
+            return '(the log cannot be read by www-data)';
         }
         $buf = '';
         while (($line = fgets($fh)) !== false) {
@@ -173,7 +173,7 @@ final class Backup
         }
         fclose($fh);
         $out = trim($buf);
-        return $out === '' ? '(log kosong)' : $out;
+        return $out === '' ? '(the log is empty)' : $out;
     }
 
     // ------------------------------------------------------------------ internal
@@ -181,15 +181,15 @@ final class Backup
     private static function helper(array $args): array
     {
         if (!is_executable(self::HELPER)) {
-            return ['ok' => false, 'error' => 'Helper backup tidak terpasang di server.',
+            return ['ok' => false, 'error' => 'The backup helper is not installed on the server.',
                     'out' => '', 'err' => ''];
         }
         $pipes = [];
-        // Array argumen, tanpa shell: tidak ada interpolasi yang bisa disisipkan.
+        // Argument array, no shell: there is no interpolation that could be injected.
         $proc = @proc_open(array_merge(['sudo', '-n', self::HELPER], $args),
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
         if (!is_resource($proc)) {
-            return ['ok' => false, 'error' => 'Gagal menjalankan helper backup.', 'out' => '', 'err' => ''];
+            return ['ok' => false, 'error' => 'Failed to run the backup helper.', 'out' => '', 'err' => ''];
         }
         $out = stream_get_contents($pipes[1]);
         $err = stream_get_contents($pipes[2]);
@@ -200,7 +200,7 @@ final class Backup
         $out = (string)$out;
         $err = (string)$err;
         if ($code !== 0) {
-            $msg = trim(preg_replace('/^ERR:\s*/', '', $err) ?: '') ?: trim($out) ?: 'Operasi backup gagal.';
+            $msg = trim(preg_replace('/^ERR:\s*/', '', $err) ?: '') ?: trim($out) ?: 'The backup operation failed.';
             return ['ok' => false, 'error' => $msg, 'out' => $out, 'err' => $err];
         }
         return ['ok' => true, 'error' => null, 'out' => $out, 'err' => $err];

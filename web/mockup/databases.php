@@ -21,13 +21,13 @@ $crumbs = [['label' => 'Databases']];
           <span data-i18n="db.title">MariaDB Databases</span>
         </h2>
         <?php
-        $rows = $dbs; $emptyKey = 'db.empty'; $emptyText = 'Belum ada database.';
+        $rows = $dbs; $emptyKey = 'db.empty'; $emptyText = 'No databases yet.';
         $cols = [
-          ['label' => 'Nama Database', 'render' => fn($r) => '<span class="font-mono text-sm font-medium text-slate-800 dark:text-slate-200">' . htmlspecialchars($r['name']) . '</span>'],
+          ['label' => 'Database Name', 'render' => fn($r) => '<span class="font-mono text-sm font-medium text-slate-800 dark:text-slate-200">' . htmlspecialchars($r['name']) . '</span>'],
           ['label' => 'User', 'render' => fn($r) => '<span class="badge-info">' . $r['users'] . '</span>'],
-          ['label' => 'Ukuran', 'render' => fn($r) => '<span class="text-xs text-slate-600 dark:text-slate-300">' . htmlspecialchars($r['size']) . '</span>'],
-          ['label' => 'Tabel', 'render' => fn($r) => '<span class="text-xs text-slate-600 dark:text-slate-300">' . $r['tables'] . '</span>'],
-          ['label' => 'Dibuat', 'render' => fn($r) => '<span class="text-xs text-slate-500">' . htmlspecialchars($r['created']) . '</span>'],
+          ['label' => 'Size', 'render' => fn($r) => '<span class="text-xs text-slate-600 dark:text-slate-300">' . htmlspecialchars($r['size']) . '</span>'],
+          ['label' => 'Tables', 'render' => fn($r) => '<span class="text-xs text-slate-600 dark:text-slate-300">' . $r['tables'] . '</span>'],
+          ['label' => 'Created', 'render' => fn($r) => '<span class="text-xs text-slate-500">' . htmlspecialchars($r['created']) . '</span>'],
         ];
         require __DIR__ . '/partials/table-wrapper.php';
         ?>
@@ -39,12 +39,12 @@ $crumbs = [['label' => 'Databases']];
           <span data-i18n="dbUser.title">DB Users</span>
         </h2>
         <?php
-        $rows = $users; $emptyKey = 'db.empty'; $emptyText = 'Belum ada user database.';
+        $rows = $users; $emptyKey = 'db.empty'; $emptyText = 'No database users yet.';
         $cols = [
           ['label' => 'Username', 'render' => fn($r) => '<span class="font-mono text-sm font-medium text-slate-800 dark:text-slate-200">' . htmlspecialchars($r['name']) . '</span>'],
           ['label' => 'Host', 'render' => fn($r) => '<span class="text-xs text-slate-500">' . htmlspecialchars($r['host']) . '</span>'],
           ['label' => 'Database', 'render' => fn($r) => '<span class="text-xs text-slate-600 dark:text-slate-300">' . htmlspecialchars(implode(', ', $r['dbs'])) . '</span>'],
-          ['label' => 'Hak akses', 'render' => fn($r) => $r['perm'] === 'all'
+          ['label' => 'Privileges', 'render' => fn($r) => $r['perm'] === 'all'
               ? '<span class="badge-ok">ALL PRIVILEGES</span>' : '<span class="badge-warn">SELECT</span>'],
         ];
         require __DIR__ . '/partials/table-wrapper.php';

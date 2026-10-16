@@ -1,20 +1,20 @@
 <?php
 /**
- * Front controller phpMyAdmin untuk FPanel.
+ * phpMyAdmin front controller for FPanel.
  *
- * nginx hanya menulis ulang /pma/<token>/... menjadi /fpma/... dengan location
- * internal, jadi /fpma/ tidak bisa diakses langsung dari luar. Validasi token
- * dilakukan di sini, di PHP, karena hasilnya mudah dipastikan: tanpa file
- * konfigurasi yang cocok, request berakhir 404 dan phpMyAdmin tidak pernah
- * dijalankan sama sekali.
+ * nginx only rewrites /pma/<token>/... into /fpma/... with an internal
+ * location, so /fpma/ cannot be accessed directly from outside. Token
+ * validation happens here, in PHP, because the result is easy to pin down:
+ * without a matching config file the request ends in 404 and phpMyAdmin is
+ * never started at all.
  *
- * Password user database tidak pernah melewati file ini: kredensial dibaca
- * oleh file token di /etc/phpmyadmin/conf.d/<token>.php yang sudah ada.
+ * Database user passwords never pass through this file: the credentials are read
+ * by the token file in /etc/phpmyadmin/conf.d/<token>.php that already exists.
  */
 declare(strict_types=1);
 
-// Token dibaca dari URI ASLI (nginx menyimpannya di $request_uri walau
-// request-nya sudah di-rewrite ke /fpma/...).
+// The token is read from the ORIGINAL URI (nginx keeps it in $request_uri even
+// though the request has been rewritten to /fpma/...).
 $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
 if (!preg_match('#/pma/([a-f0-9]{32})(?:/|\?|$)#', $uri, $m)) {
     http_response_code(404);
@@ -25,18 +25,18 @@ if (!preg_match('#/pma/([a-f0-9]{32})(?:/|\?|$)#', $uri, $m)) {
 
 $conf = '/etc/phpmyadmin/conf.d/' . $m[1] . '.php';
 if (!is_file($conf) || !is_readable($conf)) {
-    // Token tidak dikenal / sudah kedaluwarsa / sudah di-sweep.
+    // Unknown / already expired / already swept token.
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');
     echo "404 Not Found\n";
     exit;
 }
 
-// phpMyAdmin membaca $cfg['Servers'] dari /etc/phpmyadmin/config.inc.php,
-// yang sudah memuat conf.d/*.php. File token tadi membatasi himself ke token
-// yang sama lewat pemeriksaan REQUEST_URI, jadi tetap aman.
+// phpMyAdmin reads $cfg['Servers'] from /etc/phpmyadmin/config.inc.php,
+// which already loads conf.d/*.php. That token file limits itself to the same
+// token through a REQUEST_URI check, so it stays safe.
 //
-// SCRIPT_NAME sengaja /index.php supaya phpMyAdmin membuat link RELATIF
-// (index.php?route=...). Link relatif inilah yang membuat token di path tetap
-// ikut terbawa saat user navigasi di dalam phpMyAdmin.
+// SCRIPT_NAME is deliberately /index.php so phpMyAdmin generates RELATIVE
+// links (index.php?route=...). These relative links are what keep the token in
+// the path carried along as the user navigates inside phpMyAdmin.
 require '/usr/share/phpmyadmin/index.php';

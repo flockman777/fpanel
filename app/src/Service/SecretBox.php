@@ -3,16 +3,16 @@ declare(strict_types=1);
 namespace Fpanel\Service;
 
 /**
- * Enkripsi simetris untuk rahasia yang harus bisa dibaca lagi (password
- * database, seed TOTP), memakai sodium secretbox.
+ * Symmetric encryption for secrets that must be readable again (passwords
+ * database, TOTP seed), using sodium secretbox.
  *
- * Berbeda dengan password yang hanya butuh hash: TOTP seed tidak bisa
- * di-hash, karena tiap login harus membandingkan kode dengan seed itu. Jadi
- * seed harus disimpan terenkripsi, bukan polos di database.
+ * Unlike passwords, which only need a hash: the TOTP seed cannot
+ * be hashed, because every login must compare the code with that seed. So
+ * the seed must be stored encrypted, never in plain text in the database.
  */
 final class SecretBox
 {
-    /** Prefix menandai nilai yang sudah terenkripsi. */
+    /** Prefix marking a value that is already encrypted. */
     public const PREFIX = 'sbx1:';
 
     private const KEYFILE = '/etc/fpanel/app-key';
@@ -21,10 +21,10 @@ final class SecretBox
     private static bool $cacheLoaded = false;
 
     /**
-     * Kunci 32 byte, atau null kalau file kunci tidak ada/rusak.
+     * 32-byte key, or null when the key file is missing or corrupt.
      *
-     * Sengaja tidak dibuat otomatis: kunci yang hilang berarti semua rahasia
-     * tidak bisa dibaca. Itu harus terlihat jelas, bukan diam-diam jadi fallback.
+     * Deliberately not created automatically: a missing key means every secret
+     * becomes unreadable. That has to be obvious, not silently turned into a fallback.
      */
     public static function key(): ?string
     {
@@ -48,15 +48,15 @@ final class SecretBox
         return self::$cache = $key;
     }
 
-    /** True kalau enkripsi tersedia di mesin ini. */
+    /** True when encryption is available on this machine. */
     public static function available(): bool
     {
         return self::key() !== null;
     }
 
     /**
-     * Enkripsi teks. Nonce diacak per operasi dan disimpan bersama ciphertext;
-     * memakai nonce yang sama untuk pesan yang sama akan membocorkan isi.
+     * Encrypts text. The nonce is randomized per operation and stored with the ciphertext;
+     * reusing the same nonce for the same message leaks its contents.
      */
     public static function encrypt(string $plain): ?string
     {
@@ -69,7 +69,7 @@ final class SecretBox
         return self::PREFIX . base64_encode($nonce . $box);
     }
 
-    /** Dekripsi. Null kalau format bukan milik kita, kunci hilang, atau MAC gagal. */
+    /** Decrypt. Null when the format is not ours, the key is missing, or the MAC fails. */
     public static function decrypt(string $blob): ?string
     {
         $key = self::key();

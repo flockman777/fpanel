@@ -1,9 +1,9 @@
-<?php /* Sidebar kanan panel user (navy #0B1B34): info akun, statistik, versi PHP, info server (dummy) */ ?>
+<?php /* Right user panel sidebar (navy #0B1B34): account info, stats, PHP version, server info (dummy) */ ?>
 <aside class="space-y-4 md:sticky md:top-20 md:self-start">
   <section class="overflow-hidden rounded-xl bg-navy text-slate-300 shadow-card">
     <h2 class="flex items-center gap-2 border-b border-navy-line px-4 py-3 text-[15px] font-semibold text-white">
       <i data-lucide="circle-user" class="h-4 w-4 text-brand-400"></i>
-      <span data-i18n="side.accountInfo">Informasi Akun</span>
+      <span data-i18n="side.accountInfo">Account Info</span>
     </h2>
     <dl class="divide-y divide-navy-line text-sm">
       <div class="flex items-center justify-between gap-3 px-4 py-2.5">
@@ -33,11 +33,11 @@
     <div class="space-y-4 px-4 py-4">
       <?php
       $stats = [
-        ['key' => 'side.disk',          'used' => 68, 'text' => '6.8 GB dari 10 GB'],
-        ['key' => 'side.bandwidth',     'used' => 24, 'text' => '24 GB dari 100 GB'],
-        ['key' => 'side.domainsCount',  'used' => 20, 'text' => '2 dari 10'],
-        ['key' => 'side.databasesCount','used' => 33, 'text' => '2 dari 6'],
-        ['key' => 'side.emailsCount',   'used' => 40, 'text' => '4 dari 10'],
+        ['key' => 'side.disk',          'used' => 68, 'text' => '6.8 GB of 10 GB'],
+        ['key' => 'side.bandwidth',     'used' => 24, 'text' => '24 GB of 100 GB'],
+        ['key' => 'side.domainsCount',  'used' => 20, 'text' => '2 of 10'],
+        ['key' => 'side.databasesCount','used' => 33, 'text' => '2 of 6'],
+        ['key' => 'side.emailsCount',   'used' => 40, 'text' => '4 of 10'],
       ];
       foreach ($stats as $s): ?>
         <div>

@@ -1,18 +1,19 @@
 # ---------------------------------------------------------------------------
-# State runtime — JANGAN pernah di-commit.
+# Runtime state — NEVER commit these.
 # ---------------------------------------------------------------------------
-# /srv/fpanel/var berisi database SQLite (hash password, sesi, TOTP), log,
-# snapshot backup, dan job. Isinya spesifik server dan bersifat rahasia.
+# /srv/fpanel/var holds the SQLite database (password hashes, sessions, TOTP),
+# logs, backup snapshots, and jobs. Its contents are server-specific and
+# sensitive.
 /var/
 
 # ---------------------------------------------------------------------------
-# Dependensi (dipasang ulang lewat npm/composer, tidak di-commit)
+# Dependencies (reinstalled via npm/composer, not committed)
 # ---------------------------------------------------------------------------
 /node_modules/
 /vendor/
 
 # ---------------------------------------------------------------------------
-# Rahasia dan kunci — termasuk cadangan app-key, kredensial offsite, dst.
+# Secrets and keys — including app-key backups, offsite credentials, etc.
 # ---------------------------------------------------------------------------
 *.key
 *.pem
@@ -21,13 +22,13 @@
 !.env.example
 
 # ---------------------------------------------------------------------------
-# Konfigurasi lokal per-server (dibuat installer, mis. domain panel).
-# Nilai bawaan di config/fpanel.php tetap generik untuk semua orang.
+# Per-server local configuration (written by the installer, e.g. the panel
+# domain). The defaults in config/fpanel.php stay generic for everyone.
 # ---------------------------------------------------------------------------
 /config/local.php
 
 # ---------------------------------------------------------------------------
-# Cadangan & berkas sementara
+# Backups & temporary files
 # ---------------------------------------------------------------------------
 *.bak
 *.bak-*
@@ -41,6 +42,6 @@
 *.log
 
 # ---------------------------------------------------------------------------
-# Output build (dibangun lewat tools/build-*.sh, tidak di-commit)
+# Build output (produced by tools/build-*.sh, not committed)
 # ---------------------------------------------------------------------------
 /assets-src/node_modules/

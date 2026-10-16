@@ -1,6 +1,6 @@
 <?php
 /* Kartu kategori + grid tile ikon.
-   $catKey = key i18n kategori, $catIcon = nama ikon lucide, $features = array of features */
+   $catKey = category i18n key, $catIcon = lucide icon name, $features = array of features */
 ?>
 <section class="card">
   <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">

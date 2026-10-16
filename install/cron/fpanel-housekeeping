@@ -1,6 +1,6 @@
-# FPanel: pangkas data yang tumbuh terus (sesi, audit log, percobaan login)
-# dan buang access log nginx untuk domain yang sudah dihapus.
-# Dijalankan dini hari saat lalu lintas sepi, supaya tidak mengganggu trafik.
+# FPanel: prune data that keeps growing (sessions, audit log, login attempts)
+# and drop nginx access logs for domains already deleted.
+# Runs in the early morning when traffic is quiet, so it does not disturb traffic.
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""

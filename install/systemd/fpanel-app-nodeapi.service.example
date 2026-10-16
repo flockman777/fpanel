@@ -1,9 +1,9 @@
 [Unit]
 Description=FPanel app: nodeapi (node)
 After=network.target
-# StartLimit WAJIB ditulis di [Unit], bukan [Service]. Kalau salah section,
-# systemd menolak memuat unit saat daemon-reload, sehingga app yang tadinya
-# jalan ikut mati tanpa error yang jelas di log panel.
+# StartLimit MUST be written in [Unit], not [Service]. In the wrong section,
+# systemd refuses to load the unit on daemon-reload, so an app that was
+# running dies along with it without a clear error in the panel log.
 StartLimitIntervalSec=60
 StartLimitBurst=5
 

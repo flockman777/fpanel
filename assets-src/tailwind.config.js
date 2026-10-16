@@ -1,4 +1,4 @@
-/** Build CSS FPanel. Palet diekstrak dari bundle lama supaya desain tidak bergeser. */
+/** FPanel CSS build. The palette is extracted from the old bundle so the design does not drift. */
 module.exports = {
   darkMode: 'class',
   content: [

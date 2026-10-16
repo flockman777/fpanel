@@ -1,10 +1,10 @@
 <?php
 /**
- * Hasil penukaran login link sekali pakai.
+ * Result of exchanging a one-time login link.
  *
- * Halaman ini sengaja dirender langsung (bukan redirect) supaya URL yang
- * memuat token tidak pernah tersimpan di riwayat: pindah halaman berarti
- * token pindah ke address bar.
+ * This page is deliberately rendered directly (not redirected) so the URL
+ * carrying the token is never stored in the history: navigating away means
+ * the token moves to the address bar.
  *
  * @var array $me
  * @var string $csrf
@@ -12,17 +12,17 @@
 $e = static fn (mixed $v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 ?>
 <!doctype html>
-<html lang="id" class="h-full">
+<html lang="en" class="h-full">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>Masuk Berhasil &middot; FPanel</title>
+  <title>Signed In &middot; FPanel</title>
   <link rel="icon" href="/assets/img/favicon.svg">
   <link rel="stylesheet" href="/assets/app.css">
   <script>
-    // Ganti URL sekarang supaya token langsung hilang dari address bar dan
-    // riwayat sebelum halaman ini selesai dimuat.
+    // Replace the URL right away so the token disappears from the address bar and
+    // the history before this page finishes loading.
     if (location.replace) { location.replace('/dashboard'); }
   </script>
 </head>
@@ -32,14 +32,14 @@ $e = static fn (mixed $v): string => htmlspecialchars((string)$v, ENT_QUOTES | E
       <span class="mx-auto grid h-10 w-10 place-items-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
         <i data-lucide="check" class="h-5 w-5"></i>
       </span>
-      <h1 class="mt-3 text-lg font-semibold text-slate-900 dark:text-slate-50">Berhasil masuk</h1>
-      <p class="mt-1 text-sm text-slate-500">Halo <?= $e((string)$me['username']) ?>, dialihkan ke dashboard&hellip;</p>
+      <h1 class="mt-3 text-lg font-semibold text-slate-900 dark:text-slate-50">Signed in</h1>
+      <p class="mt-1 text-sm text-slate-500">Hello <?= $e((string)$me['username']) ?>, redirecting to the dashboard&hellip;</p>
       <noscript>
-        <a href="/dashboard" class="btn-primary mt-4 inline-flex justify-center">Buka dashboard</a>
+        <a href="/dashboard" class="btn-primary mt-4 inline-flex justify-center">Open dashboard</a>
       </noscript>
       <form method="post" action="/logout" class="mt-3">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
-        <button class="btn-secondary h-9 w-full text-sm">Keluar</button>
+        <button class="btn-secondary h-9 w-full text-sm">Sign out</button>
       </form>
     </div>
   </main>

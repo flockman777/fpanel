@@ -16,12 +16,12 @@
            transition duration-150 disabled:cursor-not-allowed disabled:opacity-50
            bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
   }
-  /* Logo untuk panel navy. Filter dibungkan ke tema karena panelnya
-     selalu gelap, sedangkan logo aslinya teal tua yang tidak terbaca. */
+  /* Logo for the navy panel. The filter is bound to the theme because the
+     panel is always dark, while the original logo is dark teal and unreadable. */
   .logo-on-navy {
     filter: invert(1) hue-rotate(180deg);
   }
-  /* Latar halaman masuk: navy berlapis glow teal + grid halus. */
+  /* Login page background: navy with a teal glow + subtle grid. */
   .btn-icon {
     @apply inline-flex items-center justify-center gap-2 rounded-lg p-2 text-sm font-medium
            text-slate-500 transition duration-150 hover:bg-slate-50 hover:text-slate-700

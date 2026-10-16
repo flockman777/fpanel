@@ -1,18 +1,18 @@
 #!/bin/bash
-# FPanel helper backup & restore.
+# FPanel backup & restore helper.
 #
-# Dipanggil www-data lewat sudo (lihat /etc/sudoers.d/fpanel-backup).
-# Backup berisi data paling sensitif milik panel: metadata SQLite (user, domain,
-# kredensial app) dan isi website user. Karena itu direktori hasil backup
-# hanya untuk root (0700) dan file-nya 0600.
+# Called by www-data through sudo (see /etc/sudoers.d/fpanel-backup).
+# A backup holds the panel's most sensitive data: SQLite metadata (users, domains,
+# app credentials) and the contents of user websites. That is why the backup
+# directory is root-only (0700) and its files are 0600.
 #
-# Format: satu arsip .tar.gz per jadwal, isinya:
-#   meta.json        - waktu, versi, ukuran, checksum tiap bagian
-#   panel.sqlite     - snapshot konsisten dari SQLite (VACUUM INTO, bukan cp)
-#   www.tar.gz       - seluruh /var/www
-#   mysqldump.sql.gz - semua database non-sistem (termasuk yang dibuat lewat phpMyAdmin)
-#   vhosts.tar.gz    - konfigurasi nginx situs
-#   certs.tar.gz     - /etc/letsencrypt (sertifikat + private key)
+# Format: one .tar.gz archive per schedule run, containing:
+#   meta.json        - time, version, size, checksum of each part
+#   panel.sqlite     - consistent snapshot of SQLite (VACUUM INTO, not cp)
+#   www.tar.gz       - the whole /var/www
+#   mysqldump.sql.gz - all non-system databases (including those created through phpMyAdmin)
+#   vhosts.tar.gz    - site nginx configuration
+#   certs.tar.gz     - /etc/letsencrypt (certificates + private keys)
 set -euo pipefail
 
 BACKUP_DIR=/var/backups/fpanel
@@ -21,12 +21,12 @@ MAX_AGE_DAYS=30
 PAT_FILE='^fpanel-[0-9]{8}-[0-9]{6}\.tar\.gz$'
 
 die() { echo "ERR: $*" >&2; exit 2; }
-need() { [ -n "${1:-}" ] || die "argumen kurang"; }
+need() { [ -n "${1:-}" ] || die "missing argument"; }
 
 check_name() {
   need "$1"
-  [[ "$1" =~ $PAT_FILE ]] || die "nama backup tidak valid: $1"
-  [ -f "$BACKUP_DIR/$1" ] || die "backup tidak ditemukan: $1"
+  [[ "$1" =~ $PAT_FILE ]] || die "invalid backup name: $1"
+  [ -f "$BACKUP_DIR/$1" ] || die "backup not found: $1"
 }
 
 ensure_dir() { install -d -o root -g root -m 0700 "$BACKUP_DIR"; }
@@ -36,23 +36,23 @@ human() { numfmt --to=iec --suffix=B "$1" 2>/dev/null || echo "${1}B"; }
 # ---------------------------------------------------------------- snapshot
 create() {
   local keep="${1:-$KEEP_DEFAULT}"
-  [[ "$keep" =~ ^[0-9]+$ ]] || die "jumlah simpanan tidak valid"
-  [ "$keep" -ge 1 ] && [ "$keep" -le 100 ] || die "jumlah simpanan di luar rentang"
+  [[ "$keep" =~ ^[0-9]+$ ]] || die "invalid keep count"
+  [ "$keep" -ge 1 ] && [ "$keep" -le 100 ] || die "keep count out of range"
   ensure_dir
 
   local stamp archive
   stamp="$(date -u +%Y%m%d-%H%M%S)"
   archive="$BACKUP_DIR/fpanel-$stamp.tar.gz"
-  # STAGE harus global, bukan local: trap EXIT dieksekusi setelah fungsi
-  # create() selesai, dan variabel local sudah tidak ada lagi (set -u akan
-  #roft_error "unbound variable").
+  # STAGE must be global, not local: the EXIT trap runs after the create()
+  # function has finished, and local variables no longer exist (set -u will
+  #fail with "unbound variable").
   STAGE="$(mktemp -d)"
   local stage="$STAGE"
 
   trap 'rm -rf "${STAGE:-}"' EXIT
-  echo "==> Menyiapkan snapshot panel (SQLite)"
-  # VACUUM INTO, BUKAN cp: database jalan dalam mode WAL, jadi menyalin file
-  # mentah bisa menghasilkan snapshot yang tidak konsisten.
+  echo "==> Preparing the panel snapshot (SQLite)"
+  # VACUUM INTO, NOT cp: the database runs in WAL mode, so copying the raw
+  # file could produce an inconsistent snapshot.
   php -r '
     require "/srv/fpanel/app/bootstrap.php";
     $pdo = Fpanel\Database\Connection::pdo();
@@ -61,14 +61,14 @@ create() {
     $pdo->exec("VACUUM INTO " . $pdo->quote($out));
     $chk = $pdo->query("PRAGMA integrity_check")->fetchColumn();
     if ($chk !== "ok") { fwrite(STDERR, "integrity_check: $chk\n"); exit(1); }
-  ' "$stage/panel.sqlite" || die "snapshot SQLite gagal"
+  ' "$stage/panel.sqlite" || die "SQLite snapshot failed"
 
-  echo "==> Arsipkan file website (/var/www)"
-  tar -C /var/www -czf "$stage/www.tar.gz" . 2>/dev/null || die "gagal mengarsipkan /var/www"
+  echo "==> Archiving website files (/var/www)"
+  tar -C /var/www -czf "$stage/www.tar.gz" . 2>/dev/null || die "failed to archive /var/www"
 
-  echo "==> Dump database MySQL/MariaDB"
-  # Hanya database non-sistem. Yang dibuat lewat panel maupun lewat phpMyAdmin
-  # ikut terbawa, jadi restore tidak kehilangan data pengguna.
+  echo "==> Dumping MySQL/MariaDB databases"
+  # Non-system databases only. Databases created through the panel as well as
+  # through phpMyAdmin are included, so a restore does not lose user data.
   local dbs
   dbs="$(mariadb --batch --skip-column-names -e "
     SELECT schema_name FROM information_schema.SCHEMATA
@@ -84,13 +84,13 @@ create() {
   gzip -9 -c "$stage/mysqldump.sql.gz.raw" > "$stage/mysqldump.sql.gz"
   rm -f "$stage/mysqldump.sql.gz.raw"
 
-  echo "==> Arsipkan konfigurasi nginx + sertifikat"
+  echo "==> Archiving nginx config + certificates"
   tar -C /etc/nginx -czf "$stage/vhosts.tar.gz" sites-available 2>/dev/null || true
   if [ -d /etc/letsencrypt ]; then
     tar -C /etc/letsencrypt -czf "$stage/certs.tar.gz" . 2>/dev/null || true
   fi
 
-  echo "==> Tulis metadata + checksum"
+  echo "==> Writing metadata + checksums"
   {
     printf '{\n'
     printf '  "created_utc": "%s",\n' "$(date -u +%FT%TZ)"
@@ -117,7 +117,7 @@ create() {
     printf '\n  }\n}\n'
   } > "$stage/meta.json"
 
-  echo "==> Membuat arsip"
+  echo "==> Creating the archive"
   local members=(panel.sqlite www.tar.gz mysqldump.sql.gz meta.json)
   [ -f "$stage/vhosts.tar.gz" ] && members+=(vhosts.tar.gz)
   [ -f "$stage/certs.tar.gz" ]  && members+=(certs.tar.gz)
@@ -125,42 +125,42 @@ create() {
   chmod 0600 "$archive.tmp"
   mv -f "$archive.tmp" "$archive"
 
-  # Arsip harus benar-benar bisa dibuka. Kalau tidak, hapus jangan disimpan.
+  # The archive must really be openable. If not, delete it, do not keep it.
   if ! tar -tzf "$archive" >/dev/null 2>&1; then
     rm -f "$archive"
-    die "arsip tidak bisa dibaca setelah dibuat; dibuang"
+    die "the archive cannot be read after creation; discarded"
   fi
 
   local size
   size="$(stat -c %s "$archive")"
-  echo "OK backup selesai: $(basename "$archive") ($(human "$size"))"
+  echo "OK backup finished: $(basename "$archive") ($(human "$size"))"
 
   prune "$keep"
   echo "$archive"
 }
 
-# ------------------------------------------------------------------ retensi
+# ----------------------------------------------------------------- retention
 prune() {
   local keep="${1:-$KEEP_DEFAULT}"
   ensure_dir
   local total=0 old
-  # Buang yang sudah tua
+  # Drop the ones that are too old
   find "$BACKUP_DIR" -maxdepth 1 -name 'fpanel-*.tar.gz' -mtime "+$MAX_AGE_DAYS" -print -delete 2>/dev/null || true
-  # Buang yang paling lama, sisakan $keep terbaru
+  # Drop the oldest ones, keep the $keep newest
   total="$(find "$BACKUP_DIR" -maxdepth 1 -name 'fpanel-*.tar.gz' | wc -l)"
   if [ "$total" -gt "$keep" ]; then
     local n=$((total - keep))
     for old in $(find "$BACKUP_DIR" -maxdepth 1 -name 'fpanel-*.tar.gz' | sort | head -n "$n"); do
       rm -f "$old"
-      echo "  :: kedaluwarsa dihapus: $(basename "$old")"
+      echo "  :: expired removed: $(basename "$old")"
     done
   fi
 }
 
-# -------------------------------------------------------------------- daftar
+# ---------------------------------------------------------------------- list
 list() {
   ensure_dir
-  printf 'nama\tdibuat_utc\tukuran\n'
+  printf 'name\tcreated_utc\tsize\n'
   find "$BACKUP_DIR" -maxdepth 1 -name 'fpanel-*.tar.gz' | sort | while read -r f; do
     printf '%s\t%s\t%s\n' \
       "$(basename "$f")" \
@@ -169,30 +169,30 @@ list() {
   done
 }
 
-# ---------------------------------------------------------------- verifikasi
+# -------------------------------------------------------------- verification
 verify() {
   check_name "$1"
   local f="$BACKUP_DIR/$1"
-  echo "arsip   : $1 ($(human "$(stat -c %s "$f")"))"
+  echo "archive : $1 ($(human "$(stat -c %s "$f")"))"
   if ! tar -tzf "$f" >/dev/null 2>&1; then
-    echo "HASIL   : GAGAL - arsip tidak bisa dibuka"
+    echo "RESULT  : FAILED - the archive cannot be opened"
     exit 1
   fi
-  echo "  arsip terbaca : ya"
+  echo "  archive readable : yes"
   local parts
   parts="$(tar -tzf "$f")"
-  # Sama seperti create(): tmp harus global, bukan local, supaya trap EXIT
-  # tidak gagal dengan "unbound variable".
+  # Same as create(): tmp must be global, not local, so the EXIT trap does
+  # not fail with "unbound variable".
   TMPV="$(mktemp -d)"
   local tmp="$TMPV"
   trap 'rm -rf "${TMPV:-}"' EXIT
   tar -xzf "$f" -C "$tmp" meta.json 2>/dev/null || true
   if [ -f "$tmp/meta.json" ]; then
-    echo "  meta.json     : ada"
-    # Cocokkan checksum tiap bagian dengan yang tercatat saat backup dibuat.
+    echo "  meta.json     : present"
+    # Match each part checksum against the one recorded when the backup was made.
     local p sum want bad=0
-    # Catat ke file dulu: while di process substitution jalan di subshell, jadi
-    # `exit 1` di dalamnya tidak akan menghentikan skrip verify.
+    # Record to a file first: the while loop in a process substitution runs in a subshell, so
+    # an `exit 1` inside it will not stop the verify script.
     php -r '
       $m = json_decode(file_get_contents($argv[1]), true);
       foreach (($m["parts_sha256"] ?? []) as $k => $v) { echo $k, "\t", $v, "\n"; }
@@ -204,13 +204,13 @@ verify() {
       if [ "$sum" = "$want" ]; then
         echo "  checksum $p : ok"
       else
-        echo "  checksum $p : RUSAK"
+        echo "  checksum $p : CORRUPT"
         bad=1
       fi
     done < "$tmp/sums.txt"
     [ "$bad" = "0" ] || exit 1
   else
-    echo "  meta.json     : TIDAK ADA"
+    echo "  meta.json     : MISSING"
   fi
   tar -xzf "$f" -C "$tmp" panel.sqlite 2>/dev/null || true
   if [ -f "$tmp/panel.sqlite" ]; then
@@ -224,20 +224,20 @@ verify() {
     echo "  sqlite integrity_check : $chk"
     [ "$chk" = "ok" ] || exit 1
   fi
-  echo "HASIL   : OK"
+  echo "RESULT  : OK"
 }
 
-# ------------------------------------------------------------------- hapus
+# ------------------------------------------------------------------ delete
 delete_one() {
   check_name "$1"
   rm -f "$BACKUP_DIR/$1"
-  echo "OK $1 dihapus"
+  echo "OK $1 deleted"
 }
 
 # ------------------------------------------------------------------- offsite
-# Arsip ada di direktori 0700 root, jadi www-data tidak bisa membacanya. Aksi
-# kirim ke bucket offsite harus lewat helper root ini, yang lalu mendelegasikan
-# signature S3 dan enkripsi ke CLI panel.
+# Archives live in a root 0700 directory, so www-data cannot read them. The
+# offsite bucket push must go through this root helper, which then delegates
+# S3 signing and encryption to the panel CLI.
 push() {
   local name="${1:-}"
   check_name "$name"
@@ -251,31 +251,31 @@ restore() {
   check_name "$name"
   local f="$BACKUP_DIR/$name"
 
-  # Restore menimpa data yang sedang hidup. Karena itu butuh konfirmasi yang
-  # persis sama dengan nama file, dan sebelum menimpa selalu dibuat snapshot
-  # pengaman supaya mistakes bisa dibatalkan.
+  # Restore overwrites live data. That is why it needs a confirmation that is
+  # exactly the file name, and before overwriting a safety snapshot is always
+  # created so mistakes can be undone.
   if [ "$confirm" != "$name" ]; then
-    echo "Restore perlu konfirmasi. Ulangi dengan:"
+    echo "Restore needs confirmation. Repeat with:"
     echo "  fpanel-backup restore $name $name"
     exit 3
   fi
 
-  echo "==> Verifikasi arsip dulu"
-  verify "$name" >/dev/null || die "arsip tidak lolos verifikasi, restore dibatalkan"
+  echo "==> Verifying the archive first"
+  verify "$name" >/dev/null || die "the archive did not pass verification, restore cancelled"
 
-  echo "==> Snapshot pengaman sebelum menimpa"
+  echo "==> Safety snapshot before overwriting"
   local safety
   safety="$(create "$KEEP_DEFAULT" | tail -1)"
-  echo "  snapshot pengaman: $(basename "$safety")"
+  echo "  safety snapshot: $(basename "$safety")"
 
   TMPR="$(mktemp -d)"
   local tmp="$TMPR"
   trap 'rm -rf "${TMPR:-}"' EXIT
   tar -xzf "$f" -C "$tmp"
 
-  echo "==> Restore database panel"
-  [ -f "$tmp/panel.sqlite" ] || die "panel.sqlite tidak ada di arsip"
-  # Matikan sementara supaya tidak ada proses yang menulis sambil ditimpa.
+  echo "==> Restoring the panel database"
+  [ -f "$tmp/panel.sqlite" ] || die "panel.sqlite is not in the archive"
+  # Stop it temporarily so no process writes while it is being overwritten.
   systemctl stop php8.3-fpm >/dev/null 2>&1 || true
   cp -a "$tmp/panel.sqlite" /srv/fpanel/var/db/fpanel.sqlite.new
   rm -f /srv/fpanel/var/db/fpanel.sqlite-wal /srv/fpanel/var/db/fpanel.sqlite-shm
@@ -283,37 +283,37 @@ restore() {
   chown www-data:www-data /srv/fpanel/var/db/fpanel.sqlite
   chmod 0644 /srv/fpanel/var/db/fpanel.sqlite
 
-  echo "==> Restore file website"
+  echo "==> Restoring website files"
   if [ -f "$tmp/www.tar.gz" ]; then
     mkdir -p /var/www
     tar -xzf "$tmp/www.tar.gz" -C /var/www
     chown -R www-data:www-data /var/www
   fi
 
-  echo "==> Restore database MySQL"
+  echo "==> Restoring MySQL databases"
   if [ -f "$tmp/mysqldump.sql.gz" ]; then
     gunzip -c "$tmp/mysqldump.sql.gz" | mariadb --default-character-set=utf8mb4
   fi
 
-  echo "==> Restore konfigurasi nginx + sertifikat"
+  echo "==> Restoring nginx config + certificates"
   [ -f "$tmp/vhosts.tar.gz" ] && tar -xzf "$tmp/vhosts.tar.gz" -C /etc/nginx || true
   if [ -f "$tmp/certs.tar.gz" ]; then
-    # letsencrypt tidak boleh diganti seluruhnya sembarangan; hanya isi yang
-    # belum ada yang ditimpa supaya certbot tetap bisa menulis.
+    # letsencrypt must not be replaced wholesale; only entries that are
+    # not there yet are overwritten so certbot can keep writing.
     mkdir -p /etc/letsencrypt
     tar -xzf "$tmp/certs.tar.gz" -C /etc/letsencrypt --skip-old-files 2>/dev/null || true
   fi
 
-  echo "==> Muat ulang layanan"
+  echo "==> Reloading services"
   systemctl start php8.3-fpm >/dev/null 2>&1 || systemctl restart php8.3-fpm
   if nginx -t >/dev/null 2>&1; then
     systemctl reload nginx
   else
-    echo "PERINGATAN: konfigurasi nginx tidak valid, reload dilewati"
+    echo "WARNING: the nginx config is not valid, reload skipped"
   fi
 
-  echo "OK restore selesai dari $name"
-  echo "Snapshot pengaman tersedia di: $safety"
+  echo "OK restore finished from $name"
+  echo "Safety snapshot available at: $safety"
 }
 
 cmd="${1:-}"
@@ -327,8 +327,8 @@ case "$cmd" in
   restore) shift || true; restore "${1:-}" "${2:-}" ;;
   ping)    echo OK ;;
   *)
-    echo "ERR: subcommand tidak dikenal: '$cmd'" >&2
-    echo "ERR: yang valid: create|list|verify|delete|prune|push|restore|ping" >&2
+    echo "ERR: unknown subcommand: '$cmd'" >&2
+    echo "ERR: valid ones: create|list|verify|delete|prune|push|restore|ping" >&2
     exit 2
     ;;
 esac

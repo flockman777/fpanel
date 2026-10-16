@@ -9,16 +9,16 @@ use Fpanel\Support\Audit;
 
 final class Auth
 {
-    public const MAX_FAILS   = 5;      // percobaan per IP
-    public const WINDOW_MIN = 15;     // dalam rentang ini
-    public const LOCK_MIN   = 15;     // lama dikunci
+    public const MAX_FAILS   = 5;      // attempts per IP
+    public const WINDOW_MIN = 15;     // within this window
+    public const LOCK_MIN   = 15;     // lock duration
 
     /**
-     * Batas per nama akun, jauh lebih longgar dari batas per IP.
+     * Per-account limit, far looser than the per-IP limit.
      *
-     * Batas per IP saja bisa dilewati dengan memakai IP berbeda sekaligus, jadi
-     * satu nama akun juga punya batas sendiri. Nilainya jauh lebih tinggi supaya
-     * tidak mudah dikunci hanya karena satu orang salah ketik berkali-kali.
+     * A per-IP limit alone can be bypassed by using several different IPs at
+     * once, so a single account name also gets its own limit. The value is much
+     * higher so one person mistyping repeatedly does not easily lock it.
      */
     public const MAX_FAILS_USER = 25;
 
@@ -34,7 +34,7 @@ final class Auth
         );
     }
 
-    /** Gagal terbaru untuk satu nama akun, dari IP berapa pun. */
+    /** Recent failures for one account name, from any IP. */
     private function recentFailsForUser(?string $username): int
     {
         if ($username === null || trim($username) === '') {
@@ -54,11 +54,11 @@ final class Auth
     }
 
     /**
-     * Kunci berbasis nama akun.
+     * Account-name-based lock.
      *
-     * Ini yang menutup serangan dari banyak IP sekaligus: satu IP hanya boleh
-     * dicoba MAX_FAILS kali, tapi dari 25 IP berbeda satu akun tetap terkunci.
-     * Namanya dinormalisasi dulu karena form menerima email sebagai identitas.
+     * This closes off attacks from many IPs at once: one IP may only try
+     * MAX_FAILS times, but from 25 different IPs one account stays locked.
+     * Names are normalized first because the form accepts an email identity.
      */
     public function isUserLocked(?string $username): bool
     {
@@ -66,15 +66,15 @@ final class Auth
             >= self::MAX_FAILS_USER;
     }
 
-    /** Samakan email dan nama akun supaya tidak terhitung sebagai dua target. */
+    /** Normalize email and account name so they do not count as two targets. */
     private static function normalizeUser(?string $username): ?string
     {
         $u = trim((string)$username);
         if ($u === '') {
             return null;
         }
-        // Bedakan hanya berdasarkan bagian sebelum "@": dua email di domain sama
-        // tetap dihitung terpisah, tapi alamat yang sama tidak.
+        // Distinguish only by the part before "@": two emails in the same domain
+        // are still counted separately, but the same address is not.
         return str_contains($u, '@') ? substr($u, 0, (int)strpos($u, '@')) : $u;
     }
 
@@ -103,14 +103,14 @@ final class Auth
     public function attempt(string $username, string $password, string $ip): array
     {
         if ($this->isLocked($ip) || $this->isUserLocked($username)) {
-            return ['ok' => false, 'error' => 'Terlalu banyak percobaan. Coba lagi dalam '
-                . self::LOCK_MIN . ' menit.'];
+            return ['ok' => false, 'error' => 'Too many attempts. Try again in '
+                . self::LOCK_MIN . ' minutes.'];
         }
         $user = Connection::one(
             'SELECT * FROM users WHERE username = :u OR email = :u',
             ['u' => $username]
         );
-        // Selalu jalankan verify agar waktu respons tidak membocorkan keberadaan user
+        // Always run verify so response time does not leak whether the user exists
         $hash = $user['password_hash'] ?? '$2y$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv';
         $pass = PasswordHasher::verify($password, $hash);
 
@@ -118,13 +118,13 @@ final class Auth
             $this->record($ip, $username, false);
             Audit::log('auth.login', $user['id'] ?? null, $username, 'user',
                 $user['id'] ?? null, $ip, 'denied');
-            return ['ok' => false, 'error' => 'Username atau password salah.'];
+            return ['ok' => false, 'error' => 'Wrong username or password.'];
         }
         if ($user['status'] !== 'active') {
             $this->record($ip, $username, false);
             Audit::log('auth.login', (int)$user['id'], $user['username'], 'user',
                 $user['id'], $ip, 'denied', ['reason' => 'suspended']);
-            return ['ok' => false, 'error' => 'Akun ditangguhkan. Hubungi admin.'];
+            return ['ok' => false, 'error' => 'Account suspended. Contact an administrator.'];
         }
         if (PasswordHasher::needsRehash($user['password_hash'])) {
             Connection::update('users',
@@ -135,8 +135,8 @@ final class Auth
         $needsTotp = (int)($user['totp_enabled'] ?? 0) === 1
             && trim((string)($user['totp_secret'] ?? '')) !== '';
 
-        // Rekaman percobaan sukses baru ditulis setelah 2FA benar-benar lolos,
-        // supaya password yang benar tapi kode salah tidak tercatat "sukses".
+        // The success record is written only after 2FA actually passes,
+        // so a correct password with a wrong code is not logged as "success".
         if (!$needsTotp) {
             $this->record($ip, $username, true);
             $this->session->start((int)$user['id']);
@@ -144,36 +144,36 @@ final class Auth
         }
 
         if ($needsTotp) {
-            // Sesi antar-langkah: JENIS 'totp' berarti belum login. Durasi
-            // pendek supaya tidak bisa dibiarkan menggantung.
+            // Intermediate session: kind 'totp' means not logged in yet. Short
+            // duration so it cannot be left hanging.
             $this->session->start((int)$user['id'], 'totp', 300);
             return ['ok' => true, 'need_totp' => true, 'error' => null,
                     'user_id' => (int)$user['id']];
         }
 
-        // user_id dikembalikan supaya pemanggil bisa langsung memakainya.
-        // $this->session->user() tidak bisa di sini: ia membaca cookie dari
-        // Request yang dibuat sebelum response, sedangkan cookie sesi baru
-        // dibuat di request yang sama ini.
+        // user_id is returned so the caller can use it right away.
+        // $this->session->user() cannot be used here: it reads the cookie from
+        // the Request built before the response, while the new session cookie
+        // is created within this same request.
         return ['ok' => true, 'need_totp' => false, 'error' => null,
                 'user_id' => (int)$user['id']];
     }
 
     /**
-     * Langkah kedua login: verifikasi kode TOTP atau kode pemulihan.
+     * Second login step: verify the TOTP code or a recovery code.
      *
-     * Dipanggil hanya bila attempt() sudah mengembalikan need_totp, sehingga
-     * user_id diambil dari sesi antar-langkah, bukan dari input request.
+     * Called only when attempt() has already returned need_totp, so user_id
+     * comes from the intermediate session, not from the request input.
      */
     public function confirmTotp(string $code, string $ip): array
     {
         $pending = $this->session->pendingUser('totp');
         if ($pending === null) {
-            return ['ok' => false, 'error' => 'Sesi verifikasi kedaluwarsa. Silakan login ulang.'];
+            return ['ok' => false, 'error' => 'The verification session expired. Please log in again.'];
         }
         if ($this->isLocked($ip) || $this->isUserLocked((string)$pending['username'])) {
-            return ['ok' => false, 'error' => 'Terlalu banyak percobaan. Coba lagi dalam '
-                . self::LOCK_MIN . ' menit.'];
+            return ['ok' => false, 'error' => 'Too many attempts. Try again in '
+                . self::LOCK_MIN . ' minutes.'];
         }
 
         $username = (string)$pending['username'];
@@ -192,12 +192,12 @@ final class Auth
     }
 
     /**
-     * Bagian akhir login yang sama untuk langkah password dan langkah 2FA.
+     * Shared login tail for both the password step and the 2FA step.
      *
-     * Tidak menyentuh sesi: pada langkah password sesi baru dibuat di attempt(),
-     * pada langkah 2FA sesi antar-langkah sudah dipromosikan promotePending().
-     * Kalau sesi dibuat ulang di sini, baris hasil promosi akan menggantung
-     * sebagai sesi sah yang tidak pernah dibersihkan.
+     * Does not touch the session: on the password step the new session is
+     * created in attempt(), on the 2FA step the intermediate session has
+     * already been promoted by promotePending(). Recreating it here would
+     * leave the promoted row dangling as a valid, never-cleaned session.
      */
     private function finalize(int $userId, string $username, string $ip, string $method): void
     {

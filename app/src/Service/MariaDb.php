@@ -5,15 +5,15 @@ namespace Fpanel\Service;
 use Fpanel\Database\Connection;
 
 /**
- * Manajemen database & user MySQL/MariaDB.
+ * MySQL/MariaDB database & user management.
  *
- * PHP tidak pernah speak langsung ke MariaDB sebagai root. Semua operasi
- * lewat helper root /usr/local/sbin/fpanel-dbadmin (lihat sudoers), yang
- * memvalidasi argumennya sendiri. Jadi kebocoran kredensial root MariaDB
- * tidak mungkin lewat file config, source, atau dump SQLite.
+ * PHP never talks to MariaDB directly as root. All operations go through
+ * the root helper /usr/local/sbin/fpanel-dbadmin (see sudoers), which
+ * validates its own arguments. That way the MariaDB root credentials cannot
+ * leak through a config file, the source, or a SQLite dump.
  *
- * Isolasi tenant: nama fisik selalu diawali username, jadi user tidak
- * mungkin menabrak atau membaca database milik user lain.
+ * Tenant isolation: physical names always start with the username, so a user
+ * can never collide with or read another user's database.
  */
 final class MariaDb
 {
@@ -23,36 +23,36 @@ final class MariaDb
     private const COLLATION = 'utf8mb4_unicode_ci';
     private const KEYFILE = '/etc/fpanel/app-key';
 
-    /** Privilege default untuk user database (cukup untuk WordPress/dsb). */
+    /** Default privileges for a database user (enough for WordPress etc.). */
     public const PRIVS = 'SELECT,INSERT,UPDATE,DELETE,CREATE,DROP,ALTER,INDEX,'
                       . 'REFERENCES,CREATE TEMPORARY TABLES,LOCK TABLES';
 
-    /** Opsi yang boleh dipilih user di form (tidak termasuk ALL PRIVILEGES). */
+    /** Options the user may pick in the form (ALL PRIVILEGES excluded). */
     public const PRIV_CHOICES = [
         'READ ONLY'  => 'SELECT',
         'READ WRITE' => 'SELECT,INSERT,UPDATE,DELETE',
-        'STANDAR'    => self::PRIVS,
+        'STANDARD'   => self::PRIVS,
     ];
 
     // ---------------------------------------------------------------- helper
 
     /**
-     * Jalankan helper root.
+     * Run the root helper.
      *
-     * Password dikirim lewat STDIN, bukan argv: argv bisa dibaca proses
-     * lain di mesin ini lewat `ps`.
+     * Passwords go through STDIN, not argv: argv can be read by other
+     * processes on this machine through `ps`.
      */
     private static function helper(array $args, ?string $stdin = null): array
     {
         if (!is_executable(self::HELPER)) {
-            return ['ok' => false, 'error' => 'Helper MariaDB tidak terpasang di server.'];
+            return ['ok' => false, 'error' => 'The MariaDB helper is not installed on the server.'];
         }
         $cmd = array_merge(['sudo', '-n', self::HELPER], $args);
         $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
         $pipes = [];
         $proc  = @proc_open($cmd, $descriptors, $pipes);
         if (!is_resource($proc)) {
-            return ['ok' => false, 'error' => 'Gagal menjalankan helper MariaDB.'];
+            return ['ok' => false, 'error' => 'Failed to run the MariaDB helper.'];
         }
         if ($stdin !== null) {
             fwrite($pipes[0], $stdin . "\n");
@@ -67,12 +67,12 @@ final class MariaDb
         $out = trim((string)$out);
         $err = trim((string)$err);
         if ($code !== 0) {
-            // Helper memberi prefix "ERR: " pada pesan yang memang untuk ditampilkan ke user.
-            $msg = $err !== '' ? $err : 'Operasi MariaDB gagal.';
+            // The helper prefixes messages meant for the user with "ERR: ".
+            $msg = $err !== '' ? $err : 'The MariaDB operation failed.';
             $msg = preg_replace('/^ERR:\s*/', '', $msg) ?: $msg;
-            // Buang noise driver supaya pesan ke user tetap ringkas.
+            // Drop driver noise so the message to the user stays concise.
             $msg = preg_replace('/^(ERROR \d+ \(\w+\):.*)$/m', '', $msg) ?: $msg;
-            return ['ok' => false, 'error' => trim($msg) ?: 'Operasi MariaDB gagal.'];
+            return ['ok' => false, 'error' => trim($msg) ?: 'The MariaDB operation failed.'];
         }
         return ['ok' => true, 'error' => null, 'out' => $out];
     }
@@ -80,11 +80,11 @@ final class MariaDb
     // ------------------------------------------------------------- encryption
 
     /**
-     * Kunci enkripsi simpan password user database.
+     * Encryption key for stored database user passwords.
      *
-     * Password DB tidak bisa disimpan sebagai hash: PHP/WordPress butuh
-     * password plaintext untuk konek. Jadi dienkripsi (sodium secretbox),
-     * bukan di-hash. Kalau tidak, user tidak bisa pernah memakai databasenya.
+     * A DB password cannot be stored as a hash: PHP/WordPress need the plain
+     * text password to connect. So it is encrypted (sodium secretbox), not
+     * hashed. Otherwise the user could never use their database.
      */
     private static function key(): ?string
     {
@@ -111,8 +111,8 @@ final class MariaDb
         if ($key === null) {
             return null;
         }
-        // Nonce harus random per_enkripsi dan disimpan bersama ciphertext.
-        // Nonce yang sama dengan pesan yang sama akan membocorkan isi.
+        // The nonce must be random per encryption and stored with the ciphertext.
+        // The same nonce with the same message leaks the contents.
         $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
         return base64_encode($nonce . sodium_crypto_secretbox($plain, $nonce, $key));
     }
@@ -134,23 +134,23 @@ final class MariaDb
         return $plain === false ? null : $plain;
     }
 
-    // ------------------------------------------------------------------ nama
+    // ------------------------------------------------------------------ name
 
-    /** Nama fisik database: <username>_<db>, dipotong ke 32 char (batas MySQL). */
+    /** Physical database name: <username>_<db>, cut to 32 chars (MySQL limit). */
     public static function physDb(string $username, string $name): string
     {
         $n = $username . '_' . $name;
         return strlen($n) > 32 ? substr($n, 0, 32) : $n;
     }
 
-    /** Nama fisik user: <username>_<dbuser>, dipotong ke 16 char (batas MySQL). */
+    /** Physical user name: <username>_<dbuser>, cut to 16 chars (MySQL limit). */
     public static function physUser(string $username, string $name): string
     {
         $n = $username . '_' . $name;
         return strlen($n) > 16 ? substr($n, 0, 16) : $n;
     }
 
-    /** Nama logis yang ditampilkan ke user (tanpa prefix tenant). */
+    /** Logical name shown to the user (without the tenant prefix). */
     public static function shortName(string $phys, string $username): string
     {
         $prefix = $username . '_';
@@ -179,23 +179,23 @@ final class MariaDb
         ];
     }
 
-    // ------------------------------------------------------------------ buat
+    // ------------------------------------------------------------------ create
 
     /**
-     * Buat satu database + satu user MySQL-nya dalam satu aksi.
+     * Create one database + one MySQL user in a single action.
      *
-     * Urutannya penting: objek MariaDB dibuat DULU, baru dicatat di SQLite.
-     * Kalau pencatatan gagal, objek yang sudah dibuat dibuang (rollback) supaya
-     * tidak ada database yatim di server yang tidak terlihat panel.
+     * Order matters: the MariaDB objects are created FIRST, then recorded in
+     * SQLite. If the recording fails, the created objects are dropped
+     * (rollback) so no orphan database is left unseen by the panel.
      */
-    public static function create(string $username, string $dbName, string $userName, string $privKey = 'STANDAR'): array
+    public static function create(string $username, string $dbName, string $userName, string $privKey = 'STANDARD'): array
     {
         if (($e = Validator::username($username)) !== null) {
             return ['ok' => false, 'error' => $e];
         }
-        // Sengaja TIDAK strtolower(): diam-diam mengubah "Toko" menjadi "toko"
-        // membuat user mengira dia membuat database yang berbeda. Lebih baik
-        // ditolak dengan pesan jelas, dan konsisten dengan pattern di form HTML.
+        // Deliberately NOT strtolower(): silently turning "Toko" into "toko"
+        // makes the user think they created a different database. Better to
+        // reject it with a clear message, consistent with the HTML form pattern.
         $dbName = trim($dbName);
         if (($e = Validator::dbName($dbName)) !== null) {
             return ['ok' => false, 'error' => $e];
@@ -209,27 +209,27 @@ final class MariaDb
         }
         $privs = self::PRIV_CHOICES[$privKey] ?? null;
         if ($privs === null) {
-            return ['ok' => false, 'error' => 'Level privilege tidak dikenal.'];
+            return ['ok' => false, 'error' => 'Unknown privilege level.'];
         }
 
         $q = self::quota($username);
         if ($q['user_id'] === 0) {
-            return ['ok' => false, 'error' => 'User tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'User not found.'];
         }
         if ($q['max_db'] > 0 && $q['used_db'] >= $q['max_db']) {
-            return ['ok' => false, 'error' => "Kuota database penuh ({$q['used_db']}/{$q['max_db']})."];
+            return ['ok' => false, 'error' => "Database quota is full ({$q['used_db']}/{$q['max_db']})."];
         }
         if ($q['max_users'] > 0 && $q['used_users'] >= $q['max_users']) {
-            return ['ok' => false, 'error' => "Kuota user database penuh ({$q['used_users']}/{$q['max_users']})."];
+            return ['ok' => false, 'error' => "Database user quota is full ({$q['used_users']}/{$q['max_users']})."];
         }
 
-        // Nama logis harus unik per user; nama fisiknya sudah pasti unik
-        // karena diawali username.
+        // The logical name must be unique per user; the physical name is certainly
+        // unique because it starts with the username.
         $dup = Connection::value(
             'SELECT COUNT(*) FROM databases WHERE user_id = :u AND name = :n',
             ['u' => $q['user_id'], 'n' => $dbName]);
         if ((int)$dup > 0) {
-            return ['ok' => false, 'error' => "Database {$dbName} sudah ada."];
+            return ['ok' => false, 'error' => "Database {$dbName} already exists."];
         }
 
         $physDb   = self::physDb($username, $dbName);
@@ -242,7 +242,7 @@ final class MariaDb
         }
         $r = self::helper(['create-user', $physUser, self::HOST], $password);
         if (!$r['ok']) {
-            self::helper(['drop-db', $physDb]);   // jangan tinggalkan db tanpa user
+            self::helper(['drop-db', $physDb]);   // do not leave a database without a user
             return $r;
         }
         $r = self::helper(['grant', $physUser, self::HOST, $physDb, $privs]);
@@ -254,52 +254,52 @@ final class MariaDb
 
         $enc = self::encrypt($password);
         if ($enc === null) {
-            // Tidak ada app-key: jangan simpan password yang tidak bisa
-            // dibuka lagi. Undur semuanya.
+            // No app-key: do not store a password that can never be opened
+            // again. Roll everything back.
             self::helper(['drop-user', $physUser, self::HOST]);
             self::helper(['drop-db', $physDb]);
-            return ['ok' => false, 'error' => 'App key tidak tersedia, password tidak bisa disimpan aman.'];
+            return ['ok' => false, 'error' => 'App key unavailable; the password cannot be stored safely.'];
         }
 
         try {
             $dbId = Connection::insert('databases', [
                 'user_id'   => $q['user_id'],
                 'name'      => $dbName,
-                'quota_mb'  => 0,          // 0 = tanpa batas eksplisit
+                'quota_mb'  => 0,          // 0 = no explicit limit
                 'used_mb'   => 0,
                 'charset'   => self::CHARSET,
             ]);
             Connection::insert('db_users', [
                 'database_id'   => $dbId,
                 'name'          => $userName,
-                'password_hash' => $enc,      // ciphertext sodium, bukan hash
+                'password_hash' => $enc,      // sodium ciphertext, not a hash
                 'host'          => self::HOST,
                 'privileges'    => $privs,
             ]);
         } catch (\Throwable $e) {
             self::helper(['drop-user', $physUser, self::HOST]);
             self::helper(['drop-db', $physDb]);
-            return ['ok' => false, 'error' => 'Gagal menyimpan database: ' . $e->getMessage()];
+            return ['ok' => false, 'error' => 'Failed to save the database: ' . $e->getMessage()];
         }
 
         return ['ok' => true, 'error' => null, 'db_id' => $dbId,
                 'db' => $dbName, 'user' => $userName, 'password' => $password];
     }
 
-    // ------------------------------------------------------------------ hapus
+    // ------------------------------------------------------------------ delete
 
-    /** Hapus database + semua user MySQL yang menempel padanya. */
+    /** Delete a database + every MySQL user attached to it. */
     public static function delete(string $username, int $dbId): array
     {
         $row = self::owned($username, $dbId);
         if ($row === null) {
-            return ['ok' => false, 'error' => 'Database tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Database not found.'];
         }
         $physDb   = self::physDb($username, (string)$row['name']);
         $dbUserId = (int)$row['id'];
 
-        // User MySQL harus dilepas dulu: kalau database dihapus sementara
-        // grant-nya masih ada, MariaDB membiarkan grant yatim menggantung.
+        // MySQL users must be removed first: if the database is dropped while its
+        // grants still exist, MariaDB leaves the grant orphaned.
         $users = Connection::all('SELECT name, host FROM db_users WHERE database_id = :d',
             ['d' => $dbUserId]);
         foreach ($users as $u) {
@@ -318,12 +318,12 @@ final class MariaDb
 
     // ------------------------------------------------------------------ user
 
-    /** Tambah user MySQL tambahan untuk database yang sudah ada. */
-    public static function addUser(string $username, int $dbId, string $userName, string $privKey = 'STANDAR'): array
+    /** Add an extra MySQL user to an existing database. */
+    public static function addUser(string $username, int $dbId, string $userName, string $privKey = 'STANDARD'): array
     {
         $row = self::owned($username, $dbId);
         if ($row === null) {
-            return ['ok' => false, 'error' => 'Database tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Database not found.'];
         }
         $userName = trim($userName);
         if (($e = self::validDbUserName($userName)) !== null) {
@@ -331,16 +331,16 @@ final class MariaDb
         }
         $privs = self::PRIV_CHOICES[$privKey] ?? null;
         if ($privs === null) {
-            return ['ok' => false, 'error' => 'Level privilege tidak dikenal.'];
+            return ['ok' => false, 'error' => 'Unknown privilege level.'];
         }
         $q = self::quota($username);
         if ($q['max_users'] > 0 && $q['used_users'] >= $q['max_users']) {
-            return ['ok' => false, 'error' => "Kuota user database penuh ({$q['used_users']}/{$q['max_users']})."];
+            return ['ok' => false, 'error' => "Database user quota is full ({$q['used_users']}/{$q['max_users']})."];
         }
         $dup = Connection::value('SELECT COUNT(*) FROM db_users WHERE database_id = :d AND name = :n',
             ['d' => $dbId, 'n' => $userName]);
         if ((int)$dup > 0) {
-            return ['ok' => false, 'error' => "User {$userName} sudah ada di database ini."];
+            return ['ok' => false, 'error' => "User {$userName} already exists on this database."];
         }
 
         $physDb   = self::physDb($username, (string)$row['name']);
@@ -359,7 +359,7 @@ final class MariaDb
         $enc = self::encrypt($password);
         if ($enc === null) {
             self::helper(['drop-user', $physUser, self::HOST]);
-            return ['ok' => false, 'error' => 'App key tidak tersedia.'];
+            return ['ok' => false, 'error' => 'App key unavailable.'];
         }
         try {
             Connection::insert('db_users', [
@@ -371,7 +371,7 @@ final class MariaDb
             ]);
         } catch (\Throwable $e) {
             self::helper(['drop-user', $physUser, self::HOST]);
-            return ['ok' => false, 'error' => 'Gagal menyimpan user: ' . $e->getMessage()];
+            return ['ok' => false, 'error' => 'Failed to save the user: ' . $e->getMessage()];
         }
         return ['ok' => true, 'error' => null, 'user' => $userName, 'password' => $password];
     }
@@ -380,20 +380,20 @@ final class MariaDb
     {
         $db = self::owned($username, $dbId);
         if ($db === null) {
-            return ['ok' => false, 'error' => 'Database tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Database not found.'];
         }
         $row = Connection::one(
             'SELECT * FROM db_users WHERE id = :i AND database_id = :d',
             ['i' => $dbUserId, 'd' => (int)$db['id']]);
         if ($row === null) {
-            return ['ok' => false, 'error' => 'User database tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Database user not found.'];
         }
-        // User terakhir tidak boleh dihapus: database-nya jadi tidak bisa
-        // dipakai aplikasi sama sekali.
+        // The last user may not be deleted: otherwise the database could not be
+        // used by any application at all.
         $total = (int)Connection::value('SELECT COUNT(*) FROM db_users WHERE database_id = :d',
             ['d' => (int)$db['id']]);
         if ($total <= 1) {
-            return ['ok' => false, 'error' => 'User terakhir tidak bisa dihapus. Hapus databasenya saja.'];
+            return ['ok' => false, 'error' => 'The last user cannot be deleted. Delete the whole database instead.'];
         }
         $r = self::helper(['drop-user',
             self::physUser($username, (string)$row['name']), (string)($row['host'] ?: self::HOST)]);
@@ -404,28 +404,28 @@ final class MariaDb
         return ['ok' => true, 'error' => null];
     }
 
-    /** Password user database untuk ditampilkan sekali setelah dibuat. */
+    /** Database user password, shown once right after creation. */
     public static function reveal(string $username, int $dbId, int $dbUserId): array
     {
         if (self::owned($username, $dbId) === null) {
-            return ['ok' => false, 'error' => 'Database tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Database not found.'];
         }
         $row = Connection::one(
             'SELECT password_hash FROM db_users WHERE id = :i AND database_id = :d',
             ['i' => $dbUserId, 'd' => $dbId]);
         if ($row === null) {
-            return ['ok' => false, 'error' => 'User database tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Database user not found.'];
         }
         $plain = self::decrypt((string)$row['password_hash']);
         if ($plain === null) {
-            return ['ok' => false, 'error' => 'Password tidak bisa dibuka (app key berubah?).'];
+            return ['ok' => false, 'error' => 'The password cannot be opened (app key changed?).'];
         }
         return ['ok' => true, 'error' => null, 'password' => $plain];
     }
 
     // ------------------------------------------------------------------ misc
 
-    /** Baris database milik user tersebut, atau null. Mencegah IDOR. */
+    /** The user's own database row, or null. Prevents IDOR. */
     private static function owned(string $username, int $dbId): ?array
     {
         $uid = (int)Connection::value('SELECT id FROM users WHERE username = :u', ['u' => $username]);
@@ -436,7 +436,7 @@ final class MariaDb
             ['i' => $dbId, 'u' => $uid]);
     }
 
-    /** Update used_mb dari ukuran nyata di MariaDB. Dipanggil saat listing. */
+    /** Update used_mb from the real size in MariaDB. Called during listing. */
     public static function refreshSize(string $username, array $databases): array
     {
         foreach ($databases as $d) {
@@ -460,7 +460,7 @@ final class MariaDb
     {
         $uid = (int)Connection::value('SELECT id FROM users WHERE username = :u', ['u' => $username]);
         if ($uid === 0) {
-            return ['ok' => false, 'error' => 'User tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'User not found.'];
         }
         $dbs = Connection::all(
             'SELECT * FROM databases WHERE user_id = :u ORDER BY name', ['u' => $uid]);
@@ -479,27 +479,27 @@ final class MariaDb
         $r = self::helper(['ping']);
         return $r['ok']
             ? ['ok' => true, 'error' => null]
-            : ['ok' => false, 'error' => 'MariaDB tidak bisa dijangkau: ' . $r['error']];
+            : ['ok' => false, 'error' => 'MariaDB cannot be reached: ' . $r['error']];
     }
 
     // ------------------------------------------------------------- internal
 
     /**
-     * Nama database milik sistem MariaDB tidak boleh dipakai sebagai nama logis.
+     * Names of MariaDB system databases may not be used as logical names.
      *
-     * Helper juga menyaring, tapi hanya nama fisik: "mysql" menjadi "admin_mysql"
-     * sehingga lolos deny-list. Di sini nama logisnya yang ditolak, supaya user
-     * tidak pernah melihat database bernama "mysql" di panelnya.
+     * The helper filters too, but only physical names: "mysql" becomes
+     * "admin_mysql" and thus escapes the deny-list. Here the logical name is
+     * rejected so a user never sees a database called "mysql" in their panel.
      */
     private static function reservedName(string $n): ?string
     {
         if (in_array(strtolower($n), ['mysql', 'information_schema', 'performance_schema', 'sys', 'test'], true)) {
-            return "'{$n}' adalah nama database sistem, tidak boleh dipakai.";
+            return "'{$n}' is a system database name and may not be used.";
         }
         return null;
     }
 
-    /** Dicek lewat helper: apakah objek ini benar-benar ada di MariaDB server? */
+    /** Checked through the helper: does this object really exist on the MariaDB server? */
     public static function serverExists(string $username, string $name): bool
     {
         $r = self::helper(['exists', self::physDb($username, $name)]);
@@ -515,35 +515,35 @@ final class MariaDb
     private static function validDbUserName(string $n): ?string
     {
         if ($n === '') {
-            return 'Nama user database wajib diisi.';
+            return 'Database user name is required.';
         }
-        // Batas 16 supaya <username>_<n> selalu muat di batas MySQL.
+        // A 16-char limit so <username>_<n> always fits the MySQL limit.
         if (!preg_match('/^[a-z0-9_]{1,16}$/', $n)) {
-            return 'Nama user database: huruf kecil, angka, underscore, maks 16 karakter.';
+            return 'Database user name: lowercase letters, digits, underscore, max 16 characters.';
         }
         return null;
     }
 
     /**
-     * Password acak untuk user MySQL.
+     * Random password for MySQL users.
      *
-     * Menghindari karakter yang perlu di-escape di SQL dan karakter yang
-     * sering bikin salah salin saat dipaste ke wp-config.
+     * Avoids characters that need escaping in SQL and characters that are
+     * often mistyped when pasted into wp-config.
      */
     private static function randomPassword(int $len = 20): string
     {
         $sets = ['abcdefghijkmnopqrstuvwxyz', 'ABCDEFGHJKLMNPQRSTUVWXYZ', '23456789', '!@#%*?-_'];
         $all  = implode('', $sets);
         $pw   = '';
-        // Jamin tiap kelas karakter muncul minimal sekali.
+        // Guarantee each character class appears at least once.
         foreach ($sets as $s) {
             $pw .= $s[random_int(0, strlen($s) - 1)];
         }
         for ($i = strlen($pw); $i < $len; $i++) {
             $pw .= $all[random_int(0, strlen($all) - 1)];
         }
-        // Acak urutannya: pola "huruf besar-kecil-angka-simbol" yang rapi di
-        // awal justru mudah ditebak.
+        // Shuffle the order: a tidy "upper-lower-digit-symbol" pattern at the
+        // start is ironically easy to guess.
         for ($i = strlen($pw) - 1; $i > 0; $i--) {
             $j = random_int(0, $i);
             [$pw[$i], $pw[$j]] = [$pw[$j], $pw[$i]];

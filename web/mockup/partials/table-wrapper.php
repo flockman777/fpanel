@@ -1,4 +1,4 @@
-<?php /* Wrapper tabel responsif: $empty pesan kalau data kosong */ ?>
+<?php /* Responsive table wrapper: $empty is the message shown when data is empty */ ?>
 <div class="card overflow-hidden">
   <div class="overflow-x-auto">
     <table class="table">
@@ -8,7 +8,7 @@
       <th class="w-px text-right"><?= htmlspecialchars($actionsLabel ?? 'Aksi') ?></th></tr></thead>
       <tbody>
       <?php if (empty($rows)): ?>
-        <tr><td colspan="<?= count($cols ?? []) + 1 ?>" class="py-10 text-center text-sm text-slate-500" data-i18n="<?= htmlspecialchars($emptyKey ?? 'common.noData') ?>"><?= htmlspecialchars($emptyText ?? 'Belum ada data') ?></td></tr>
+        <tr><td colspan="<?= count($cols ?? []) + 1 ?>" class="py-10 text-center text-sm text-slate-500" data-i18n="<?= htmlspecialchars($emptyKey ?? 'common.noData') ?>"><?= htmlspecialchars($emptyText ?? 'No data yet') ?></td></tr>
       <?php endif; ?>
       <?php foreach (($rows ?? []) as $r): ?><?php $row = $r; ?>
         <tr><?php foreach (($cols ?? []) as $c): ?>

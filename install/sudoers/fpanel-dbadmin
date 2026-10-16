@@ -1,7 +1,7 @@
-# FPanel: administrasi MariaDB lewat helper root.
-# Subcommand dikunci eksplisit (bukan "*"): www-data hanya boleh memanggil
-# perintah yang memang dibutuhkan panel. Helper memvalidasi argumennya
-# sendiri; ini lapisan kedua.
+# FPanel: MariaDB administration via the root helper.
+# Subcommands are locked explicitly (not "*"): www-data may only call
+# the commands the panel actually needs. The helper validates its arguments
+# itself; this is the second layer.
 www-data ALL=(root) NOPASSWD: /usr/local/sbin/fpanel-dbadmin ping, \
     /usr/local/sbin/fpanel-dbadmin exists *, \
     /usr/local/sbin/fpanel-dbadmin has-user *, \

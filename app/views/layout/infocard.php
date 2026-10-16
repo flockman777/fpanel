@@ -1,10 +1,10 @@
 <?php
 /**
- * Kartu informasi: Akun, Statistik, Info Server.
- * Styling sengaja mengikuti `.card` (putih + garis slate + aksen teal) supaya
- * konsisten dengan halaman lain. Versi sebelumnya memakai panel navy, yang
- * terlihat berat di halaman terang dan membuat bar teal (hue 173°) terasa
- * tidak serasi dengan dasar biru navy (hue 217°).
+ * Info card: Account, Statistics, Server Info.
+ * Styling deliberately follows `.card` (white + slate border + teal accent) so it
+ * stays consistent with the other pages. The previous version used a navy panel, which
+ * looked heavy on a light page and made the teal bar (hue 173°) feel
+ * off-key against the navy blue base (hue 217°).
  *
  * @var array $me
  * @var array $s
@@ -22,7 +22,7 @@ $pc = static function (int $used, int $max): array {
       <span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
         <i data-lucide="circle-user" class="h-4 w-4"></i>
       </span>
-      Informasi Akun
+      Account Info
     </h2>
     <dl class="divide-y divide-slate-100 text-sm dark:divide-slate-800">
       <div class="flex items-center justify-between gap-3 px-4 py-2.5">

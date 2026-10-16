@@ -3,18 +3,18 @@ declare(strict_types=1);
 namespace Fpanel\Service;
 
 /**
- * Klien S3 minimal untuk backup offsite, ditandatangani dengan AWS SigV4.
+ * Minimal S3 client for offsite backups, signed with AWS SigV4.
  *
- * Ditulis tanpa SDK supaya panel tidak menambah dependensi. Cukup operasi yang
- * benar-benar dipakai: list bucket, upload, unduh, dan hapus objek.
+ * Written without an SDK so the panel adds no dependencies. Just the
+ * operations actually used: list objects, upload, download, and delete.
  *
- *_md5 wajib diisi (bukan opsional) karena beberapa provider membutuhkannya
- * untuk upload lewat chunked transfer.
+ * content_md5 is required (not optional) because some providers need it
+ * for uploads over chunked transfer.
  */
 final class S3Client
 {
     private function __construct(
-        private readonly string $endpoint,   // https://host (tanpa path bucket)
+        private readonly string $endpoint,   // https://host (without the bucket path)
         private readonly string $region,
         private readonly string $bucket,
         private readonly string $accessKey,
@@ -37,8 +37,8 @@ final class S3Client
         if (!preg_match('#^https?://#i', $ep)) {
             return null;
         }
-        // md5Hex = sidik jari certificate publik, dikirim sebagai header
-        // Content-MD5 base64. Provider yang tidak mewajibkan tetap menerimanya.
+        // md5Hex = public certificate fingerprint, sent as the base64
+        // Content-MD5 header. Providers that do not require it accept it anyway.
         $md5 = trim((string)($cfg['content_md5'] ?? ''));
         return new self(
             $ep,
@@ -47,8 +47,8 @@ final class S3Client
             trim((string)$cfg['access_key']),
             trim((string)$cfg['secret_key']),
             preg_match('/^[0-9a-f]{32}$/', $md5) === 1 ? $md5 : '',
-            // Default path-style: lebih banyak kompatibel dengan provider non-AWS
-            // (B2, MinIO, R2) yang tidak mendukung virtual-host addressing.
+            // Path-style by default: more compatible with non-AWS providers
+            // (B2, MinIO, R2) that do not support virtual-host addressing.
             ($cfg['path_style'] ?? '1') === '1',
         );
     }
@@ -74,9 +74,9 @@ final class S3Client
             ? $this->endpoint . '/' . rawurlencode($this->bucket) . ($key === '' ? '' : '/' . self::encodePath($key))
             : $this->endpoint . '/' . self::encodePath($key);
 
-        // Query string harus ikut di-signature, dan bentuk canonical-nya harus
-        // sama persis dengan yang dikirim ke server: diurutkan berdasarkan nama,
-        // dengan '=' dan '&' juga di-encode.
+        // The query string must be part of the signature, and its canonical form
+        // must match exactly what is sent to the server: sorted by name, with
+        // '=' and '&' encoded as well.
         $canonicalQuery = self::canonicalQuery($query);
         if ($canonicalQuery !== '') {
             $uri .= '?' . $canonicalQuery;
@@ -133,7 +133,7 @@ final class S3Client
         $curlHeaders = [];
         foreach ($headers as $h => $v) {
             if (strtolower($h) === 'host') {
-                continue;   // curl mengaturnya sendiri dari URL
+                continue;   // curl sets it itself from the URL
             }
             $curlHeaders[] = "$h: $v";
         }
@@ -149,8 +149,8 @@ final class S3Client
             CURLOPT_SSL_VERIFYHOST => 2,
         ]);
         if ($file !== null) {
-            // Upload dari file: stream, bukan dibaca ke memori. Backup bisa
-            // berukuran GB dan FPM punya RAM terbatas.
+            // Upload from a file: streamed, not read into memory. Backups can be
+            // gigabytes and FPM has limited RAM.
             curl_setopt($ch, CURLOPT_UPLOAD, true);
             curl_setopt($ch, CURLOPT_INFILE, fopen($file, 'rb'));
             curl_setopt($ch, CURLOPT_INFILESIZE, (int)filesize($file));
@@ -169,8 +169,8 @@ final class S3Client
         if ($res === false && $err !== '') {
             return ['ok' => false, 'status' => 0, 'body' => '', 'error' => $err];
         }
-        // S3 mengembalikan 2xx/3xx sebagai sukses; 404 juga "berhasil" untuk
-        // pemeriksaan keberadaan, jadi status dibaca terpisah oleh pemanggil.
+        // S3 returns 2xx/3xx as success; a 404 is also "successful" for an
+        // existence check, so the caller reads the status separately.
         return ['ok' => $code >= 200 && $code < 400, 'status' => $code,
                 'body' => (string)$res, 'error' => $code >= 400 ? (string)$res : null];
     }
@@ -179,16 +179,16 @@ final class S3Client
     {
         $p = parse_url($uri);
         $path = $p['path'] ?? '/';
-        // Setiap segmen di-encode terpisah; slash tidak boleh ter-encode.
+        // Each segment is encoded separately; slashes must not be encoded.
         return implode('/', array_map('rawurlencode', explode('/', $path)));
     }
 
     /**
-     * Bangun canonical query string untuk SigV4.
+     * Build the canonical query string for SigV4.
      *
-     * Aturannya: urutkan berdasarkan nama parameter (RFC 3986 byte order),
-     * lalu encode setiap kunci DAN nilai memakai percent-encoding. '&' dan '='
-     * di dalam nilai ikut ter-encode, kalau tidak signature tidak akan cocok.
+     * The rule: sort by parameter name (RFC 3986 byte order), then percent-
+     * encode every key AND value. '&' and '=' inside a value are encoded too,
+     * otherwise the signature will not match.
      *
      * @param array<string,string|int> $query
      */
@@ -209,7 +209,7 @@ final class S3Client
         return implode('&', $parts);
     }
 
-    /** Selisikan segmen dengan %2F dalam gaya path untuk kunci bersarang. */
+    /** Intersperse segments with %2F in path style for nested keys. */
     private static function encodePath(string $key): string
     {
         $parts = array_map(static fn (string $s): string => str_replace('%2F', '/', rawurlencode($s)),
@@ -220,13 +220,13 @@ final class S3Client
     // ------------------------------------------------------------------ operasi
 
     /**
-     * Daftar objek dengan prefix tertentu.
+     * List objects under a given prefix.
      *
-     * Memakai ListObjectsV2 (?list-type=2&prefix=...). Path polos seperti
-     * GET /bucket/fpanel/ bukan daftar: S3 membacanya sebagai pengambilan objek
-     * dan membalas NoSuchKey kalau key itu memang tidak ada.
+     * Uses ListObjectsV2 (?list-type=2&prefix=...). A plain path like
+     * GET /bucket/fpanel/ is not a listing: S3 reads it as an object fetch
+     * and answers NoSuchKey when that key really does not exist.
      *
-     * @param array<string,string|int> $extra parameter tambahan (mis. continuation-token)
+     * @param array<string,string|int> $extra extra parameters (e.g. continuation-token)
      * @return array{ok:bool,status:int,body:string,error?:string}
      */
     public function listObjects(string $prefix = '', array $extra = []): array

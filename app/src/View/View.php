@@ -8,7 +8,7 @@ final class View
     {
         $file = FPANEL_ROOT . '/app/views/' . $tpl . '.php';
         if (!is_file($file)) {
-            throw new \RuntimeException("Template tidak ada: $tpl");
+            throw new \RuntimeException("Template not found: $tpl");
         }
         extract($vars, EXTR_SKIP);
         ob_start();

@@ -4,7 +4,7 @@ namespace Fpanel\Service;
 
 use Fpanel\Database\Connection;
 
-/** Metrik REAL dari database + filesystem. Tidak ada angka dummy. */
+/** REAL metrics from the database + filesystem. No dummy numbers. */
 final class Stats
 {
     public static function usedDomains(int $userId): int
@@ -44,7 +44,7 @@ final class Stats
         if ($row !== null) {
             return (int)$row['disk_bytes'];
         }
-        // Fallback: hitung filesystem home user
+        // Fallback: count the user's home filesystem
         $user = Connection::one('SELECT username FROM users WHERE id = :u', ['u' => $userId]);
         if ($user === null) {
             return 0;

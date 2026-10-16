@@ -29,7 +29,7 @@ if (\Fpanel\Support\Config::get('app.debug', false)) {
 }
 
 if (!function_exists('e')) {
-    /** Escape untuk template. */
+    /** Escape helper for templates. */
     function e(mixed $v): string
     {
         return htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');

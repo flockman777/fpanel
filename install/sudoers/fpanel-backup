@@ -1,6 +1,6 @@
-# FPanel: backup & restore data panel (SQLite, /var/www, database, konfigurasi).
-# Bentuk polos (tanpa argumen) ikut dicantumkan untuk subcommand yang punya
-# nilai default, supaya "create" tanpa argumen tetap diizinkan.
+# FPanel: panel data backup & restore (SQLite, /var/www, databases, config).
+# The bare form (no arguments) is listed too for subcommands that have
+# default values, so that "create" without arguments is still allowed.
 www-data ALL=(root) NOPASSWD: /usr/local/sbin/fpanel-backup ping, \
     /usr/local/sbin/fpanel-backup list, \
     /usr/local/sbin/fpanel-backup create, \

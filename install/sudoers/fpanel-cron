@@ -1,5 +1,5 @@
-# FPanel: menulis file /etc/cron.d milik user lewat helper root.
-# "run" sengaja TIDAK ada di sini: eksekusi job memang harus sebagai www-data,
-# jadi tidak boleh punya jalur sudo sama sekali.
+# FPanel: writes user-owned /etc/cron.d files via the root helper.
+# "run" is deliberately NOT here: job execution must indeed happen as www-data,
+# so it must have no sudo path at all.
 www-data ALL=(root) NOPASSWD: /usr/local/sbin/fpanel-cron ping, \
     /usr/local/sbin/fpanel-cron sync *

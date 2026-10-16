@@ -1,5 +1,5 @@
 <?php
-/** Topbar: logo | search (tengah) | server + tema + akun (kanan). Menu utama ada di sidebar kiri. */
+/** Topbar: logo | search (center) | server + theme + account (right). The main menu lives in the left sidebar. */
 /** @var array $me, string $csrf, string $hostname */
 $initials = strtoupper(mb_substr($me['username'], 0, 1) . mb_substr(explode(' ', $me['username'])[1] ?? '', 0, 1));
 $hostname  = $hostname ?? ($s['server']['hostname'] ?? 'fpanel');
@@ -8,20 +8,20 @@ $hostname  = $hostname ?? ($s['server']['hostname'] ?? 'fpanel');
   <div class="flex items-center gap-3 px-4 py-2.5 sm:px-6 lg:pl-[264px]">
     <button data-nav-open
             class="-ml-1 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden dark:text-slate-300 dark:hover:bg-slate-800"
-            aria-label="Buka menu" aria-controls="fp-nav" aria-expanded="false">
+            aria-label="Open menu" aria-controls="fp-nav" aria-expanded="false">
       <i data-lucide="menu" class="h-5 w-5"></i>
     </button>
 
     <form data-search class="relative mx-auto w-full max-w-xl" role="search" onsubmit="return false">
       <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"></i>
-      <input data-search-input type="search" autocomplete="off" aria-label="Cari fitur, domain, database"
-             placeholder="Cari fitur, domain, database…"
+      <input data-search-input type="search" autocomplete="off" aria-label="Search features, domains, databases"
+             placeholder="Search features, domains, databases…"
              class="input pl-9 pr-9">
       <kbd class="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-slate-300 px-1.5 text-[10px] font-medium text-slate-400 dark:border-slate-700 sm:block">/</kbd>
       <div data-search-menu hidden
            class="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-pop dark:border-slate-800 dark:bg-slate-900">
         <ul data-search-results class="max-h-80 overflow-y-auto py-1"></ul>
-        <p data-search-empty hidden class="px-3 py-6 text-center text-sm text-slate-500">Tidak ada hasil.</p>
+        <p data-search-empty hidden class="px-3 py-6 text-center text-sm text-slate-500">No results.</p>
       </div>
     </form>
 
@@ -31,7 +31,7 @@ $hostname  = $hostname ?? ($s['server']['hostname'] ?? 'fpanel');
         <i data-lucide="server" class="h-4 w-4"></i><?= htmlspecialchars($hostname) ?>
       </a>
 
-      <button data-theme-toggle class="btn-icon" title="Tema" aria-label="Ganti tema">
+      <button data-theme-toggle class="btn-icon" title="Theme" aria-label="Toggle theme">
         <i data-lucide="sun" class="h-5 w-5 dark:hidden"></i>
         <i data-lucide="moon" class="hidden h-5 w-5 dark:block"></i>
       </button>
@@ -51,13 +51,13 @@ $hostname  = $hostname ?? ($s['server']['hostname'] ?? 'fpanel');
               <?= htmlspecialchars($me['role']) ?>
             </p>
           </div>
-          <a href="/account" class="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><i data-lucide="user" class="h-4 w-4"></i>Profil</a>
-          <a href="/account" class="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><i data-lucide="key-round" class="h-4 w-4"></i>Ganti Password</a>
+          <a href="/account" class="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><i data-lucide="user" class="h-4 w-4"></i>Profile</a>
+          <a href="/account" class="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800"><i data-lucide="key-round" class="h-4 w-4"></i>Change Password</a>
           <div class="my-1 border-t border-slate-100 dark:border-slate-800"></div>
           <form method="post" action="/logout" class="contents">
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf) ?>">
             <button type="submit" class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800">
-              <i data-lucide="log-out" class="h-4 w-4"></i>Keluar
+              <i data-lucide="log-out" class="h-4 w-4"></i>Log out
             </button>
           </form>
         </div>

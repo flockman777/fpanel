@@ -5,8 +5,8 @@ namespace Fpanel\Http;
 use Fpanel\Database\Connection;
 
 /**
- * Session berbasis database (bukan file) supaya bisa dicabut semua perangkat,
- * ditinjau dari UI, dan tidak perlu shared /tmp antar worker php-fpm.
+ * Database-backed sessions (not files) so all devices can be revoked,
+ * reviewed from the UI, and no shared /tmp is needed between php-fpm workers.
  */
 final class Session
 {
@@ -25,11 +25,11 @@ final class Session
     }
 
     /**
-     * Mulai sesi.
+     * Start a session.
      *
-     * $kind = 'auth' adalah sesi login biasa. Jenis lain dipakai untuk
-     * langkah antara, misalnya 'totp': barisnya ADA tapi belum memberi akses,
-     * jadi user() mengabaikannya sampai kind-nya dipromosikan jadi 'auth'.
+     * $kind = 'auth' is a regular logged-in session. Other kinds are used for
+     * intermediate steps, e.g. 'totp': the row EXISTS but does not grant
+     * access yet, so user() ignores it until its kind is promoted to 'auth'.
      */
     public function start(?int $userId = null, string $kind = 'auth', int $seconds = 1209600): string
     {
@@ -85,10 +85,10 @@ final class Session
     }
 
     /**
-     * User dari sesi antar-langkah (mis. 'totp'), atau null kalau tidak ada.
+     * User from an intermediate session (e.g. 'totp'), or null if none exists.
      *
-     * IP ikut dibandingkan supaya cookie yang dicuri tidak bisa dipakai untuk
-     * menyelesaikan login dari jaringan lain.
+     * The IP is compared as well so a stolen cookie cannot be used to
+     * complete the login from another network.
      */
     public function pendingUser(string $kind): ?array
     {
@@ -111,10 +111,10 @@ final class Session
     }
 
     /**
-     * Naikkan sesi antar-langkah menjadi sesi login penuh.
+     * Promote an intermediate session into a full logged-in session.
      *
-     * Cookie tidak diganti, jadi tidak ada jeda di mana user sempat logout
-     * setelah 2FA berhasil.
+     * The cookie is not replaced, so there is no gap in which the user could
+     * end up logged out after 2FA succeeds.
      */
     public function promotePending(string $kind, int $seconds = 1209600): bool
     {
@@ -134,8 +134,8 @@ final class Session
             ]
         );
         if ($st > 0 && !headers_sent()) {
-            // Cookie pending dibuat dengan umur 5 menit. Tanpa diperpanjang di
-            // sini, user akan terlempar keluar 5 menit setelah 2FA berhasil.
+            // The pending cookie is created with a 5-minute lifetime. Without
+            // extending it here, the user drops out 5 minutes after 2FA works.
             setcookie(self::COOKIE, (string)$token, [
                 'expires'  => time() + $seconds,
                 'path'     => '/',
@@ -144,13 +144,13 @@ final class Session
                 'secure'   => (($_SERVER['HTTPS'] ?? '') === 'on'),
             ]);
         }
-        // Paksa dibaca ulang supaya user() melihat kind yang baru.
+        // Force a re-read so user() sees the new kind.
         $this->loaded = false;
         $this->user   = null;
         return $st > 0;
     }
 
-    /** Buang sesi antar-langkah tanpa memengaruhi login lain. */
+    /** Drop an intermediate session without affecting other logins. */
     public function dropPending(string $kind): void
     {
         $token = $this->request->cookie(self::COOKIE);

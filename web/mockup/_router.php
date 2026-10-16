@@ -1,24 +1,24 @@
 <?php
-/* Router mockup: gzip + cache header + content-type benar.
-   Dipakai: php -S 0.0.0.0:8090 -t <docroot> _router.php  */
+/* Mockup router: gzip + cache headers + correct content-type.
+   Used as: php -S 0.0.0.0:8090 -t <docroot> _router.php  */
 declare(strict_types=1);
 
-if (PHP_SAPI !== 'cli-server') { http_response_code(403); exit('router hanya untuk cli-server'); }
+if (PHP_SAPI !== 'cli-server') { http_response_code(403); exit('router is for cli-server only'); }
 
 $root = realpath(__DIR__);
 $uri  = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $path = realpath($root . urldecode($uri));
 
-// tolak akses langsung ke router ini
+// reject direct access to this router
 if ($path === __FILE__) { http_response_code(404); exit; }
 
-// cegah path traversal
+// prevent path traversal
 if (!$path || strncmp($path, $root . DIRECTORY_SEPARATOR, strlen($root) + 1) !== 0) {
     http_response_code(404);
     exit('Not found');
 }
 
-if (!is_file($path)) { return false; } // biarkan server bawaan tangani (mis. 404 / PHP)
+if (!is_file($path)) { return false; } // let the built-in server handle it (e.g. 404 / PHP)
 
 $ext  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 $mime = [
@@ -41,11 +41,11 @@ $mime = [
 header('Content-Type: ' . $mime);
 header('Vary: Accept-Encoding');
 
-// aset build = immutable (pakai ?v= saat nama file berubah), assets lain cukup 1 jam
+// build assets = immutable (use ?v= when the file name changes), other assets cache for 1 hour
 $immutable = str_starts_with($uri, '/assets/') && isset($_GET['v']);
 header('Cache-Control: ' . ($immutable ? 'public, max-age=31536000, immutable' : 'no-cache'));
 
-/* PHP: gzip output, lalu include supaya router tetap satu pintu */
+/* PHP: gzip output, then include so the router stays the single entry point */
 if ($ext === 'php') {
     if (client_accepts_gzip()) { ob_start('ob_gzhandler'); }
     require $path;

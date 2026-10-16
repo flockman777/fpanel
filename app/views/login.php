@@ -2,12 +2,12 @@
 /** @var string $csrf, ?string $error, ?string $notice, ?string $username */
 $__v = trim((string)@file_get_contents(FPANEL_ROOT . '/app/public/assets/VERSION') ?: '') ?: '1';
 ?><!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Masuk &middot; FPanel</title>
+<title>Sign in &middot; FPanel</title>
 <link rel="icon" href="/assets/img/favicon.svg?v=<?= $__v ?>" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/assets/img/favicon-192.png?v=<?= $__v ?>" sizes="192x192">
 <link rel="shortcut icon" href="/assets/img/favicon.ico?v=<?= $__v ?>">
@@ -24,13 +24,13 @@ document.documentElement.style.colorScheme=m;})();
 <body class="min-h-screen bg-navy">
   <main class="mx-auto grid min-h-screen w-full max-w-5xl grid-cols-1 items-center gap-10 px-6 py-12 lg:grid-cols-2">
 
-    <!-- kolom kiri: logo saja -->
+    <!-- left column: logo only -->
     <div class="flex items-center justify-center">
       <img src="/assets/img/logo.svg" alt="FPanel" width="248" height="64"
            class="logo-on-navy h-12 w-auto">
     </div>
 
-    <!-- kolom kanan: form -->
+    <!-- right column: form -->
     <div class="flex w-full justify-center">
       <div class="w-full max-w-sm">
         <div class="card p-6">
@@ -59,7 +59,7 @@ document.documentElement.style.colorScheme=m;})();
                 <input data-pw type="password" name="password" required autocomplete="current-password" class="input pr-9">
                 <button type="button" data-pw-toggle
                         class="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-                        aria-label="Tampilkan password">
+                        aria-label="Show password">
                   <i data-lucide="eye" class="h-4 w-4 dark:hidden"></i>
                   <i data-lucide="eye-off" class="hidden h-4 w-4 dark:block"></i>
                 </button>
@@ -68,20 +68,20 @@ document.documentElement.style.colorScheme=m;})();
             <label class="flex cursor-pointer items-start gap-2 pt-0.5 text-xs text-slate-500">
               <input type="checkbox" name="remember" value="1"
                      class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-800">
-              <span>Ingat perangkat ini selama 90 hari.
+              <span>Remember this device for 90 days.
                 <span class="block text-[11px] text-slate-400">
-                  Cookie terpisah dari sesi login; bisa dicabut kapan saja dari halaman Security.
+                  A separate cookie from the login session; it can be revoked at any time on the Security page.
                 </span>
               </span>
             </label>
             <button type="submit" class="btn-primary w-full">
-              <i data-lucide="log-in" class="h-4 w-4"></i>Masuk
+              <i data-lucide="log-in" class="h-4 w-4"></i>Log in
             </button>
           </form>
         </div>
 
         <p class="mt-5 text-center text-[11px] leading-relaxed text-slate-400">
-          Dilindungi session database, CSRF, dan rate limit.
+          Protected by a database session, CSRF, and rate limiting.
         </p>
       </div>
     </div>

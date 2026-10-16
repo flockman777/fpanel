@@ -1,4 +1,4 @@
-<?php /* Helper PHP: baca sumber data fitur yang sama dengan assets/js/features.js */
+<?php /* PHP helper: reads the same feature data source as assets/js/features.js */
 function fpanel_features(): array {
   static $data = null;
   if ($data === null) {

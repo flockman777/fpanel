@@ -5,46 +5,46 @@ namespace Fpanel\Service;
 use Fpanel\Support\Config;
 
 /**
- * Manajemen extension PHP per versi.
+ * PHP extension management per version.
  *
- * Extension PHP hidup sebagai file .ini di /etc/php/<v>/fpm/conf.d/ dan baru
- * berlaku setelah pool FPM versi itu direstart. Keduanya butuh root, jadi
- * lewat helper /usr/local/sbin/fpanel-php (lihat sudoers). PHP tidak pernah
- * memegang akses root.
+ * PHP extensions live as .ini files in /etc/php/<v>/fpm/conf.d/ and only
+ * take effect after that version's FPM pool is restarted. Both need root,
+ * so they go through the helper /usr/local/sbin/fpanel-php (see sudoers).
+ * PHP itself never holds root access.
  *
- * Batasan yang perlu diketahui user:
- *   - Status extension sifatnya PER VERSI PHP, bukan per domain. Kalau versi
- *     8.3 punya zip aktif, semua domain yang memakai 8.3 ikut aktif. Ini
- *     memang cara kerja phpMyAdmin/phpSelector juga.
- *   -_extension_ tidak bisa dimatikan per domain, karena dimuatnya extension
- *     terjadi sebelum request(domain) sampai ke PHP.
+ * Limits the user should know about:
+ *   - Extension status is PER PHP VERSION, not per domain. When version 8.3
+ *     has zip enabled, every domain using 8.3 gets it too. This is how
+ *     phpMyAdmin/phpSelector work as well.
+ *   - Extensions cannot be disabled per domain, because extension loading
+ *     happens before a domain's request reaches PHP.
  *
- * Values per-domain (memory_limit, upload_max_filesize, dst) ditangani terpisah
- * lewat PhpSettings, memakai fastcgi_param PHP_VALUE.
+ * Per-domain values (memory_limit, upload_max_filesize, etc.) are handled
+ * separately by PhpSettings through fastcgi_param PHP_VALUE.
  */
 final class PhpExtensions
 {
     private const HELPER = '/usr/local/sbin/fpanel-php';
 
     /**
-     * Extension yang tidak disarankan dimatikan.
+     * Extensions that are not recommended for disabling.
      *
-     * Matikan yang ini dan panel/WordPress bisa ikut rusak, jadi UI menandainya
-     * dan tetap mengizinkan (user boleh, tapi dengan peringatan).
+     * Disabling these can break the panel/WordPress too, so the UI flags
+     * them but still allows it (the user may, with a warning).
      */
     private const SENSITIVE = ['mysqli', 'pdo_mysql', 'json', 'session', 'iconv', 'mbstring', 'curl', 'openssl'];
 
-    /** Baris "nama<TAB>status" dari helper. */
+    /** "name<TAB>status" lines from the helper. */
     private static function helper(array $args): array
     {
         if (!is_executable(self::HELPER)) {
-            return ['ok' => false, 'error' => 'Helper extension PHP tidak terpasang di server.'];
+            return ['ok' => false, 'error' => 'The PHP extension helper is not installed on the server.'];
         }
         $cmd = array_merge(['sudo', '-n', self::HELPER], $args);
         $pipes = [];
         $proc  = @proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
         if (!is_resource($proc)) {
-            return ['ok' => false, 'error' => 'Gagal menjalankan helper extension PHP.'];
+            return ['ok' => false, 'error' => 'Failed to run the PHP extension helper.'];
         }
         $out = stream_get_contents($pipes[1]);
         $err = stream_get_contents($pipes[2]);
@@ -55,13 +55,13 @@ final class PhpExtensions
         $out = (string)$out;
         $err = trim((string)$err);
         if ($code !== 0) {
-            $msg = preg_replace('/^ERR:\s*/', '', $err) ?: 'Operasi extension PHP gagal.';
+            $msg = preg_replace('/^ERR:\s*/', '', $err) ?: 'The PHP extension operation failed.';
             return ['ok' => false, 'error' => trim($msg)];
         }
         return ['ok' => true, 'error' => null, 'out' => $out];
     }
 
-    /** Versi PHP yang terpasang, lengkap dengan daftar extension-nya. */
+    /** Installed PHP versions, complete with their extension list. */
     public static function listing(string $version): array
     {
         $versions = Vhost::installedPhpVersions();
@@ -69,7 +69,7 @@ final class PhpExtensions
             $version = self::defaultVersion($versions);
         }
         if (!in_array($version, $versions, true)) {
-            return ['ok' => false, 'error' => 'Versi PHP ' . $version . ' tidak terpasang di server.'];
+            return ['ok' => false, 'error' => 'PHP version ' . $version . ' is not installed on the server.'];
         }
 
         $r = self::helper(['list', $version]);
@@ -85,11 +85,11 @@ final class PhpExtensions
             }
             [$name, $state] = array_pad(explode("\t", $line, 2), 2, '');
             if (!preg_match('/^[a-z0-9_]+$/', $name)) {
-                continue;   // Jangan pernah percaya nama dari output helper.
+                continue;   // Never trust a name coming from helper output.
             }
             $exts[] = [
                 'name'      => $name,
-                'enabled'   => $state === 'aktif',
+                'enabled'   => $state === 'enabled',
                 'sensitive' => in_array($name, self::SENSITIVE, true),
             ];
         }
@@ -101,10 +101,10 @@ final class PhpExtensions
     }
 
     /**
-     * Matriks seluruh versi: [versi => ['ext' => 'aktif'|'nonaktif'|null]].
+     * Matrix of all versions: [version => ['ext' => 'enabled'|'disabled'|null]].
      *
-     * Nilai null berarti extension itu tidak ada untuk versi tersebut, jadi UI
-     * bisa menandai "tidak tersedia" alih-alih menawarkan sakelar yang sia-sia.
+     * A null value means the extension does not exist for that version, so the
+     * UI can mark it "not available" instead of offering a useless switch.
      */
     public static function matrix(): array
     {
@@ -122,28 +122,28 @@ final class PhpExtensions
             if (!preg_match('/^[0-9]+\.[0-9]+$/', $ver) || !preg_match('/^[a-z0-9_]+$/', $ext)) {
                 continue;
             }
-            $out[$ver][$ext] = $state === 'aktif';
+            $out[$ver][$ext] = $state === 'enabled';
         }
         ksort($out, SORT_NATURAL);
         return $out;
     }
 
     /**
-     * Aktifkan / nonaktifkan satu extension, lalu restart pool versinya.
+     * Enable / disable a single extension, then restart its version's pool.
      *
-     * Restart wajib: tanpa itu perubahan hanya tersimpan di file dan baru
-     * berlaku setelah pool berikutnya dimuat ulang.
+     * A restart is mandatory: otherwise the change only lands in the file and
+     * takes effect the next time the pool is reloaded.
      */
     public static function toggle(string $version, string $extension, bool $enable): array
     {
         if (!preg_match('/^[0-9]+\.[0-9]+$/', $version)) {
-            return ['ok' => false, 'error' => 'Versi PHP tidak valid.'];
+            return ['ok' => false, 'error' => 'Invalid PHP version.'];
         }
         if (!preg_match('/^[a-z0-9_]+$/', $extension)) {
-            return ['ok' => false, 'error' => 'Nama extension tidak valid.'];
+            return ['ok' => false, 'error' => 'Invalid extension name.'];
         }
         if (!in_array($version, Vhost::installedPhpVersions(), true)) {
-            return ['ok' => false, 'error' => 'Versi PHP ' . $version . ' tidak terpasang.'];
+            return ['ok' => false, 'error' => 'Versi PHP ' . $version . ' is not installed.'];
         }
 
         $r = self::helper([$enable ? 'enable' : 'disable', $version, $extension]);
@@ -153,24 +153,24 @@ final class PhpExtensions
 
         $rs = self::helper(['restart', $version]);
         if (!$rs['ok']) {
-            // File .ini sudah diubah tapi pool gagal start: kembalikan supaya
-            // tidak ada keadaan setengah jadi yang tidak terlihat user.
+            // The .ini file was changed but the pool failed to start: revert it so
+            // no half-finished state is left invisible to the user.
             self::helper([$enable ? 'disable' : 'enable', $version, $extension]);
-            return ['ok' => false, 'error' => $rs['error'] . ' (perubahan extension dikembalikan)'];
+            return ['ok' => false, 'error' => $rs['error'] . ' (extension change rolled back)'];
         }
 
-        // Restart dijadwalkan (bukan sinkron) supaya request yang memancingnya
-        // tidak dibunuh oleh pool yang sedang direstart.
+        // The restart is scheduled (not synchronous) so the request that triggered
+        // it is not killed by the pool being restarted.
         return ['ok' => true, 'error' => null,
                 'message' => trim($r['out']) . ' ' . trim($rs['out'])
-                    . ' Muat ulang halaman dalam beberapa detik.' ];
+                    . ' Reload the page in a few seconds.' ];
     }
 
-    /** Kembalikan semua extension yang sebelumnya dimatikan lewat panel. */
+    /** Restore every extension previously disabled through the panel. */
     public static function restore(string $version): array
     {
         if (!preg_match('/^[0-9]+\.[0-9]+$/', $version)) {
-            return ['ok' => false, 'error' => 'Versi PHP tidak valid.'];
+            return ['ok' => false, 'error' => 'Invalid PHP version.'];
         }
         $r  = self::helper(['restore', $version]);
         $rs = self::helper(['restart', $version]);

@@ -1,5 +1,5 @@
 <?php
-/* Adapter mockup untuk php-fpm (router lama _router.php hanya untuk cli-server). */
+/* Mockup adapter for php-fpm (the legacy _router.php router is for cli-server only). */
 declare(strict_types=1);
 
 $root = realpath(__DIR__);

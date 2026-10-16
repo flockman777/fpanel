@@ -15,7 +15,7 @@ $services = dummy_services();
     <main class="flex-1 space-y-6 px-4 py-6 sm:px-6">
       <div>
         <h2 class="text-xl font-bold text-slate-900 dark:text-white" data-i18n="admin.welcome">Ringkasan server</h2>
-        <p class="text-sm text-slate-500">Data dummy untuk mockup UI.</p>
+        <p class="text-sm text-slate-500">Dummy data for the UI mockup.</p>
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -26,7 +26,7 @@ $services = dummy_services();
         include __DIR__ . '/components/stat.php';
         $label = 'admin.disk'; $value = '22 / 40 GB'; $sub = '/var 55% · /home 12%'; $pct = 55; $tone = 'bar-info'; $icon = 'hard-drive';
         include __DIR__ . '/components/stat.php';
-        $label = 'admin.accounts'; $value = '12'; $sub = '10 aktif · 2 suspended'; $pct = null; $tone = null; $icon = 'users';
+        $label = 'admin.accounts'; $value = '12'; $sub = '10 active · 2 suspended'; $pct = null; $tone = null; $icon = 'users';
         include __DIR__ . '/components/stat.php';
         ?>
       </div>

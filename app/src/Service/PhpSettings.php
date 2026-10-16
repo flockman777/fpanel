@@ -5,29 +5,29 @@ namespace Fpanel\Service;
 use Fpanel\Database\Connection;
 
 /**
- * Nilai php.ini per-domain (memory_limit, upload, opcache, ...).
+ * Per-domain php.ini values (memory_limit, upload, opcache, ...).
  *
- * Diterapkan lewat fastcgi_param PHP_VALUE di vhost domain, karena itu satu-
- * satunya cara yang benar-benar bekerja: PHP-FPM mengabaikan
- * PHP_INI_SCAN_DIR yang dikirim lewat fastcgi_param, sehingga file .ini
- * per-domain tidak akan pernah terbaca.
+ * Applied through fastcgi_param PHP_VALUE in the domain vhost, because that
+ * is the only way that really works: PHP-FPM ignores
+ * PHP_INI_SCAN_DIR sent through fastcgi_param, so per-domain .ini files
+ * would never be read.
  *
- * PHP_VALUE hanya bisa mengubah directive yang berextensi PHP_INI_ALL, jadi
- * daftar di bawah ini tidak bisa diperluas sembarangan. Nilai ikut masuk ke
- * file konfigurasi nginx, jadi setiap directive DAN nilainya divalidasi ketat
- * di sini — tidak boleh ada karakter yang bisa memutus baris konfigurasi.
+ * PHP_VALUE can only change directives with the PHP_INI_ALL extension, so
+ * this list cannot be extended carelessly. The values go into the nginx
+ * config file, so every directive AND its value is strictly validated here
+ * — no character may be able to break the config line.
  */
 final class PhpSettings
 {
     /**
-     * Directive yang boleh diubah per domain.
+     * Directives that may be changed per domain.
      *
-     * 'type' menentukan cara nilainya divalidasi:
-     *   size  -> integer opsional satuan K/M/G
-     *   time  -> integer opsional satuan M/S
-     *   int   -> integer biasa
-     *   bool  -> 0 atau 1
-     *   flags -> daftar nama flag yang diizinkan (untuk error_reporting)
+     * 'type' determines how the value is validated:
+     *   size  -> integer with an optional K/M/G unit
+     *   time  -> integer with an optional M/S unit
+     *   int   -> plain integer
+     *   bool  -> 0 or 1
+     *   flags -> list of allowed flag names (for error_reporting)
      */
     private const SCHEMA = [
         'memory_limit'           => ['type' => 'size',  'default' => '128M'],
@@ -46,17 +46,17 @@ final class PhpSettings
         'opcache.revalidate_freq'         => ['type' => 'int',  'default' => '2'],
     ];
 
-    /** Nilai error_reporting yang boleh dipakai. */
+    /** error_reporting values that may be used. */
     private const REPORTING_FLAGS = [
         'E_ALL', 'E_ERROR', 'E_WARNING', 'E_NOTICE', 'E_DEPRECATED', 'E_STRICT',
         'E_PARSE', 'E_CORE_ERROR', 'E_CORE_WARNING', 'E_COMPILE_ERROR',
     ];
 
-    /** Batas atas supaya user tidak bisa menghabiskan seluruh RAM server. */
+    /** Upper bounds so a user cannot exhaust all server RAM. */
     private const MAX_SIZE_MB = 2048;
     private const MAX_TIME_S  = 3600;
 
-    /** Nilai default server (dari php.ini), dipakai kalau domain tidak mengatur. */
+    /** Server default values (from php.ini), used when a domain sets none. */
     public static function defaults(): array
     {
         $out = [];
@@ -67,10 +67,10 @@ final class PhpSettings
     }
 
     /**
-     * Settings milik satu domain.
+     * Settings belonging to one domain.
      *
-     * Karena kolom php_ini belum ada di semua instalasi, hasilnya di-cache di
-     * memori per-process dan kolomnya dibuat oleh bin/fpanel db:migrate-ini.
+     * Because the php_ini column does not exist in every installation, the result
+     * is cached in per-process memory and the column is created by bin/fpanel db:migrate-ini.
      */
     public static function forDomain(string $username, int $domainId): array
     {
@@ -87,16 +87,16 @@ final class PhpSettings
     }
 
     /**
-     * Muat ulang pool FPM sebuah versi PHP.
+     * Reload the FPM pool of one PHP version.
      *
-     * Ini wajib dilakukan setelah vhost ditulis ulang. Tanpa itu, pool FPM
-     * menahan nilai PHP_VALUE dari request sebelumnya: begitu override
-     * dihapus (mis. saat reset), domain itu masih berjalan dengan nilai lama
-     * sampai pool dimuat ulang.
+     * This is mandatory after the vhost is rewritten. Without it, the FPM
+     * pool keeps the PHP_VALUE from the previous request: once an override
+     * is removed (e.g. during a reset), the domain still runs with the old
+     * value until the pool is reloaded.
      *
-     * Pakai "reload" (graceful), bukan "restart": reload tidak menutup socket
-     * listener sehingga tidak ada jendela 502 untuk site lain yang sedang
-     * dilayani pool yang sama.
+     * Use "reload" (graceful), not "restart": reload does not close the
+     * listener socket, so there is no 502 window for other sites served by
+     * the same pool.
      */
     public static function reloadPool(?string $php): void
     {
@@ -114,27 +114,27 @@ final class PhpSettings
         }
     }
 
-    /** Gabungan default + override domain, untuk ditampilkan di form. */
+    /** Defaults + domain overrides merged, for display in the form. */
     public static function merged(string $username, int $domainId): array
     {
         return array_merge(self::defaults(), self::forDomain($username, $domainId));
     }
 
     /**
-     * Kumpulkan directive dari nama field form.
+     * Collect directives from form field names.
      *
-     * PHP mengganti titik dan spasi dengan underscore pada nama field
-     * POST/GET, jadi "ini_opcache.memory_consumption" sebenarnya terkirim
-     * sebagai "ini_opcache_memory_consumption". Karena itu nama yang
-     * diterima dicocokkan ke SCHEMA lebih dulu: kalau persis ada, dipakai;
-     * kalau tidak, coba tiap titik yang mungkin disisipkan sampai cocok.
+     * PHP replaces dots and spaces with underscores in POST/GET field
+     * names, so "ini_opcache.memory_consumption" actually arrives as
+     * "ini_opcache_memory_consumption". Therefore the received name is
+     * matched against SCHEMA first: an exact match is used; otherwise every
+     * possible dot position is tried until one matches.
      *
-     * Contoh: "opcache_memory_consumption" -> dicoba apa adanya (tidak ada di
-     * SCHEMA), lalu "opcache.memory.consumption" (tidak ada), lalu
-     * "opcache.memory_consumption" (ada) -> itu yang dipakai.
+     * Example: "opcache_memory_consumption" -> tried as-is (not in
+     * SCHEMA), then "opcache.memory.consumption" (not there), then
+     * "opcache.memory_consumption" (present) -> that one is used.
      *
-     * Directive yang aslinya memakai underscore seperti max_input_vars tetap
-     * aman karena dicocokkan persis lebih dulu, sebelum titik dicoba.
+     * Directives that really use underscores, like max_input_vars, stay
+     * safe because the exact match is tried first, before any dot.
      */
     public static function fromForm(array $fields): array
     {
@@ -151,7 +151,7 @@ final class PhpSettings
                 $out[$name] = $value;
                 continue;
             }
-            // Coba tiap kombinasi titik pada underscore (maksimal 4 underscore).
+            // Try every dot combination on the underscores (at most 4 underscores).
             $parts = explode('_', $name);
             $n     = count($parts);
             if ($n > 5) {
@@ -175,23 +175,23 @@ final class PhpSettings
     }
 
     /**
-     * Simpan settings domain.
+     * Save a domain's settings.
      *
-     * $input datang dari form: key = nama directive. Directive di luar daftar
-     * SCHEMA diabaikan (bukan error) supaya field tak dikenal di form versi
-     * lama tidak merusak halaman.
+     * $input comes from the form: key = directive name. Directives outside
+     * the SCHEMA list are ignored (not an error) so unknown fields from an
+     * older form version do not break the page.
      */
     /**
-     * @param bool $reloadPool Muat ulang pool setelah vhost ditulis. Pass false
-     *        kalau pemanggil ingin menulis banyak domain sekaligus lalu
-     *        memuat ulang pool-nya satu kali di akhir (lihat route scope=all).
+     * @param bool $reloadPool Reload the pool after the vhost is written. Pass false
+     *        when the caller wants to write many domains at once and
+     *        reload the pool once at the end (see the scope=all route).
      *
      */
     public static function save(string $username, int $domainId, array $input, bool $reloadPool = true): array
     {
         $row = self::owned($username, $domainId);
         if ($row === null) {
-            return ['ok' => false, 'error' => 'Domain tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Domain not found.'];
         }
 
         $clean = [];
@@ -201,7 +201,7 @@ final class PhpSettings
             }
             $v = self::sanitize((string)$key, (string)$value);
             if ($v === null) {
-                return ['ok' => false, 'error' => 'Nilai untuk ' . $key . ' tidak valid.'];
+                return ['ok' => false, 'error' => 'The value for ' . $key . ' is not valid.'];
             }
             if ($v !== '') {
                 $clean[$key] = $v;
@@ -210,20 +210,20 @@ final class PhpSettings
 
         $json = json_encode($clean, JSON_UNESCAPED_SLASHES);
         if ($json === false) {
-            return ['ok' => false, 'error' => 'Gagal menyimpan pengaturan.'];
+            return ['ok' => false, 'error' => 'Failed to save the settings.'];
         }
         Connection::run('UPDATE domains SET php_ini = :v WHERE id = :i',
             ['v' => $json, 'i' => $domainId]);
 
-        // Terapkan ulang vhost supaya PHP_VALUE ikut berubah.
+        // Redeploy the vhost so PHP_VALUE changes too.
         $d = self::owned($username, $domainId);
         if ($d !== null) {
             Vhost::deploy((string)$d['name'], $username, (string)$d['docroot'],
                 (string)$d['type'], $d['php_version'] === null ? null : (string)$d['php_version'], $clean);
 
-            // Pool dimuat ulang supaya nilai yang barusan dihapus (terutama saat
-            // reset) benar-benar berhenti berlaku, bukan tertahan di memori
-            // worker FPM.
+            // The pool is reloaded so the just-removed values (especially on a
+            // reset) really stop applying, instead of lingering in the FPM
+            // worker memory.
             if ($reloadPool) {
                 self::reloadPool($d['php_version'] === null ? null : (string)$d['php_version']);
             }
@@ -233,11 +233,11 @@ final class PhpSettings
     }
 
     /**
-     * Bangun ulang vhost sebuah domain dengan pengaturan php_ini yang tersimpan.
+     * Rebuild a domain vhost with the stored php_ini settings.
      *
-     * Dipakai setiap kali vhost perlu di-deploy ulang dari luar PhpSettings
-     * (mis. setelah sertifikat dicabut), supaya override per-domain tidak
-     * ikut hilang.
+     * Used whenever the vhost must be redeployed from outside PhpSettings
+     * (e.g. after a certificate is revoked), so per-domain overrides are
+     * not lost.
      */
     public static function apply(string $domain, string $username, array $d): void
     {
@@ -253,7 +253,7 @@ final class PhpSettings
             ($d['php_version'] ?? null) === null ? null : (string)$d['php_version'], $ini);
     }
 
-    /** Bersihkan semua override domain (kembali ke default server). */
+    /** Clear all domain overrides (back to the server defaults). */
     public static function reset(string $username, int $domainId): array
     {
         return self::save($username, $domainId, []);
@@ -262,10 +262,10 @@ final class PhpSettings
     // ------------------------------------------------------------------ internal
 
     /**
-     * Validasi satu nilai. Return null kalau tidak valid.
+     * Validate one value. Returns null when invalid.
      *
-     * Semua hasil sudah dipastikan hanya berisi karakter yang aman untuk
-     * fastcgi_param: huruf, angka, tanda baca putih, dan Operator & ~ | saja.
+     * Every accepted value is guaranteed to contain only characters safe
+     * for fastcgi_param: letters, digits, spaces, and the operators & ~ | only.
      */
     private static function sanitize(string $key, string $value): ?string
     {
@@ -315,7 +315,7 @@ final class PhpSettings
                 return in_array($value, ['0', '1'], true) ? $value : null;
 
             case 'flags':
-                // Hanya boleh nama flag yang dikenal, dipisah & atau |.
+                // Only known flag names, separated by & or |.
                 $parts = preg_split('/[&|]/', $value) ?: [];
                 $parts = array_values(array_filter(array_map('trim', $parts), static fn ($v) => $v !== ''));
                 if ($parts === []) {
@@ -331,7 +331,7 @@ final class PhpSettings
         return null;
     }
 
-    /** Baris domain milik user tersebut, atau null (IDOR guard). */
+    /** The domain row owned by this user, or null (IDOR guard). */
     private static function owned(string $username, int $domainId): ?array
     {
         $uid = (int)Connection::value('SELECT id FROM users WHERE username = :u', ['u' => $username]);

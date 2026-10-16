@@ -24,18 +24,18 @@ $crumbs = [['label' => 'Domains']];
         </div>
       </div>
       <?php
-      $emptyKey = 'domains.empty'; $emptyText = 'Belum ada domain.';
+      $emptyKey = 'domains.empty'; $emptyText = 'No domains yet.';
       $cols = [
         ['label' => 'Domain', 'render' => fn($r) => '<a href="#" class="font-medium text-brand-600 hover:underline dark:text-brand-400">' . htmlspecialchars($r['domain']) . '</a>'],
         ['label' => 'Document Root', 'render' => fn($r) => '<span class="font-mono text-xs text-slate-600 dark:text-slate-300">' . htmlspecialchars($r['root']) . '</span>'],
         ['label' => 'IP', 'render' => fn($r) => '<span class="font-mono text-xs text-slate-500">' . htmlspecialchars($r['ip']) . '</span>'],
         ['label' => 'Status', 'render' => fn($r) => $r['status'] === 'on'
-            ? '<span class="badge-ok"><i data-lucide="check" class="h-3 w-3"></i><span data-i18n="common.on">Aktif</span></span>'
-            : '<span class="badge-off"><i data-lucide="x" class="h-3 w-3"></i><span data-i18n="common.off">Nonaktif</span></span>'],
+            ? '<span class="badge-ok"><i data-lucide="check" class="h-3 w-3"></i><span data-i18n="common.on">On</span></span>'
+            : '<span class="badge-off"><i data-lucide="x" class="h-3 w-3"></i><span data-i18n="common.off">Off</span></span>'],
         ['label' => 'Auto SSL', 'render' => fn($r) => $r['ssl'] === 'active'
             ? '<span class="badge-ok"><i data-lucide="lock" class="h-3 w-3"></i>Active</span>'
             : '<span class="badge-warn"><i data-lucide="lock-open" class="h-3 w-3"></i>None</span>'],
-        ['label' => 'Dibuat', 'render' => fn($r) => '<span class="text-xs text-slate-500">' . htmlspecialchars($r['created']) . '</span>'],
+        ['label' => 'Created', 'render' => fn($r) => '<span class="text-xs text-slate-500">' . htmlspecialchars($r['created']) . '</span>'],
       ];
       require __DIR__ . '/partials/table-wrapper.php';
       ?>

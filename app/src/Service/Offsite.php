@@ -3,33 +3,33 @@ declare(strict_types=1);
 namespace Fpanel\Service;
 
 /**
- * Backup offsite: kirim arsip backup ke storage S3-compatible (B2, R2, MinIO,
- * Wasabi, AWS S3).
+ * Offsite backup: ship backup archives to S3-compatible storage (B2, R2,
+ * MinIO, Wasabi, AWS S3).
  *
- * Kredensial dibaca dari /etc/fpanel/offsite.conf yang hanya root yang bisa baca.
- * Credential di luar repo, sama seperti password admin di /root/.fpanel-admin-pw.
+ * Credentials are read from /etc/fpanel/offsite.conf, readable by root only.
+ * Credentials live outside the repo, like the admin password in /root/.fpanel-admin-pw.
  *
- * Arsip backup berisi database user, password MariaDB terenkripsi, private key
- * TLS, dan seed TOTP. Jadi sebelum dikirim, isinya dienkripsi lagi dengan kunci
- * lokal supaya file di sisi remote tidak bisa dibaca orang lain yang punya akses
- * bucket (provider, admin yang salah setelan, siapa pun yang dapat URL).
+ * A backup archive holds user databases, encrypted MariaDB passwords, TLS
+ * private keys, and TOTP seeds. So before it is sent, the contents are
+ * encrypted again with the local key, so the remote file cannot be read by
+ * anyone else with bucket access (provider, a misconfigured admin, anyone who gets the URL).
  */
 final class Offsite
 {
     private const CONF = '/etc/fpanel/offsite.conf';
 
-    /** Jumlah arsip offsite yang dipertahankan di bucket. */
+    /** Number of offsite archives kept in the bucket. */
     public const KEEP = 14;
 
-    /** Pola nama arsip lokal; sama dengan yang dipakai helper backup. */
+    /** Local archive name pattern; the same one used by the backup helper. */
     private const PAT_LOCAL = '/^fpanel-[0-9]{8}-[0-9]{6}\.tar\.gz$/';
 
     private function __construct() {}
 
-    // ------------------------------------------------------------------ konfigurasi
+    // ------------------------------------------------------------------ configuration
 
     /**
-     * Konfigurasi offsite.
+     * Offsite configuration.
      *
      * @return array{configured:bool,endpoint?:string,bucket?:string,region?:string,
      *               key_id?:string,secret_set?:bool,prefix?:string,error?:string}
@@ -38,13 +38,13 @@ final class Offsite
     {
         if (!is_readable(self::CONF)) {
             return ['configured' => false,
-                'error' => 'Belum dikonfigurasi (' . self::CONF . ' belum ada).'];
+                'error' => 'Not configured (' . self::CONF . ' does not exist yet).'];
         }
         $cfg = self::parse((string)@file_get_contents(self::CONF));
         foreach (['endpoint', 'bucket', 'access_key', 'secret_key'] as $k) {
             if (trim((string)($cfg[$k] ?? '')) === '') {
                 return ['configured' => false,
-                    'error' => "Konfigurasi belum lengkap: variabel $k kosong."];
+                    'error' => "Configuration is incomplete: variable $k is empty."];
             }
         }
         return [
@@ -52,15 +52,15 @@ final class Offsite
             'endpoint'   => (string)$cfg['endpoint'],
             'bucket'     => (string)$cfg['bucket'],
             'region'     => (string)($cfg['region'] ?? 'us-east-1'),
-            // Key id ditampilkan seperlunya: bisa dipakai untuk mengenali kunci
-            // yang dipakai, tapi bukan rahasia.
+            // The key id is shown only as needed: it identifies which key is
+            // in use, but it is not a secret.
             'key_id'     => self::maskKey((string)$cfg['access_key']),
             'secret_set' => true,
             'prefix'     => (string)($cfg['prefix'] ?? 'fpanel'),
         ];
     }
 
-    /** Parse file KEY="value" ala shell, tanpa shell. */
+    /** Parse a shell-style KEY="value" file, without a shell. */
     private static function parse(string $raw): array
     {
         $out = [];
@@ -73,7 +73,7 @@ final class Offsite
                 continue;
             }
             $v = trim($m[2]);
-            // Buang tanda kutip luar bila ada.
+            // Strip outer quotes when present.
             if (strlen($v) >= 2 && ($v[0] === '"' || $v[0] === "'")
                 && $v[strlen($v) - 1] === $v[0]) {
                 $v = substr($v, 1, -1);
@@ -102,26 +102,26 @@ final class Offsite
     // ------------------------------------------------------------------- status
 
     /**
-     * Ringkasan status offsite untuk UI.
+     * Offsite status summary for the UI.
      *
      * @return array{configured:bool,reachable?:bool,remote?:int,latest_remote?:string,
      *               error?:string,warning?:string}
      */
     public static function status(): array
     {
-        $why = 'alasan tidak diketahui';
+        $why = 'reason unknown';
         $cfg = self::config();
         if (!$cfg['configured']) {
             return ['configured' => false, 'error' => (string)$cfg['error']];
         }
         $c = self::client();
         if ($c === null) {
-            return ['configured' => false, 'error' => 'Konfigurasi tidak bisa dibaca.'];
+            return ['configured' => false, 'error' => 'The configuration cannot be read.'];
         }
         $keys = self::listAllKeys($c, (string)$cfg['prefix'], $why);
         if ($keys === null) {
             return ['configured' => true, 'reachable' => false,
-                'error' => 'Bucket tidak bisa dibaca: ' . $why];
+                'error' => 'The bucket cannot be read: ' . $why];
         }
         $latest = $keys === [] ? null : (string)max($keys);
         return [
@@ -134,20 +134,20 @@ final class Offsite
     }
 
     /**
-     * Kumpulkan semua kunci di bawah satu prefix, menyusuri semua halaman.
+     * Collect every key under one prefix, walking all pages.
      *
-     * ListObjectsV2 memotong hasil di 1000 kunci per panggilan, jadi satu
-     * permintaan saja akan terlihat "lengkap" padahal bucket sudah jauh lebih
-     * dari itu. Parameter $why diisi pesan error kalau gagal.
+     * ListObjectsV2 truncates at 1000 keys per call, so a single request
+     * would look "complete" while the bucket holds far more. The $why
+     * parameter receives an error message on failure.
      *
-     * @return array<int,string>|null null kalau gagal
+     * @return array<int,string>|null null on failure
      */
     private static function listAllKeys(S3Client $c, string $prefix, ?string &$why): ?array
     {
         $keys  = [];
         $token = null;
-        // Batas 50 halaman (=50.000 kunci). Cukup untuk mencegah loop tak
-        //-ending kalau provider selalu mengembalikan token yang sama.
+        // A 50-page limit (=50,000 keys). Enough to prevent an endless loop
+        // when a provider keeps returning the same token.
         for ($page = 0; $page < 50; $page++) {
             $extra = $token === null ? [] : ['continuation-token' => $token];
             $r = $c->listObjects($prefix, $extra);
@@ -166,7 +166,7 @@ final class Offsite
         return $keys;
     }
 
-    /** Ambil continuation token dari balasan ListObjectsV2, kalau ada. */
+    /** Take the continuation token from a ListObjectsV2 reply, when present. */
     private static function nextToken(string $body): ?string
     {
         if (str_starts_with(ltrim($body), '{')) {
@@ -187,7 +187,7 @@ final class Offsite
         return $t !== '' ? $t : null;
     }
 
-    /** Ambil nama kunci dari XML ListObjects; juga menerima JSON (beberapa provider). */
+    /** Take key names from the ListObjects XML; also accepts JSON (some providers). */
     private static function parseKeys(string $body): array
     {
         if (str_starts_with(ltrim($body), '{')) {
@@ -219,7 +219,7 @@ final class Offsite
     private static function brief(array $r): string
     {
         $msg = trim((string)($r['error'] ?? $r['body'] ?? ''));
-        // Body error S3 panjang sekali (XML); potong supaya pesan UI ringkas.
+        // S3 error bodies are very long (XML); truncate so the UI message stays short.
         $msg = (string)preg_replace('/\s+/', ' ', $msg);
         return mb_substr($msg, 0, 200);
     }
@@ -227,17 +227,17 @@ final class Offsite
     // -------------------------------------------------------------------- upload
 
     /**
-     * Kirim satu arsip lokal ke bucket, setelah dienkripsi.
+     * Send one local archive to the bucket, after encrypting it.
      *
      * @return array{ok:bool,error?:string,message?:string,key?:string}
      */
     public static function upload(string $localPath, string $name): array
     {
         if (!preg_match(self::PAT_LOCAL, $name)) {
-            return ['ok' => false, 'error' => 'Nama arsip tidak valid.'];
+            return ['ok' => false, 'error' => 'Invalid archive name.'];
         }
         if (!is_readable($localPath)) {
-            return ['ok' => false, 'error' => 'Arsip lokal tidak terbaca.'];
+            return ['ok' => false, 'error' => 'The local archive is not readable.'];
         }
         $cfg = self::config();
         if (!$cfg['configured']) {
@@ -245,11 +245,11 @@ final class Offsite
         }
         $c = self::client();
         if ($c === null) {
-            return ['ok' => false, 'error' => 'Konfigurasi tidak bisa dibaca.'];
+            return ['ok' => false, 'error' => 'The configuration cannot be read.'];
         }
         if (!SecretBox::available()) {
             return ['ok' => false,
-                'error' => 'Kunci enkripsi tidak tersedia; upload dibatalkan demi keamanan.'];
+                'error' => 'The encryption key is unavailable; the upload is cancelled for safety.'];
         }
 
         $key    = rtrim((string)$cfg['prefix'], '/') . '/' . $name . '.enc';
@@ -257,17 +257,17 @@ final class Offsite
         try {
             $enc = self::encryptFile($localPath, $tmp);
             if ($enc === null) {
-                return ['ok' => false, 'error' => 'Enkripsi arsip gagal.'];
+                return ['ok' => false, 'error' => 'Failed to encrypt the archive.'];
             }
             $r = $c->put($key, $enc);
             if (!$r['ok']) {
-                return ['ok' => false, 'error' => 'Upload ditolak: ' . self::brief($r)];
+                return ['ok' => false, 'error' => 'Upload rejected: ' . self::brief($r)];
             }
             return ['ok' => true, 'error' => null,
-                'message' => $name . ' terkirim ke ' . (string)$cfg['bucket'] . '/' . $key,
+                'message' => $name . ' sent to ' . (string)$cfg['bucket'] . '/' . $key,
                 'key' => $key];
         } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Upload gagal: ' . $e->getMessage()];
+            return ['ok' => false, 'error' => 'Upload failed: ' . $e->getMessage()];
         } finally {
             if ($tmp !== null && is_file($tmp)) {
                 @unlink($tmp);
@@ -276,19 +276,19 @@ final class Offsite
     }
 
     /**
-     * Enkripsi arsip ke file sementara.
+     * Encrypt the archive to a temporary file.
      *
-     * Backup bisa berukuran GB sementara FPM punya RAM terbatas, jadi isinya
-     * diproses per blok. Setiap blok dienkripsi sebagai pesan secretbox mandiri
-     * dengan nonce acak sendiri:
+     * Backups can be gigabytes while FPM has limited RAM, so the contents are
+     * processed block by block. Each block is encrypted as a standalone
+     * secretbox message with its own random nonce:
      *
      *   "FPENC1\n"
-     *   berulang: [panjang blok 4 byte big-endian][nonce 24][MAC 16][ciphertext]
-     *   akhir    : [panjang blok 0]
+     *   repeated: [block length 4-byte big-endian][nonce 24][MAC 16][ciphertext]
+     *   end     : [block length 0]
      *
- * Setiap blok membawa MAC-nya sendiri, jadi file yang korup di tengah jalan
-     * hanya membuat blok itu ditolak, bukan seluruh file. Panjang blok disimpan
-     * eksplisit supaya pembaca tahu kapan blok terakhir berakhir.
+ * Each block carries its own MAC, so a file corrupted midway only makes
+     * that block fail, not the whole file. The block length is stored
+     * explicitly so the reader knows when the last block ends.
      */
     private static function encryptFile(string $src, ?string &$tmp): ?string
     {
@@ -313,7 +313,7 @@ final class Offsite
 
         fwrite($out, "FPENC1\n");
         $buffer = '';
-        $blockSize = 1048576;   // 1 MiB per blok
+        $blockSize = 1048576;   // 1 MiB per block
         $failed = false;
 
         while (!feof($in)) {
@@ -323,7 +323,7 @@ final class Offsite
             }
             $buffer .= $read;
             if (strlen($buffer) < $blockSize) {
-                continue;   // belum penuh, atau sudah EOF
+                continue;   // not full yet, or already EOF
             }
             if (!self::writeBlock($out, $key, $buffer)) {
                 $failed = true;
@@ -331,16 +331,16 @@ final class Offsite
             }
             $buffer = '';
         }
-        // Blok terakhir berisi sisa (< blockSize). Kalau buffer kosong dan
-        // file berakhir tepat di batas blok, blok kosong tetap ditulis supaya
-        // pembaca tidak mengira file tidak pernah ditulis.
+        // The last block holds the remainder (< blockSize). When the buffer is
+        // empty and the file ends exactly on a block boundary, an empty block
+        // is still written so the reader does not think the file was never written.
         if (!$failed) {
             if (!self::writeBlock($out, $key, $buffer)) {
                 $failed = true;
             }
         }
         if (!$failed) {
-            // Penanda akhir: panjang 0.
+            // End marker: length 0.
             fwrite($out, pack('N', 0));
         }
         fclose($in);
@@ -353,7 +353,7 @@ final class Offsite
         return $tmp;
     }
 
-    /** @return bool true kalau blok berhasil ditulis */
+    /** @return bool true when the block was written */
     private static function writeBlock($out, string $key, string $plain): bool
     {
         $nonce   = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
@@ -363,10 +363,10 @@ final class Offsite
     }
 
     /**
-     * Dekripsi file .enc kembali ke arsip biasa (untuk pemulihan).
+     * Decrypt a .enc file back into a plain archive (for recovery).
      *
-     * Dipakai CLI/pemulihan, bukan lewat UI: hasilnya berisi seluruh data
-     * panel dalam bentuk polos, jadi tidak boleh dipamerkan di halaman web.
+     * Used by the CLI/recovery, not through the UI: the result holds the whole
+     * panel data in plain form, so it must never be shown on a web page.
      */
     public static function decryptFile(string $encPath, string $dest): bool
     {
@@ -394,16 +394,16 @@ final class Offsite
         while (true) {
             $lenRaw = fread($in, 4);
             if ($lenRaw === false || strlen($lenRaw) < 4) {
-                $ok = false;   // file terpotong di tengah blok
+                $ok = false;   // file truncated mid-block
                 break;
             }
             $len = (int)unpack('N', $lenRaw)[1];
             if ($len === 0) {
-                $ok = true;    // penanda akhir yang benar
+                $ok = true;    // correct end marker
                 break;
             }
-            // Panjang yang tidak masuk akal berarti file rusak atau bukan
-            // keluaran Offsite; berhenti sebelum membaca sebesar itu ke RAM.
+            // An absurd length means the file is corrupt or not an Offsite
+            // output; stop before reading that much into RAM.
             if ($len > 67108864) {
                 $ok = false;
                 break;
@@ -417,7 +417,7 @@ final class Offsite
             $sealed  = substr($rest, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
             $plain   = sodium_crypto_secretbox_open($sealed, $nonce, $key);
             if ($plain === false) {
-                // MAC gagal: file rusak, terpotong, atau bukan miliknya.
+                // MAC failed: the file is corrupt, truncated, or not ours.
                 $ok = false;
                 break;
             }
@@ -427,14 +427,14 @@ final class Offsite
         fclose($in);
         fclose($out);
         if (!$ok) {
-            // Buang hasil separuh supaya tidak ada file pemulihan yang menyesatkan.
+            // Drop the partial result so no misleading recovery file remains.
             @unlink($dest);
             return false;
         }
         return true;
     }
 
-    /** Buat bucket kalau belum ada (opsional, diabaikan bila 4xx). */
+    /** Create the bucket when missing (optional, ignored on 4xx). */
     public static function pruneRemote(int $keep = self::KEEP): array
     {
         $cfg = self::config();
@@ -443,18 +443,18 @@ final class Offsite
         }
         $c = self::client();
         if ($c === null) {
-            return ['ok' => false, 'error' => 'Konfigurasi tidak bisa dibaca.'];
+            return ['ok' => false, 'error' => 'The configuration cannot be read.'];
         }
-        $why = 'alasan tidak diketahui';
+        $why = 'reason unknown';
         $keys = self::listAllKeys($c, rtrim((string)$cfg['prefix'], '/'), $why);
         if ($keys === null) {
-            return ['ok' => false, 'error' => 'Bucket tidak bisa dibaca: ' . $why];
+            return ['ok' => false, 'error' => 'The bucket cannot be read: ' . $why];
         }
         if (count($keys) <= $keep) {
-            return ['ok' => true, 'error' => null, 'message' => 'Tidak ada yang dipangkas.',
+            return ['ok' => true, 'error' => null, 'message' => 'Nothing to prune.',
                     'removed' => 0];
         }
-        sort($keys);                       // nama memuat timestamp, urut = kronologis
+        sort($keys);                       // names contain a timestamp, so sorting = chronological
         $stale = array_slice($keys, 0, count($keys) - $keep);
         $removed = 0;
         foreach ($stale as $k) {
@@ -463,7 +463,7 @@ final class Offsite
             }
         }
         return ['ok' => true, 'error' => null,
-            'message' => $removed . ' arsip lama dihapus dari bucket.',
+            'message' => $removed . ' old archives deleted from the bucket.',
             'removed' => $removed];
     }
 }

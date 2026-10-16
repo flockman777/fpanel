@@ -5,32 +5,32 @@ namespace Fpanel\Service;
 use Fpanel\Database\Connection;
 
 /**
- * Pembersihan data yang tumbuh terus: sesi, audit log, percobaan login, dan
- * access log nginx yang domainnya sudah tidak ada.
+ * Cleanup of data that keeps growing: sessions, audit log, login attempts, and
+ * nginx access logs whose domains no longer exist.
  *
- * Semua operasi di sini menghapus data, jadi setiap langkah punya batas usia
- * eksplisit. Kalau suatu saat ada bug, yang hilang adalah log lama, bukan akun.
+ * Every operation here deletes data, so each step has an explicit age limit.
+ * If a bug ever sneaks in, what disappears is old logs, not accounts.
  */
 final class Housekeeping
 {
-    /** Hari minimal sebelum audit log boleh dihapus. */
+    /** Minimum days before an audit log entry may be deleted. */
     public const AUDIT_KEEP_DAYS = 90;
 
-    /** Hari minimal sebelum percobaan login boleh dihapus. */
+    /** Minimum days before a login attempt may be deleted. */
     public const ATTEMPT_KEEP_DAYS = 7;
 
-    /** Umur minimum file log (hari) sebelum dianggap layak dihapus. */
+    /** Minimum age of a log file, in days, before it may be deleted. */
     public const LOG_MIN_AGE_DAYS = 3;
 
     /**
-     * Umur minimum (jam) berkas temp upload offsite sebelum dianggap yatim.
+     * Minimum age (hours) of an offsite upload temp file before it counts as orphaned.
      *
-     * Upload normal selesai dalam hitungan menit; berkas yang masih ada
-     * setelah beberapa jam berarti prosesnya mati di tengah jalan.
+     * A normal upload finishes within minutes; a file still around
+     * after several hours means its process died midway.
      */
     public const TEMP_UPLOAD_MIN_AGE_HOURS = 6;
 
-    /** Awalan berkas temp yang dibuat Offsite::encryptFile() lewat tempnam(). */
+    /** Prefix of temp files created by Offsite::encryptFile() through tempnam(). */
     public const TEMP_UPLOAD_PREFIX = 'fp-enc-';
 
     private function __construct(private readonly string $logDir) {}
@@ -41,10 +41,10 @@ final class Housekeeping
     }
 
     /**
-     * Lokasi access log nginx milik panel.
+     * Location of the panel's nginx access log.
      *
-     * Dicek dari pool FPM karena CLI bisa punya environment berbeda; kalau
-     * tidak bisa ditemukan, job ini hanya melewati pembersihan log.
+     * Checked from the FPM pool because the CLI may have a different environment;
+     * when it cannot be found, this job simply skips log cleanup.
      */
     public static function defaultLogDir(): string
     {
@@ -61,10 +61,10 @@ final class Housekeeping
     }
 
     /**
-     * Jalankan seluruh pembersihan.
+     * Run all cleanup steps.
      *
-     * $opt hanya dipakai suite uji untuk memakai batas usia kecil. Nilai
-     * kosong di produksi, jadi retensi selalu mengikuti konstanta di atas.
+     * $opt is only used by the test suite to force small age limits. It stays
+     * empty in production, so retention always follows the constants above.
      *
      * @param  array{auditDays?:int,attemptDays?:int} $opt
      * @return array{ok:bool,error?:string,counts?:array<string,int>,warnings?:string[]}
@@ -76,45 +76,45 @@ final class Housekeeping
             $counts['sessions']   = $this->pruneSessions($dryRun);
             $counts['audit_log']  = $this->pruneAuditLog($dryRun, $opt);
             $counts['login']      = $this->pruneLoginAttempts($dryRun, $opt);
-            // Tabel ini belum ada di server yang belum menjalankan
-            // db:migrate-devices, jadi pruneDeviceTable mengecek keberadaannya dulu.
+            // This table does not exist yet on servers that have not run
+            // db:migrate-devices, so pruneDeviceTable checks for it first.
             $counts['login_links'] = $this->pruneDeviceTable('login_links', 'used_at', $dryRun);
             $counts['devices']     = $this->pruneDeviceTable('remember_devices', 'revoked_at', $dryRun);
         } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'Pembersihan DB gagal: ' . $e->getMessage()];
+            return ['ok' => false, 'error' => 'Database cleanup failed: ' . $e->getMessage()];
         }
 
         $warnings = [];
         try {
             $counts['nginx_logs'] = $this->pruneOrphanLogs($dryRun);
         } catch (\Throwable $e) {
-            // Log bukan hal kritis: kegagalan di sini tidak boleh menggagalkan
-            // pembersihan DB yang sudah berhasil.
-            $warnings[] = 'Log nginx dilewati: ' . $e->getMessage();
+            // Logs are not critical: a failure here must not fail the
+            // database cleanup that already succeeded.
+            $warnings[] = 'nginx logs skipped: ' . $e->getMessage();
         }
         try {
             $counts['temp_uploads'] = $this->pruneTempUploads($dryRun);
         } catch (\Throwable $e) {
-            $warnings[] = 'Berkas temp dilewati: ' . $e->getMessage();
+            $warnings[] = 'Temp files skipped: ' . $e->getMessage();
         }
 
         return ['ok' => true, 'counts' => $counts, 'warnings' => $warnings];
     }
 
     /**
-     * Berkas sementara enkripsi upload offsite (fp-enc-*) yang ditinggalkan
-     * proses yang berhenti di tengah jalan.
+     * Offsite upload encryption temp files (fp-enc-*) left behind by
+     * a process that stopped midway.
      *
-     * Jalur normal selalu menghapusnya lewat blok finally di Offsite::upload();
-     * yang bisa tersisa adalah sisa proses yang dihentikan paksa (reboot, OOM,
-     * timeout jaringan). Berkas yang baru dibuat tidak disentuh supaya upload
-     * yang sedang berjalan tidak terganggu, dan nama selain awalan milik panel
-     * tidak pernah dihapus.
+     * The normal path always deletes them through the finally block in
+     * Offsite::upload(); what can remain are leftovers of processes killed by
+     * force (reboot, OOM, network timeout). Freshly created files are left
+     * alone so an upload in progress is not disturbed, and names outside the
+     * panel's prefix are never deleted.
      */
     public function pruneTempUploads(bool $dryRun = false): int
     {
-        // TMPDIR bisa berakhiran garis miring; dirapikan supaya jalurnya tidak
-        // menjadi "//fp-enc-*" saat digabung.
+        // TMPDIR may end with a trailing slash; trim it so the path does not
+        // become "//fp-enc-*" when joined.
         $dir = rtrim(sys_get_temp_dir(), '/');
         if ($dir === '') {
             $dir = '/';
@@ -126,7 +126,7 @@ final class Housekeeping
         $pattern = '/^' . preg_quote(self::TEMP_UPLOAD_PREFIX, '/') . '[A-Za-z0-9]+$/';
         $n = 0;
         foreach ((array)glob($dir . '/' . self::TEMP_UPLOAD_PREFIX . '*') as $f) {
-            // Hanya berkas biasa; symlink/berkas bernama mirip tidak disentuh.
+            // Regular files only; symlinks and similarly named files are left alone.
             if (!is_file($f) || is_link($f)) {
                 continue;
             }
@@ -146,7 +146,7 @@ final class Housekeeping
 
     // ------------------------------------------------------------------ database
 
-    /** Sesi kedaluwarsa, termasuk sesi antar-langkah 2FA yang ditinggalkan. */
+    /** Expired sessions, including abandoned 2FA step-up sessions. */
     private function pruneSessions(bool $dryRun): int
     {
         if ($dryRun) {
@@ -158,8 +158,8 @@ final class Housekeeping
     }
 
     /**
-     * Audit log dipangkas, tapi baris yang gagal ('denied'/'error') disimpan
-     * lebih lama karena itu rekaman insiden keamanan.
+     * The audit log is trimmed, but failed rows ('denied'/'error') are kept
+     * longer because they record security incidents.
      */
     private function pruneAuditLog(bool $dryRun, array $opt = []): int
     {
@@ -200,12 +200,12 @@ final class Housekeeping
     // ---------------------------------------------------------------------- log
 
     /**
-     * Pangkas tabel perangkat / login link.
+     * Prune the device / login link tables.
      *
-     * Baris yang sudah dipakai ditandai dengan kolom waktu; kalau kolomnya
-     * NULL (mis. token masih aktif), cukup pangkas berdasarkan tanggal
-     * kedaluwarsa. Tabel dicek lebih dulu supaya job ini tetap jalan di server
-     * yang belum menjalankan db:migrate-devices.
+     * Used rows are marked with a timestamp column; when that column is
+     * NULL (e.g. the token is still active), pruning is based on the expiry
+     * date instead. The table is checked first so this job keeps working on
+     * servers that have not run db:migrate-devices.
      */
     private function pruneDeviceTable(string $table, string $doneCol, bool $dryRun): int
     {
@@ -234,14 +234,14 @@ final class Housekeeping
     }
 
     /**
-     * Hapus file log yang domainnya sudah tidak terdaftar.
+     * Delete log files whose domain is no longer registered.
      *
-     * Dua kondisi yang ditangani:
-     *   - nama file tidak cocok domain mana pun (domain dihapus tanpa log dibersihkan)
-     *   - nama file cocok, tapi lognya sudah lebih tua dari LOG_MIN_AGE_DAYS
+     * Two cases are handled:
+     *   - the file name matches no domain at all (domain deleted without clearing logs)
+     *   - the file name matches, but the log is older than LOG_MIN_AGE_DAYS
      *
-     * Umur minimum itu penting: domain yang baru dibuat bisa punya nama yang
-     * kebetulan mirip, dan file log aktif tidak boleh dihapus di tengah jalan.
+     * The minimum age matters: a freshly created domain may have a similar-
+     * looking name, and an active log file must not be deleted midway.
      */
     public function pruneOrphanLogs(bool $dryRun = false): int
     {
@@ -277,7 +277,7 @@ final class Housekeeping
             }
             $mtime = (int)@filemtime($path);
             if ($mtime > $minMtime) {
-                // Terlalu baru untuk dipastikan yatim; coba lagi run berikutnya.
+                // Too fresh to be sure it is orphaned; try again on the next run.
                 continue;
             }
             if ($dryRun) {
@@ -292,16 +292,16 @@ final class Housekeeping
     }
 
     /**
-     * Ambil nama domain dari nama file log.
+     * Extract the domain name from a log file name.
      *
-     * Pola panel: <domain>.access.log dan <domain>.error.log. Dipisah juga
-     * untuk log yang dirotasi ( access.log.1 ). Return null kalau tidak cocok,
-     * supaya file asing tidak ikut terhapus.
+     * Panel pattern: <domain>.access.log and <domain>.error.log. It is split
+     * for rotated logs too ( access.log.1 ). Returns null when there is no
+     * match, so unrelated files are not deleted.
      */
     public static function domainFromLogName(string $filename): ?string
     {
         $name = $filename;
-        // Buang sufiks rotasi: .1, .2, .gz
+        // Drop the rotation suffix: .1, .2, .gz
         $name = (string)preg_replace('/\.(gz|\d+)$/', '', $name);
         foreach (['.access.log', '.error.log', '.access', '.error'] as $suffix) {
             if (str_ends_with($name, $suffix)) {
@@ -318,28 +318,28 @@ final class Housekeeping
         if ($d === '' || strlen($d) > 253) {
             return null;
         }
-        // Hostname, bukan path relatif: mencegah "../../etc/passwd" ikut terbaca
-        // sebagai nama domain bila ada file aneh di direktori log.
+        // Hostname, not a relative path: prevents "../../etc/passwd" from being
+        // read as a domain name when an odd file shows up in the log directory.
         if (!preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/', $d)) {
             return null;
         }
         return $d;
     }
 
-    /** Nama file log untuk sebuah domain (dipakai juga saat domain dihapus). */
+    /** Log file names for a domain (also used when a domain is deleted). */
     public static function logFiles(string $domain): array
     {
         return [$domain . '.access.log', $domain . '.error.log'];
     }
 
     /**
-     * Hapus log milik satu domain yang baru saja dihapus dari panel.
+     * Delete the logs of a domain that was just removed from the panel.
      *
-     * Dipanggil dari DomainManager::delete supaya log tidak menggantung sampai
-     * run housekeeping berikutnya. Tidak ada syarat usia di sini: domainnya
-     * baru saja sengaja dihapus, jadi isinya memang tidak dibutuhkan lagi.
+     * Called from DomainManager::delete so logs do not linger until the next
+     * housekeeping run. There is no age requirement here: the domain was just
+     * deleted on purpose, so its contents are genuinely no longer needed.
      *
-     * @return int jumlah file yang benar-benar terhapus
+     * @return int number of files actually deleted
      */
     public function purgeDomainLogs(string $domain): int
     {
@@ -354,7 +354,7 @@ final class Housekeeping
                 $removed++;
             }
         }
-        // Log hasil rotasi (access.log.1) juga ikut dibuang.
+        // Rotated logs (access.log.1) are dropped too.
         foreach ((array)@glob($this->logDir . '/' . $domain . '.{access,error}.log*') as $path) {
             if (is_string($path) && is_file($path) && @unlink($path)) {
                 $removed++;

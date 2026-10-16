@@ -12,7 +12,7 @@ require __DIR__ . '/partials/head.php';
     </div>
 
     <div class="card card-body">
-      <h1 class="text-lg font-semibold text-slate-900 dark:text-white" data-i18n="login.title">Masuk ke fpanel</h1>
+      <h1 class="text-lg font-semibold text-slate-900 dark:text-white" data-i18n="login.title">Sign in to fpanel</h1>
       <p class="mt-0.5 text-sm text-slate-500" data-i18n="login.subtitle">Panel kontrol hosting Anda.</p>
 
       <form class="mt-5 space-y-4" onsubmit="return false">
@@ -39,16 +39,16 @@ require __DIR__ . '/partials/head.php';
         <div class="flex items-center justify-between">
           <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input type="checkbox" class="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" checked>
-            <span data-i18n="login.remember">Ingat saya</span>
+            <span data-i18n="login.remember">Remember me</span>
           </label>
-          <a href="#" class="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400" data-i18n="login.forgot">Lupa password?</a>
+          <a href="#" class="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400" data-i18n="login.forgot">Forgot password?</a>
         </div>
 
-        <a href="home.php" class="btn-primary w-full" data-i18n="login.submit">Masuk</a>
+        <a href="home.php" class="btn-primary w-full" data-i18n="login.submit">Sign in</a>
       </form>
 
       <p class="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200"
-         data-i18n-html="login.hintDemo">Akun demo.</p>
+         data-i18n-html="login.hintDemo">Demo account.</p>
 
       <div class="mt-4 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
         <div class="flex gap-1 text-sm">

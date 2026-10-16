@@ -4,7 +4,7 @@ namespace Fpanel\Service;
 
 use Fpanel\Support\Config;
 
-/** Menyusun data sidebar & badge beranda dari sumber nyata. */
+/** Builds the sidebar data & dashboard badges from real sources. */
 final class Panel
 {
     public static function data(array $me): array
@@ -37,22 +37,22 @@ final class Panel
 
         $alerts = [];
         if ($maxDisk > 0 && $disk / $maxDisk >= 0.9) {
-            $alerts[] = 'Disk hampir penuh (' . Stats::bytes($disk) . ' dari ' . Stats::bytes($maxDisk) . ').';
+            $alerts[] = 'Disk almost full (' . Stats::bytes($disk) . ' of ' . Stats::bytes($maxDisk) . ').';
         }
         if ($maxDom > 0 && $dDom >= $maxDom) {
-            $alerts[] = 'Kuota domain penuh. Hapus domain atau naikkan paket.';
+            $alerts[] = 'Domain quota is full. Delete a domain or upgrade the plan.';
         }
         if (!in_array($phpDefault, $installed, true)) {
-            $alerts[] = 'Default paket demands PHP ' . $phpDefault . ' yang belum terinstall. Hubungi admin.';
+            $alerts[] = 'The plan default requires PHP ' . $phpDefault . ', which is not installed. Contact the admin.';
         }
 
-        $alerts[] = 'Email belum aktif di shared IP (port 25 diblokir).';
+        $alerts[] = 'Email is not active on this shared IP (port 25 is blocked).';
 
-        // "Domain utama" untuk user = domain miliknya. Untuk admin yang tidak
-        // punya domain (panel melayani dirinya sendiri lewat vhost terpisah,
-        // bukan lewat tabel domains), tampilkan domain panel dari base_url.
-        // Kalau base_url belum diatur (instalasi baru), pakai host permintaan
-        // supaya kartu tidak kosong dan '-'.
+        // "Primary domain" for a user = a domain they own. For an admin who does not
+        // own a domain (the panel serves itself through a separate vhost, so admins
+        // own none through the domains table), show the panel domain from base_url.
+        // If base_url is not set yet (fresh install), use the request host
+        // so the card is not empty or '-'.
         $primaryUser = Stats::primaryDomain($uid);
         $panelHost   = (string)(parse_url((string)Config::get('app.base_url', ''), PHP_URL_HOST) ?: '');
         if ($panelHost === '' && PHP_SAPI !== 'cli') {
@@ -82,13 +82,13 @@ final class Panel
         ];
     }
 
-    /** Versi PHP yang benar-benar terinstall di server. */
+    /** PHP versions actually installed on the server. */
     public static function installedPhp(): array
     {
-        // Dipakai untuk mengisi pilihan "Versi PHP" di form domain, jadi
-        // harus sama dengan deteksi di Vhost: hanya versi yang socket FPM-nya
-        // benar-benar ada. Kalau hanya melihat direktori /etc/php/<v>/, versi
-        // yang FPM-nya mati tetap ditawarkan, lalu diam-diam memakai default.
+        // Used to fill the "PHP version" choices in the domain form, so
+        // it must match the detection in Vhost: only versions whose FPM socket
+        // really exists. Looking only at /etc/php/<v>/ would also offer versions
+        // whose FPM is down, which then silently fall back to the default.
         $out = \Fpanel\Service\Vhost::installedPhpVersions();
         return $out === [] ? [PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION] : $out;
     }

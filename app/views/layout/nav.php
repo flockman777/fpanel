@@ -1,8 +1,8 @@
 <?php
 /**
- * Sidebar navigasi utama (gaya cPanel).
+ * Main navigation sidebar (cPanel style).
  * @var array $me
- * @var string $active route yang sedang aktif
+ * @var string $active currently active route
  */
 $groups = [
     ['label' => 'Hosting', 'items' => [
@@ -22,8 +22,8 @@ $groups = [
         ['/security',  'Security',  'shield'],
         ['/software',  'Software',  'package'],
     ]],
-    ['label' => 'Akun', 'items' => [
-        ['/account',   'Profil',    'user'],
+    ['label' => 'Account', 'items' => [
+        ['/account',   'Profile',    'user'],
     ]],
 ];
 ?>
@@ -39,12 +39,12 @@ $groups = [
     </a>
     <button data-nav-close
             class="ml-auto grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden dark:hover:bg-slate-800"
-            aria-label="Tutup menu">
+            aria-label="Close menu">
       <i data-lucide="x" class="h-5 w-5"></i>
     </button>
   </div>
 
-  <nav class="px-2.5 py-3" aria-label="Menu utama">
+  <nav class="px-2.5 py-3" aria-label="Main menu">
     <?php foreach ($groups as $g): ?>
       <p class="px-2.5 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 first:pt-0">
         <?= htmlspecialchars($g['label']) ?>
@@ -77,7 +77,7 @@ $groups = [
               class="flex w-full items-center justify-center gap-1.5 rounded-md bg-white px-2 py-1.5 text-[11px] font-medium
                      text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:text-rose-600 hover:ring-rose-200
                      dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700">
-        <i data-lucide="log-out" class="h-3.5 w-3.5"></i>Keluar
+        <i data-lucide="log-out" class="h-3.5 w-3.5"></i>Log out
       </button>
     </form>
   </div>

@@ -1,5 +1,5 @@
-# FPanel: panel PHP jalan sebagai www-data, tapi butuh operasi privileged.
-# Aturan sengaja dibuat per-perintah (bukan NOPASSWD: ALL).
+# FPanel: the panel PHP runs as www-data but needs privileged operations.
+# Rules are deliberately per-command (not NOPASSWD: ALL).
 www-data ALL=(root) NOPASSWD: /usr/sbin/nginx -t
 www-data ALL=(root) NOPASSWD: /bin/systemctl reload nginx
 www-data ALL=(root) NOPASSWD: /bin/systemctl restart nginx

@@ -2,7 +2,7 @@
   "name": "fpanel",
   "version": "0.1.0",
   "private": true,
-  "description": "FPanel - panel kontrol hosting. Paket ini hanya untuk tooling build aset (Tailwind, Lucide).",
+  "description": "FPanel - hosting control panel. This package only carries asset build tooling (Tailwind, Lucide).",
   "scripts": {
     "build": "./tools/build-css.sh && node tools/build-icons.mjs && node tools/build-features.mjs",
     "build:css": "./tools/build-css.sh",

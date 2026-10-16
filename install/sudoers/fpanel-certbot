@@ -1,3 +1,3 @@
-# FPanel: LetsEncrypt memanggil certbot lewat sudo. Aturan per-binary
-# (bukan NOPASSWD: ALL) supaya www-data tidak bisa dapat shell root.
+# FPanel: Let's Encrypt calls certbot via sudo. Per-binary rules
+# (not NOPASSWD: ALL) so www-data cannot get a root shell.
 www-data ALL=(root) NOPASSWD: /usr/bin/certbot certonly *, /usr/bin/certbot delete *, /usr/bin/certbot certificates

@@ -1,23 +1,23 @@
-# Instalasi FPanel
+# Installing FPanel
 
-Direktori ini berisi **installer** dan semua aset sistem yang dibutuhkan
-FPanel. Isinya sengaja dibedakan dari kode aplikasi supaya jelas mana yang
-masuk `/srv/fpanel` dan mana yang masuk ke direktori sistem.
+This directory holds the **installer** and every system asset FPanel needs.
+It is kept separate from the application code so it is always clear what goes
+into `/srv/fpanel` and what goes into system directories.
 
-| Folder | Tujuan di server |
+| Folder | Destination on the server |
 |---|---|
-| `install.sh` | Skrip instalasi utama |
-| `helpers/` | `/usr/local/sbin/fpanel-*` — helper privileged |
-| `sudoers/` | `/etc/sudoers.d/fpanel-*` — aturan izin per-perintah |
-| `systemd/` | contoh unit app runtime (`/etc/systemd/system/`) |
+| `install.sh` | Main install script |
+| `helpers/` | `/usr/local/sbin/fpanel-*` — privileged helpers |
+| `sudoers/` | `/etc/sudoers.d/fpanel-*` — per-command permission rules |
+| `systemd/` | example app-runtime units (`/etc/systemd/system/`) |
 | `cron/` | `/etc/cron.d/fpanel-*` |
-| `nginx/` | vhost panel + snippet SSL + catch-all |
+| `nginx/` | panel vhost + SSL snippet + catch-all |
 | `logrotate/` | `/etc/logrotate.d/fpanel-backup` |
-| `phpmyadmin/` | `/usr/share/phpmyadmin/fpma-index.php` (front controller token) |
+| `phpmyadmin/` | `/usr/share/phpmyadmin/fpma-index.php` (token front controller) |
 
 ---
 
-## Pemakaian cepat
+## Quick start
 
 ```bash
 git clone https://github.com/flockman777/fpanel.git
@@ -25,122 +25,128 @@ cd fpanel
 sudo ./install/install.sh
 ```
 
-Installer interaktif akan meminta konfirmasi sebelum mengubah sistem.
+The interactive installer asks for confirmation before changing anything on
+the system.
 
-## Prasyarat
+## Requirements
 
-| Hal | Keterangan |
+| Item | Details |
 |---|---|
-| Sistem | Ubuntu 24.04 (atau Debian turunannya) yang masih didukung |
-| Akses | root (atau `sudo`), plus koneksi internet |
-| Ruang | ±1.5 GB untuk paket + aplikasi |
-| Port | `8090` untuk panel; `80`/`443` hanya bila memakai domain |
-| Domain | opsional — panel tetap jalan lewat `IP:8090` |
+| System | Ubuntu 24.04 (or a supported Debian derivative) |
+| Access | root (or `sudo`), plus an internet connection |
+| Disk | ~1.5 GB for packages + application |
+| Ports | `8090` for the panel; `80`/`443` only when a domain is used |
+| Domain | optional — the panel also works over `IP:8090` |
 
-Paket yang dibutuhkan installer dipasang otomatis (`sudo`, `sqlite3`,
-`nginx`, MariaDB, Redis, certbot, PHP-FPM, phpMyAdmin, WP-CLI, Node.js).
-Untuk PHP di luar bawaan distro (7.4–8.4 non-default) installer menambahkan
-PPA `ondrej/php` sendiri. Kalau server sudah siap, lewati pemasangan paket
-dengan `--skip-packages` — installer tetap memeriksa perangkat wajibnya.
+The packages the installer needs are installed automatically (`sudo`,
+`sqlite3`, `nginx`, MariaDB, Redis, certbot, PHP-FPM, phpMyAdmin, WP-CLI,
+Node.js). For PHP versions outside the distro default (7.4–8.4) the installer
+adds the `ondrej/php` PPA itself. If the server is already prepared, skip
+package installation with `--skip-packages` — the installer still checks that
+the required tools are present.
 
-### Non-interaktif
+### Non-interactive
 
 ```bash
 sudo ./install/install.sh --yes \
-  --domain panel.contoh.tld \
-  --email admin@contoh.tld \
+  --domain panel.example.tld \
+  --email admin@example.tld \
   --admin-user admin
 ```
 
-Sandi admin dibuat acak dan ditampilkan di akhir. Untuk menentukan sendiri:
+The admin password is generated randomly and printed at the end. To choose
+your own:
 
 ```bash
-sudo ./install/install.sh --yes --admin-pass 'Sandi!Kuat123'
+sudo ./install/install.sh --yes --admin-pass 'Strong!Pass123'
 ```
 
 ---
 
-## Yang dilakukan installer
+## What the installer does
 
-1. **Prasyarat** — cek root, distro, dan keberadaan kode.
-2. **Paket** — nginx, MariaDB, Redis, certbot, PHP-FPM (multi-versi),
-   phpMyAdmin, WP-CLI, Node.js (opsional). Setelah itu semua perangkat wajib
-   (`nginx`, `php`, `rsync`, `sudo`, `visudo`, `sqlite3`, `unzip`, `curl`)
-   diperiksa; kalau ada yang kurang installer berhenti dengan pesan jelas.
-3. **Layanan dasar** — nginx, MariaDB, Redis, dan php-fpm diaktifkan lebih
-   dulu supaya kegagalan layanan ketahuan di awal (helper database butuh
-   MariaDB hidup).
-4. **Direktori** — `/var/www`, `/var/log/nginx/fpanel`,
-   `/etc/nginx/sites-available/fpanel-domains`, conf.d per versi PHP,
+1. **Preflight** — check root, the distro, and that the code is present.
+2. **Packages** — nginx, MariaDB, Redis, certbot, PHP-FPM (multi-version),
+   phpMyAdmin, WP-CLI, Node.js (optional). Afterwards every required tool
+   (`nginx`, `php`, `rsync`, `sudo`, `visudo`, `sqlite3`, `unzip`, `curl`) is
+   checked; if anything is missing the installer stops with a clear message.
+3. **Base services** — nginx, MariaDB, Redis, and php-fpm are enabled early so
+   service failures surface immediately (the database helper needs MariaDB
+   running).
+4. **Directories** — `/var/www`, `/var/log/nginx/fpanel`,
+   `/etc/nginx/sites-available/fpanel-domains`, per-version PHP conf.d,
    `/var/lib/fpanel`, `/etc/fpanel`, `/var/backups/fpanel`.
-5. **Aplikasi** — rsync repositori → `/srv/fpanel` (tanpa `var/`,
+5. **Application** — rsync the repository → `/srv/fpanel` (excluding `var/`,
    `node_modules/`, `.git/`, `install/`, `config/local.php`).
-6. **Helper + sudoers + cron + logrotate** — dipasang ke lokasi sistem.
-   Aturan sudo divalidasi `visudo -c`; kalau tidak valid, semuanya dibatalkan.
-7. **phpMyAdmin** — front controller token `/pma/<token>/`.
-8. **Kunci panel** — `/etc/fpanel/app-key` (32 byte acak, mode 0640).
-9. **nginx** — vhost panel port `8090`, snippet SSL, catch-all.
-10. **Database** — `db:migrate` + akun admin.
-11. **Domain + SSL** (opsional) — vhost port 80 dipasang lebih dulu, lalu
-    sertifikat lewat certbot webroot; vhost 443 hanya diaktifkan kalau
-    sertifikatnya benar-benar ada (kalau tidak, `nginx -t` bisa gagal).
-12. **Ringkasan** — URL panel dan kredensial admin.
+6. **Helpers + sudoers + cron + logrotate** — installed to their system
+   locations. The sudo rules are validated with `visudo -c`; if they are not
+   valid, everything is rolled back.
+7. **phpMyAdmin** — token front controller `/pma/<token>/`.
+8. **Panel key** — `/etc/fpanel/app-key` (32 random bytes, mode 0640).
+9. **nginx** — panel vhost on port `8090`, SSL snippet, catch-all.
+10. **Database** — `db:migrate` + admin account.
+11. **Domain + SSL** (optional) — the port-80 vhost is installed first, then
+    the certificate through the certbot webroot; the 443 vhost is only enabled
+    once the certificate really exists (otherwise `nginx -t` can fail).
+12. **Summary** — panel URL and admin credentials.
 
-Installer **aman dijalankan berulang**: konfigurasi ditimpa dengan versi repo,
-tetapi database, `/var/www`, sertifikat, kunci panel, dan `config/local.php`
-tidak diubah.
-
----
-
-## Opsi
-
-```
---domain <d>      Domain panel (vhost 443 + SSL)
---email <e>       Email Let's Encrypt & admin
---admin-user <u>  Username admin        (default: admin)
---admin-email <e> Email admin
---admin-pass <p>  Sandi admin           (default: acak)
---php <ver>       Versi PHP default     (default: 8.3)
---port <n>        Port panel            (default: 8090)
---root <dir>      Lokasi pemasangan     (default: /srv/fpanel)
---no-node         Jangan pasang Node.js
---no-pma          Jangan pasang phpMyAdmin
---skip-packages   Lewati pemasangan paket apt
---yes             Non-interaktif
-```
+The installer is **safe to run repeatedly**: configuration files are
+overwritten with the repository versions, but the database, `/var/www`,
+certificates, the panel key, and `config/local.php` are left untouched.
 
 ---
 
-## Setelah instalasi
+## Options
 
-- Buka `http://<ip>:8090` (atau `https://<domain>` bila domain diset).
-- Ganti sandi admin lewat dasbor, aktifkan TOTP di menu Keamanan.
-- Atur **PTR/rDNS** IP server agar email yang dikirim panel tidak ditolak.
-- Untuk SSL DNS-01 Cloudflare, isi `FPANEL_CF_API_TOKEN` & `FPANEL_CF_ZONE_ID`
-  (lihat `env.example`).
+```
+--domain <d>      Panel domain (443 vhost + SSL)
+--email <e>       Let's Encrypt & admin email
+--admin-user <u>  Admin username         (default: admin)
+--admin-email <e> Admin email
+--admin-pass <p>  Admin password         (default: random)
+--php <ver>       Default PHP version    (default: 8.3)
+--port <n>        Panel port             (default: 8090)
+--root <dir>      Install location       (default: /srv/fpanel)
+--no-node         Do not install Node.js
+--no-pma          Do not install phpMyAdmin
+--skip-packages   Skip apt package installation
+--yes             Non-interactive
+```
 
-## Rahasia
+---
 
-Semua rahasia berada **di luar repositori**:
+## After installation
 
-| Berkas | Isi | Izin |
+- Open `http://<ip>:8090` (or `https://<domain>` when a domain is set).
+- Change the admin password from the dashboard and enable TOTP in the
+  Security menu.
+- Configure the server IP's **PTR/rDNS** so email sent by the panel is not
+  rejected.
+- For Cloudflare DNS-01 SSL, set `FPANEL_CF_API_TOKEN` & `FPANEL_CF_ZONE_ID`
+  (see `env.example`).
+
+## Secrets
+
+Every secret lives **outside the repository**:
+
+| File | Contents | Permissions |
 |---|---|---|
-| `/etc/fpanel/app-key` | kunci enkripsi SecretBox | `0640 root:www-data` |
-| `/etc/fpanel/offsite.conf` | kredensial S3 offsite | `0600 root` |
-| `/srv/fpanel/var/db/fpanel.sqlite` | database panel | `0750 www-data` |
+| `/etc/fpanel/app-key` | SecretBox encryption key | `0640 root:www-data` |
+| `/etc/fpanel/offsite.conf` | S3 offsite credentials | `0600 root` |
+| `/srv/fpanel/var/db/fpanel.sqlite` | panel database | `0750 www-data` |
 
-Jangan pernah `git add` berkas-berkas ini — `.gitignore` sudah menutupinya.
+Never `git add` these files — `.gitignore` already covers them.
 
 ---
 
-## Menguji installer tanpa server
+## Testing the installer without a server
 
 ```bash
-# butuh Docker (macOS: brew install colima docker && colima start)
+# needs Docker (macOS: brew install colima docker && colima start)
 ./tools/test-install-container.sh
 ```
 
-Skrip itu menjalankan installer di container Ubuntu 24.04 yang bersih (systemd
-aktif), lalu memeriksa layanan, kunci panel, database, sudoers, respons HTTP,
-dan mengulang installer untuk memastikan idempotensi. Tidak menyentuh server
-produksi dan tidak butuh domain/SSL.
+That script runs the installer inside a clean Ubuntu 24.04 container (with
+systemd running), then checks services, the panel key, the database, sudoers,
+HTTP responses, and runs the installer again to prove it is idempotent. It
+never touches a production server and needs no domain/SSL.

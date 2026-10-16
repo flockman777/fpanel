@@ -3,16 +3,16 @@ declare(strict_types=1);
 namespace Fpanel\Service;
 
 /**
- * Pembuatan sertifikat Let's Encrypt per-domain lewat certbot webroot.
+ * Per-domain Let's Encrypt certificates through the certbot webroot.
  *
- * certbot dijalankan lewat sudo karena menulis ke /etc/letsencrypt. Aturan
- * sudoers dibuat per-argv0 supaya www-data tidak mendapat shell root: yang
- * boleh hanya binary certbot itu sendiri. Semua argumen tetap coming from
- * server (nama domain sudah divalidasi lebih dulu), bukan dari user.
+ * certbot runs through sudo because it writes to /etc/letsencrypt. The
+ * sudoers rules are written per argv0 so www-data does not get a root shell:
+ * only the certbot binary itself is allowed. Every argument still comes from
+ * the server (the domain name is validated first), never from the user.
  *
- * rate limit Let's Encrypt: 5 sertifikat duplikat per minggu. Renewal harian
- * otomatis karena itu harus dihindari; renew di sini hanya jalan kalau
- * sertifikat benar-benar mendekati kedaluwarsa atau memang diminta user.
+ * Let's Encrypt rate limit: 5 duplicate certificates per week. Daily
+ * automatic renewal must therefore be avoided; renewal here only runs when
+ * the certificate is genuinely near expiry or the user asked for it.
  */
 final class LetsEncrypt
 {
@@ -21,11 +21,11 @@ final class LetsEncrypt
     public const WEBROOT         = '/var/www/acme/challenges';
 
     /**
-     * Email pendaftaran akun Let's Encrypt.
+     * Registration email for the Let's Encrypt account.
      *
-     * Urutan: config `letsencrypt.email` (bisa lewat env
-     * FPANEL_LETSENCRYPT_EMAIL) → host `app.base_url` → domain yang sedang
-     * diminta sertifikatnya. Jadi instalasi baru tetap jalan tanpa diatur.
+     * Order: config `letsencrypt.email` (can come from the env var
+     * FPANEL_LETSENCRYPT_EMAIL) → host of `app.base_url` → the domain being
+     * certified. That way a fresh install works without configuration.
      */
     public static function registerEmail(string $forDomain = ''): string
     {
@@ -40,7 +40,7 @@ final class LetsEncrypt
         return $host !== '' ? 'admin@' . $host : 'admin@localhost';
     }
 
-    /** Hari sebelum kedaluwarsa saat certbot diizinkan renew. */
+    /** Days before expiry when certbot is allowed to renew. */
     private const RENEW_WINDOW_DAYS = 30;
 
     public static function certName(string $domain): string
@@ -59,18 +59,18 @@ final class LetsEncrypt
     }
 
     /**
-     * Apakah sertifikat untuk domain ini sudah ada?
+     * Does a certificate for this domain already exist?
      *
-     * /etc/letsencrypt/live dimiliki root dengan mode 0700, jadi panel yang
-     * jalan sebagai www-data tidak bisa is_file() ke sana. Karena itu status
-     * dibaca lewat CLI certbot, bukan lewat filesystem.
+     * /etc/letsencrypt/live is owned by root with mode 0700, so the panel
+     * running as www-data cannot is_file() into it. Status is therefore read
+     * through the certbot CLI, not through the filesystem.
      */
     public static function hasCert(string $domain): bool
     {
         return self::certInfo($domain) !== null;
     }
 
-    /** Nama host + masa berlaku dari certbot. Null kalau belum ada cert. */
+    /** Host names + validity from certbot. Null when there is no certificate yet. */
     public static function certInfo(string $domain): ?array
     {
         $name = self::certName($domain);
@@ -105,9 +105,9 @@ final class LetsEncrypt
                 $out[$cur]['hosts'] = array_values(array_filter(array_map('trim', explode(' ', trim(substr($t, 9))))));
             }
             if (str_starts_with($t, 'Expiry Date:')) {
-                // certbot sudah menghitung sendiri: "Expiry Date: 2026-12-27
-                // 16:11:49+00:00 (VALID: 89 days)". Pakai angka itu, jangan
-                // parse ulang tanggalnya (formatnya berubah antar versi).
+                // certbot already computes it: "Expiry Date: 2026-12-27
+                // 16:11:49+00:00 (VALID: 89 days)". Use that number; do not
+                // re-parse the date (the format changes between versions).
                 if (preg_match('/\(VALID:\s*(\d+)\s*days?\)/i', $t, $m)) {
                     $out[$cur]['days'] = (int)$m[1];
                 } else {
@@ -121,7 +121,7 @@ final class LetsEncrypt
         return $out;
     }
 
-    /** Hari tersisa sebelum kedaluwarsa; null kalau tidak ada cert. */
+    /** Days left before expiry; null when there is no certificate. */
     public static function daysLeft(string $domain): ?int
     {
         $i = self::certInfo($domain);
@@ -129,14 +129,14 @@ final class LetsEncrypt
     }
 
     /**
-     * Nama host yang akan dimasukkan ke sertifikat: domain + www bila ada DNS.
-     * Host/www yang tidak resolve sengaja dilewati supaya issuance tidak
-     * gagal total gara-gara subdomain yang memang tidak diarahkan.
+     * Host names to include in the certificate: domain + www when DNS exists.
+     * Hosts/www that do not resolve are skipped on purpose so issuance does not
+     * fail entirely because of a subdomain that was never pointed here.
      */
     public static function hostsFor(string $domain): array
     {
-        // www hanya ikut kalau punya DNS sendiri. Kalau tidak, issuance gagal
-        // total karena satu hostname yang tidak bisa di verifikasi.
+        // www only joins when it has its own DNS. Otherwise issuance fails
+        // entirely because one hostname cannot be verified.
         $hosts = [$domain];
         if (self::resolves('www.' . $domain)) {
             $hosts[] = 'www.' . $domain;
@@ -151,7 +151,7 @@ final class LetsEncrypt
     }
 
     /**
-     * Terbitkan (atau renew) sertifikat.
+     * Issue (or renew) a certificate.
      *
      * @return array{ok:bool,error:?string,msg:?string,days:?int}
      */
@@ -163,7 +163,7 @@ final class LetsEncrypt
                 return [
                     'ok'   => true,
                     'error'=> null,
-                    'msg'  => 'Sertifikat masih valid ' . $days . ' hari lagi.',
+                    'msg'  => 'Certificate is still valid for ' . $days . ' more days.',
                     'days' => $days,
                 ];
             }
@@ -194,8 +194,8 @@ final class LetsEncrypt
             return [
                 'ok'   => true,
                 'error'=> null,
-                'msg'  => 'Sertifikat terbit untuk ' . implode(', ', $hosts)
-                    . ($days !== null ? ' (valid ' . $days . ' hari)' : ''),
+                'msg'  => 'Certificate issued for ' . implode(', ', $hosts)
+                    . ($days !== null ? ' (valid ' . $days . ' days)' : ''),
                 'days' => $days,
             ];
         }
@@ -210,9 +210,9 @@ final class LetsEncrypt
 
     public static function remove(string $domain): array
     {
-        // Jangan pakai is_dir() di /etc/letsencrypt/live: direktori itu mode
-        // 0700 milik root, jadi www-data selalu melihatnya tidak ada dan cert
-        // tidak pernah terhapus. Status dibaca lewat certbot listing.
+        // Do not use is_dir() on /etc/letsencrypt/live: that directory is mode
+        // 0700 owned by root, so www-data always sees it as missing and the cert
+        // would never be deleted. Status is read through the certbot listing.
         if (self::certInfo($domain) === null) {
             return ['ok' => true, 'error' => null];
         }
@@ -221,18 +221,18 @@ final class LetsEncrypt
         ]);
         return [
             'ok'    => $rc === 0,
-            'error' => $rc === 0 ? null : 'certbot delete gagal: ' . self::tail($out),
+            'error' => $rc === 0 ? null : 'certbot delete failed: ' . self::tail($out),
         ];
     }
 
     /**
-     * Cabut + hapus sertifikat domain.
-     * true berarti tidak ada sisa di /etc/letsencrypt untuk domain ini.
+     * Revoke + delete a domain certificate.
+     * true means nothing is left for this domain in /etc/letsencrypt.
      */
     public static function revoke(string $domain): bool
     {
         $r = self::remove($domain);
-        self::$infoCache = null; // status berubah, jangan pakai cache lama
+        self::$infoCache = null; // status changed, do not use the old cache
         return ($r['ok'] ?? false) === true && self::certInfo($domain) === null;
     }
 
@@ -248,15 +248,15 @@ final class LetsEncrypt
 
 
     /**
-     * Jalankan certbot lewat sudo dan kembalikan [exitCode, output].
+     * Run certbot through sudo and return [exitCode, output].
      */
     private static function run(array $args): array
     {
         $cmd = ['sudo', '-n', '/usr/bin/certbot'];
         foreach ($args as $a) {
-            // Nama host sudah divalidasi sebagai label DNS sebelum sampai
-            // ke sini, tapi tetap quoted per-argumen supaya tidak ada
-            // opsi yang bisa menabrak nama file lain.
+            // The host name is already validated as a DNS label before it
+            // gets here, but each argument is still quoted so no
+            // option can collide with another file name.
             $cmd[] = $a;
         }
         $line = implode(' ', array_map(
@@ -269,30 +269,30 @@ final class LetsEncrypt
         return [$rc, implode("\n", $out)];
     }
 
-    /** Terjemahkan output certbot jadi pesan yang bisa dibaca user. */
+    /** Turn certbot output into a message the user can read. */
     private static function explain(string $out): string
     {
         if (str_contains($out, 'rate limit') || str_contains($out, 'too many certificates')) {
-            return "Batas rate Let's Encrypt tercapai untuk domain ini. Coba lagi dalam beberapa jam.";
+            return "Let's Encrypt rate limit reached for this domain. Try again in a few hours.";
         }
         if (str_contains($out, 'NXDOMAIN') || str_contains($out, 'Could not resolve')) {
-            return 'DNS domain ini belum resolve ke server. Arahkan A record dulu, lalu coba lagi.';
+            return 'This domain does not resolve to the server yet. Point the A record here first, then try again.';
         }
         if (str_contains($out, 'Timeout') || str_contains($out, 'timed out')) {
-            return "Server tidak menjawab Let's Encrypt. Pastikan port 80 terbuka ke internet.";
+            return "The server did not answer Let's Encrypt. Make sure port 80 is open to the internet.";
         }
         if (str_contains($out, 'unauthorized') || str_contains($out, 'Invalid response')) {
-            return "Domain ditolak challenge Let's Encrypt. Pastikan .well-known/acme-challenge tidak diblokir.";
+            return "Let's Encrypt rejected the challenge for this domain. Make sure .well-known/acme-challenge is not blocked.";
         }
         if (str_contains($out, 'sudo')) {
-            return 'Panel tidak punya hak menjalankan certbot. Periksa /etc/sudoers.d/fpanel.';
+            return 'The panel is not allowed to run certbot. Check /etc/sudoers.d/fpanel.';
         }
-        return 'Gagal terbit: ' . self::tail($out);
+        return 'Issuance failed: ' . self::tail($out);
     }
 
     private static function tail(string $out, int $lines = 2): string
     {
         $l = array_values(array_filter(array_map('trim', explode("\n", $out))));
-        return $l === [] ? 'tidak ada output' : implode(' / ', array_slice($l, -$lines));
+        return $l === [] ? 'no output' : implode(' / ', array_slice($l, -$lines));
     }
 }

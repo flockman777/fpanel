@@ -5,34 +5,34 @@ namespace Fpanel\Service;
 use Fpanel\Database\Connection;
 
 /**
- * Runtime app per domain: Node.js dan Python.
+ * App runtime per domain: Node.js and Python.
  *
- * Kedua runtime dijalankan sebagai proses sendiri di belakang nginx, bukan
- * lewat pool PHP: Node memakai `node entry`, Python memakai gunicorn. Satu
- * app = satu systemd unit (fpanel-app-<nama>.service), jadi start/stop/status
- * jelas dan otomatis hidup lagi setelah reboot.
+ * Both runtimes run as their own process behind nginx, rather than
+ * through a PHP pool: Node uses `node entry`, Python uses gunicorn. One
+ * app = one systemd unit (fpanel-app-<name>.service), so start/stop/status
+ * are unambiguous and the app comes back up automatically after a reboot.
  *
- * App tidak memakai port bebas sembarangan: port dialokasikan dari satu
- * range yang dicatat di tabel, supaya tidak bentrok dengan nginx/panel/MariaDB
- * dan supaya dua app tidak mendapat port yang sama.
+ * Apps do not grab arbitrary ports: ports are allocated from a single
+ * range recorded in the table, so they never clash with nginx/panel/MariaDB
+ * and two apps never get the same port.
  *
- * nginx untuk domain bertipe node/python mengarahkan ke port app tersebut
- * (Vhost::render), dengan dukungan WebSocket untuk Node.
+ * nginx for a node/python domain points at that app's port
+ * (Vhost::render), with WebSocket support for Node.
  */
 final class AppRuntime
 {
-    /** Range port untuk app. Jauh dari 80/443/8090/3306 dan tidak dipakai proses lain. */
+    /** Port range for apps. Far from 80/443/8090/3306 and not used by any other process. */
     public const PORT_MIN = 30000;
     public const PORT_MAX = 30999;
 
     // ------------------------------------------------------------------ listing
 
-    /** Semua app milik sebuah user. */
+    /** All apps owned by one user. */
     public static function listing(string $username): array
     {
         $uid = self::userId($username);
         if ($uid === 0) {
-            return ['ok' => false, 'error' => 'User tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'User not found.'];
         }
         $apps = Connection::all(
             'SELECT a.*, COALESCE(d.name, "") AS domain_name
@@ -50,62 +50,62 @@ final class AppRuntime
     // ------------------------------------------------------------------- create
 
     /**
-     * Daftarkan app baru.
+     * Register a new app.
      *
-     * Port dan nama proses dialokasikan di sini supaya tidak pernah sama.
+     * Port and process name are allocated here so they never collide.
      */
     public static function create(string $username, string $kind, string $name,
                                  string $domainName, string $root, string $entry): array
     {
         if (!in_array($kind, ['node', 'python'], true)) {
-            return ['ok' => false, 'error' => 'Jenis runtime harus node atau python.'];
+            return ['ok' => false, 'error' => 'Runtime kind must be node or python.'];
         }
         $name = strtolower(trim($name));
         if (!preg_match('/^[a-z0-9][a-z0-9_-]{1,30}$/', $name)) {
-            return ['ok' => false, 'error' => 'Nama app: huruf kecil, angka, _ atau -, 2-31 karakter.'];
+            return ['ok' => false, 'error' => 'App name: lowercase letters, digits, _ or -, 2-31 characters.'];
         }
 
         $uid = self::userId($username);
         if ($uid === 0) {
-            return ['ok' => false, 'error' => 'User tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'User not found.'];
         }
 
-        // Root harus berada di dalam home user, tidak boleh keluar lewat path.
+        // Root must be inside the user's home; it may not escape via the path.
         $root = '/' . trim($root, '/');
         $home = FileManager::home($username);
         if (!str_starts_with($root . '/', rtrim($home, '/') . '/')) {
-            return ['ok' => false, 'error' => 'Folder app harus berada di dalam home user.'];
+            return ['ok' => false, 'error' => 'The app folder must live inside the user home directory.'];
         }
         if (!is_dir($root)) {
-            return ['ok' => false, 'error' => 'Folder app tidak ditemukan: ' . $root];
+            return ['ok' => false, 'error' => 'App folder not found: ' . $root];
         }
         $entryFile = $root . '/' . ltrim($entry, '/');
         if (!self::safeRelative($entry) || !is_file($entryFile)) {
-            return ['ok' => false, 'error' => 'File entry tidak ditemukan: ' . $entry];
+            return ['ok' => false, 'error' => 'Entry file not found: ' . $entry];
         }
 
         $dup = Connection::value('SELECT COUNT(*) FROM runtime_apps WHERE user_id = :u AND name = :n',
             ['u' => $uid, 'n' => $name]);
         if ((int)$dup > 0) {
-            return ['ok' => false, 'error' => 'App ' . $name . ' sudah ada.'];
+            return ['ok' => false, 'error' => 'App ' . $name . ' already exists.'];
         }
 
-        // Kuota app dari paket user.
-        // Hanya kuota yang SESUAI dengan jenis app yang dicek. Kalau keduanya
-        // dicek tanpa filter, satu app Node akan membuat app Python ditolak
-        // dengan pesan "Kuota app Node penuh".
+        // App quota from the user's package.
+        // Only the quota MATCHING the app kind is checked. If both were
+        // checked without filtering, one Node app would get Python apps
+        // rejected with the message "Node app quota is full".
         $q = self::quota($username);
         if ($kind === 'node') {
             if ($q['max_node'] > 0 && $q['used_node'] >= $q['max_node']) {
-                return ['ok' => false, 'error' => "Kuota app Node penuh ({$q['used_node']}/{$q['max_node']})."];
+                return ['ok' => false, 'error' => "Node app quota is full ({$q['used_node']}/{$q['max_node']})."];
             }
         } elseif ($q['max_python'] > 0 && $q['used_python'] >= $q['max_python']) {
-            return ['ok' => false, 'error' => "Kuota app Python penuh ({$q['used_python']}/{$q['max_python']})."];
+            return ['ok' => false, 'error' => "Python app quota is full ({$q['used_python']}/{$q['max_python']})."];
         }
 
         $port = self::allocatePort();
         if ($port === null) {
-            return ['ok' => false, 'error' => 'Tidak ada port bebas untuk app.'];
+            return ['ok' => false, 'error' => 'No free port available for the app.'];
         }
 
         $domainId = null;
@@ -114,7 +114,7 @@ final class AppRuntime
                 'SELECT id FROM domains WHERE name = :d AND user_id = :u',
                 ['d' => strtolower($domainName), 'u' => $uid]);
             if ($domainId === 0) {
-                return ['ok' => false, 'error' => 'Domain tidak ditemukan di akun Anda.'];
+                return ['ok' => false, 'error' => 'Domain not found in your account.'];
             }
         }
 
@@ -132,14 +132,14 @@ final class AppRuntime
             'created_at' => gmdate('c'),
         ]);
 
-        // Daftarkan juga ke process manager supaya app langsung hidup.
+        // Also register it with the process manager so the app starts right away.
         $started = self::start($username, $id);
         if (!$started['ok']) {
-            // Buang unit systemd yang sudah dibuat helper. Kalau tidak,
-            // unit itu tetap jalan padahal tidak ada app di panel.
+            // Drop the systemd unit the helper already created. Otherwise
+            // that unit keeps running even though there is no app in the panel.
             self::helper(['remove', $name]);
             Connection::run('DELETE FROM runtime_apps WHERE id = :i', ['i' => $id]);
-            return ['ok' => false, 'error' => 'App gagal dijalankan: ' . $started['error']];
+            return ['ok' => false, 'error' => 'The app failed to start: ' . $started['error']];
         }
         return ['ok' => true, 'error' => null, 'id' => $id, 'port' => $port,
                 'name' => $name, 'kind' => $kind];
@@ -147,12 +147,12 @@ final class AppRuntime
 
     // -------------------------------------------------------------- process mgmt
 
-    /** Jalankan app (systemd unit). */
+    /** Start the app (systemd unit). */
     public static function start(string $username, int $appId): array
     {
         $app = self::owned($username, $appId);
         if ($app === null) {
-            return ['ok' => false, 'error' => 'App tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'App not found.'];
         }
         return self::startApp($app);
     }
@@ -161,7 +161,7 @@ final class AppRuntime
     {
         $app = self::owned($username, $appId);
         if ($app === null) {
-            return ['ok' => false, 'error' => 'App tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'App not found.'];
         }
         return self::actionApp($app, 'stop');
     }
@@ -170,28 +170,28 @@ final class AppRuntime
     {
         $app = self::owned($username, $appId);
         if ($app === null) {
-            return ['ok' => false, 'error' => 'App tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'App not found.'];
         }
         return self::actionApp($app, 'restart');
     }
 
-    /** Log app (baris terakhir). */
+    /** App log (last lines). */
     public static function logs(string $username, int $appId, int $lines = 60): array
     {
         $app = self::owned($username, $appId);
         if ($app === null) {
-            return ['ok' => false, 'error' => 'App tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'App not found.'];
         }
         $lines = max(5, min(500, $lines));
         $r = self::helper(['logs', (string)$app['name'], (string)$lines]);
-        return ['ok' => true, 'error' => null, 'log' => $r['out'] ?: '(belum ada log)'];
+        return ['ok' => true, 'error' => null, 'log' => $r['out'] ?: '(no logs yet)'];
     }
 
     public static function delete(string $username, int $appId): array
     {
         $app = self::owned($username, $appId);
         if ($app === null) {
-            return ['ok' => false, 'error' => 'App tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'App not found.'];
         }
         self::helper(['remove', (string)$app['name']]);
         Connection::run('DELETE FROM runtime_apps WHERE id = :i', ['i' => $appId]);
@@ -200,7 +200,7 @@ final class AppRuntime
 
     // -------------------------------------------------------------- diagnostics
 
-    /** Versi runtime yang terpasang, untuk ditampilkan di UI. */
+    /** Installed runtime versions, for display in the UI. */
     public static function nodeVersion(): string
     {
         $v = trim((string)self::exec(['node', '--version'])['out']);
@@ -231,7 +231,7 @@ final class AppRuntime
     }
 
 
-    /** Kuota app milik user, dipisah per jenis runtime. */
+    /** The user's app quota, split per runtime kind. */
     public static function quota(string $username): array
     {
         $uid = self::userId($username);
@@ -240,16 +240,16 @@ final class AppRuntime
               WHERE u.id = :u', ['u' => $uid]);
         $maxNode = (int)($row['max_node_apps'] ?? 0);
         $used = Connection::all('SELECT kind FROM runtime_apps WHERE user_id = :u', ['u' => $uid]);
-        // Node dan Python punya kuota TERPISAH. Kalau keduanya memakai
-        // max_node_apps yang sama, satu app Node akan memakan kuota Python
-        // padahal paketnya tidak mengizinkan itu.
+        // Node and Python have SEPARATE quotas. If both shared the same
+        // max_node_apps, one Node app would eat into the Python quota
+        // even though the package does not allow that.
         $row2 = Connection::one(
             'SELECT p.max_python_apps FROM users u LEFT JOIN packages p ON p.id = u.package_id
               WHERE u.id = :u', ['u' => $uid]);
         $maxPython = (int)($row2['max_python_apps'] ?? 0);
         if ($maxPython === 0) {
-            // Instalasi lama belum punya kolom ini: pakai kuota Node supaya
-            // app Python tidak terkunci total tanpa sebab.
+            // Older installs don't have this column yet: fall back to the Node
+            // quota so Python apps are not locked out entirely for no reason.
             $maxPython = $maxNode;
         }
         return [
@@ -270,7 +270,7 @@ final class AppRuntime
             ['i' => $appId, 'u' => $uid]);
     }
 
-    /** Path relatif aman (tanpa '..', tanpa path absolut). */
+    /** Safe relative path (no '..', no absolute path). */
     private static function safeRelative(string $p): bool
     {
         return $p !== ''
@@ -283,7 +283,7 @@ final class AppRuntime
     {
         $used = array_map('intval', array_column(
             Connection::all('SELECT port FROM runtime_apps'), 'port'));
-        // Port yang benar-benar dipakai proses lain juga harus dihindari.
+        // Ports actually in use by other processes must be avoided as well.
         $busy = self::listeningPorts();
         for ($p = self::PORT_MIN; $p <= self::PORT_MAX; $p++) {
             if (!in_array($p, $used, true) && !in_array($p, $busy, true)) {
@@ -293,7 +293,7 @@ final class AppRuntime
         return null;
     }
 
-    /** Port TCP yang sedang listening, dibaca dari /proc (tanpa depending ke tool). */
+    /** TCP ports currently listening, read from /proc (without depending on a tool). */
     private static function listeningPorts(): array
     {
         $out = [];
@@ -304,7 +304,7 @@ final class AppRuntime
             }
             while (($line = fgets($fh)) !== false) {
                 $parts = preg_split('/\s+/', trim($line)) ?: [];
-                // Kolom 3 = state; 0A = LISTEN
+                // Column 3 = state; 0A = LISTEN
                 if (($parts[3] ?? '') !== '0A') {
                     continue;
                 }
@@ -323,21 +323,21 @@ final class AppRuntime
     private const HELPER = '/usr/local/sbin/fpanel-app';
 
     /**
-     * Supervisor memakai satu systemd unit per app (fpanel-app-<nama>.service).
+     * Supervisor uses one systemd unit per app (fpanel-app-<name>.service).
      *
-     * Semua operasi butuh root, jadi lewat helper. Argumen sudah divalidasi
-     * di sisi PHP (nama, root, entry) dan diulang lagi di helper.
+     * Every operation needs root, so it goes through the helper. Arguments are
+     * already validated on the PHP side (name, root, entry) and again in the helper.
      */
     private static function helper(array $args): array
     {
         if (!is_executable(self::HELPER)) {
-            return ['ok' => false, 'error' => 'Helper app runtime tidak terpasang di server.'];
+            return ['ok' => false, 'error' => 'The app runtime helper is not installed on the server.'];
         }
         $r = self::exec(array_merge(['sudo', '-n', self::HELPER], $args));
         $out = trim($r['out']);
         $err = trim($r['err']);
         if ($r['code'] !== 0) {
-            $msg = preg_replace('/^ERR:\s*/', '', $err) ?: ($out ?: 'Operasi app gagal.');
+            $msg = preg_replace('/^ERR:\s*/', '', $err) ?: ($out ?: 'The app operation failed.');
             return ['ok' => false, 'error' => trim($msg)];
         }
         return ['ok' => true, 'error' => null, 'out' => $out];
@@ -355,7 +355,7 @@ final class AppRuntime
         return self::helper([$action, (string)$app['name']]);
     }
 
-    /** Port app untuk sebuah domain, atau null kalau domain tidak punya app. */
+    /** The app port for a domain, or null if the domain has no app. */
     public static function portForDomain(int $domainId): ?int
     {
         if ($domainId <= 0) {
@@ -368,17 +368,17 @@ final class AppRuntime
     }
 
     /**
-     * Jalankan perintah tanpa shell.
+     * Run a command without a shell.
      *
-     * proc_open dengan array argumen: tidak ada interpolasi shell, jadi nilai
-     * yang datang dari user tidak bisa disisipkan sebagai perintah lain.
+     * proc_open with an argument array: there is no shell interpolation, so a
+     * value coming from the user cannot be injected as another command.
      */
     private static function exec(array $cmd): array
     {
         $pipes = [];
         $proc  = @proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
         if (!is_resource($proc)) {
-            return ['code' => 127, 'out' => '', 'err' => 'gagal menjalankan perintah'];
+            return ['code' => 127, 'out' => '', 'err' => 'failed to run the command'];
         }
         $out = stream_get_contents($pipes[1]);
         $err = stream_get_contents($pipes[2]);
@@ -389,7 +389,7 @@ final class AppRuntime
 
     // ---------------------------------------------------------------- status/url
 
-    /** Status sebenarnya dari systemd, bukan kolom di DB. */
+    /** Actual status from systemd, not the column in the DB. */
     private static function liveStatus(array $app): string
     {
         $r = self::helper(['status', (string)$app['name']]);

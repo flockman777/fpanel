@@ -5,9 +5,9 @@ namespace Fpanel\Service;
 use Fpanel\Database\Connection;
 
 /**
- * Pencarian global panel: mencocokkan fitur (katalog), domain, dan
- * database milik user yang sedang login. Hasil dikirim ke topbar
- * sebagai dropdown. Tidak ada data user lain yang bisa bocor.
+ * Panel global search: matches features (catalog), domains, and the
+ * database of the user who is signed in. Results are sent to the topbar
+ * as a dropdown. No other user's data can leak.
  */
 final class Search
 {

@@ -1,11 +1,11 @@
 <?php
 /**
- * App runtime per domain: Node.js dan Python.
+ * Per-domain runtime apps: Node.js and Python.
  *
  * @var string $csrf
  * @var array $me, array $s
- * @var array $data   hasil AppRuntime::listing()
- * @var array $ready  hasil AppRuntime::managersReady()
+ * @var array $data   result of AppRuntime::listing()
+ * @var array $ready  result of AppRuntime::managersReady()
  * @var array $quota
  * @var string|null $error, string|null $ok, string|null $log, string|null $logFor
  */
@@ -16,7 +16,7 @@ $data  = (array)($data ?? []);
 $apps  = (array)($data['apps'] ?? []);
 $ready = (array)($ready ?? []);
 $dOk   = !empty($data['ok']);
-$err   = ($dOk ? '' : (string)($data['error'] ?? 'Gagal memuat daftar app.'));
+$err   = ($dOk ? '' : (string)($data['error'] ?? 'Failed to load the app list.'));
 ?>
 <?php require __DIR__ . '/layout/head.php'; ?>
 <?php require __DIR__ . '/layout/topbar.php'; ?>
@@ -34,10 +34,10 @@ $err   = ($dOk ? '' : (string)($data['error'] ?? 'Gagal memuat daftar app.'));
         <p class="mt-0.5 text-sm text-slate-500">
           Node.js <strong><?= $e((string)($data['node'] ?? '-')) ?></strong> &middot;
           Python <strong><?= $e((string)($data['python'] ?? '-')) ?></strong>
-          &middot; <strong><?= $e(count($apps)) ?></strong> app berjalan di systemd
+          &middot; <strong><?= $e(count($apps)) ?></strong> app(s) running under systemd
         </p>
       </div>
-      <a href="/apps" class="btn-icon" title="Muat ulang"><i data-lucide="refresh-cw" class="h-4 w-4"></i></a>
+      <a href="/apps" class="btn-icon" title="Reload"><i data-lucide="refresh-cw" class="h-4 w-4"></i></a>
     </div>
 
     <?php foreach ([['error', 'rose', 'alert-circle'], ['ok', 'emerald', 'check-circle-2']] as [$key, $tone, $icon]): ?>
@@ -52,7 +52,7 @@ $err   = ($dOk ? '' : (string)($data['error'] ?? 'Gagal memuat daftar app.'));
     <?php if (empty($ready['helper'])): ?>
       <div class="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
         <i data-lucide="alert-triangle" class="mt-0.5 h-4 w-4 shrink-0"></i>
-        <span>Helper app runtime tidak terpasang, app tidak bisa dibuat atau dijalankan.</span>
+        <span>The app runtime helper is not installed, so apps cannot be created or started.</span>
       </div>
     <?php endif; ?>
 
@@ -61,7 +61,7 @@ $err   = ($dOk ? '' : (string)($data['error'] ?? 'Gagal memuat daftar app.'));
         <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
           <i data-lucide="scroll-text" class="h-4 w-4 text-slate-500"></i>
           <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">Log &mdash; <?= $e((string)($logFor ?? '')) ?></span>
-          <a href="/apps" class="btn-icon ml-auto" title="Tutup"><i data-lucide="x" class="h-4 w-4"></i></a>
+          <a href="/apps" class="btn-icon ml-auto" title="Close"><i data-lucide="x" class="h-4 w-4"></i></a>
         </div>
         <pre class="max-h-80 overflow-auto px-4 py-3 text-[12px] leading-relaxed text-slate-700 dark:text-slate-300"><?= $e((string)$log) ?></pre>
       </section>
@@ -74,12 +74,12 @@ $err   = ($dOk ? '' : (string)($data['error'] ?? 'Gagal memuat daftar app.'));
       </section>
     <?php else: ?>
 
-    <!-- Daftar app -->
+    <!-- App list -->
     <?php if ($apps === []): ?>
       <section class="card p-10 text-center">
         <i data-lucide="box" class="mx-auto h-8 w-8 text-slate-300"></i>
-        <p class="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">Belum ada app</p>
-        <p class="mt-1 text-sm text-slate-500">Buat domain bertipe Node.js atau Python dulu, lalu daftarkan app-nya di bawah.</p>
+        <p class="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">No apps yet</p>
+        <p class="mt-1 text-sm text-slate-500">Create a Node.js or Python domain first, then register its app below.</p>
       </section>
     <?php else: ?>
       <div class="space-y-3">
@@ -119,7 +119,7 @@ $err   = ($dOk ? '' : (string)($data['error'] ?? 'Gagal memuat daftar app.'));
                 <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
                 <input type="hidden" name="app" value="<?= $e($aid) ?>">
                 <input type="hidden" name="act" value="<?= $on ? 'stop' : 'start' ?>">
-                <button class="btn-icon" title="<?= $on ? 'Hentikan app' : 'Jalankan app' ?>">
+                <button class="btn-icon" title="<?= $on ? 'Stop app' : 'Start app' ?>">
                   <i data-lucide="<?= $on ? 'square' : 'play' ?>" class="h-4 w-4"></i>
                 </button>
               </form>
@@ -132,13 +132,13 @@ $err   = ($dOk ? '' : (string)($data['error'] ?? 'Gagal memuat daftar app.'));
               <form method="post" action="/apps/logs" class="shrink-0">
                 <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
                 <input type="hidden" name="app" value="<?= $e($aid) ?>">
-                <button class="btn-icon" title="Lihat log"><i data-lucide="scroll-text" class="h-4 w-4"></i></button>
+                <button class="btn-icon" title="View log"><i data-lucide="scroll-text" class="h-4 w-4"></i></button>
               </form>
               <form method="post" action="/apps/delete" class="shrink-0"
-                    onsubmit="return confirm('Hapus app <?= $e(addslashes((string)$a['name'])) ?>? File di folder app tidak dihapus.')">
+                    onsubmit="return confirm('Remove app <?= $e(addslashes((string)$a['name'])) ?>? Files in the app folder are not deleted.')">
                 <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
                 <input type="hidden" name="app" value="<?= $e($aid) ?>">
-                <button class="btn-icon hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10" title="Hapus app dari panel">
+                <button class="btn-icon hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10" title="Remove app from the panel">
                   <i data-lucide="trash-2" class="h-4 w-4"></i>
                 </button>
               </form>
@@ -149,20 +149,20 @@ $err   = ($dOk ? '' : (string)($data['error'] ?? 'Gagal memuat daftar app.'));
       </div>
     <?php endif; ?>
 
-    <!-- Form tambah app -->
+    <!-- Add app form -->
     <?php
-    // Domain tidak lagi punya tipe 'node'/'python'. Semua domain usable bisa
-    // jadi host app runtime; yang menentukan Node atau Python adalah kolom
-    // runtime di form di bawah, bukan tipe domain.
+    // Domains no longer have a 'node'/'python' type. Every usable domain can
+    // host a runtime app; what makes it Node or Python is the runtime
+    // column in the form below, not the domain type.
     $usable = array_values(array_filter((array)($domains ?? []),
         static fn (array $d): bool => trim((string)($d['name'] ?? '')) !== ''));
     ?>
     <?php if ($usable !== []): ?>
     <section class="card p-4">
-      <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Daftarkan app</h2>
+      <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Register app</h2>
         <p class="mt-0.5 mb-3 text-xs text-slate-500">
-          App runtime menempel pada domain yang dipilih; domain itu tetap domain biasa di
-          halaman Domains. Nginx mengarahkan request ke app selama app hidup.
+          The app runtime attaches to the selected domain; it stays a normal domain on
+          the Domains page. Nginx routes requests to the app while it runs.
         </p>
       <form method="post" action="/apps/create" class="flex flex-wrap items-end gap-2">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
@@ -175,24 +175,24 @@ $err   = ($dOk ? '' : (string)($data['error'] ?? 'Gagal memuat daftar app.'));
           </select>
         </label>
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama app</span>
-          <input name="name" placeholder="toko_api" pattern="[a-z0-9][a-z0-9_-]{1,30}" maxlength="31"
+          <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">App name</span>
+          <input name="name" placeholder="shop_api" pattern="[a-z0-9][a-z0-9_-]{1,30}" maxlength="31"
                  class="input h-9 w-36 text-sm" required>
         </label>
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Folder (relatif ke docroot)</span>
+          <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Folder (relative to the docroot)</span>
           <input name="root" placeholder="app" value="app" class="input h-9 w-40 text-sm" required>
         </label>
         <label class="block">
           <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Entry</span>
           <input name="entry" placeholder="server.js" class="input h-9 w-36 text-sm" required>
         </label>
-        <button class="btn-primary h-9 px-3 text-sm"><i data-lucide="plus" class="h-4 w-4"></i><span>Daftarkan</span></button>
+        <button class="btn-primary h-9 px-3 text-sm"><i data-lucide="plus" class="h-4 w-4"></i><span>Register</span></button>
       </form>
       <p class="mt-2 text-xs text-slate-500">
-        Folder app harus sudah ada di docroot domain. Untuk Node.js isi
-        <code>package.json</code> lalu <code>npm install</code> sebelum mendaftarkan.
-        Port dialokasikan otomatis oleh panel.
+        The app folder must already exist in the domain docroot. For Node.js, add a
+        <code>package.json</code> and run <code>npm install</code> before registering.
+        The port is allocated automatically by the panel.
       </p>
     </section>
     <?php endif; ?>

@@ -1,4 +1,4 @@
-# FPanel: administrasi extension PHP lewat helper root.
+# FPanel: PHP extension administration via the root helper.
 www-data ALL=(root) NOPASSWD: /usr/local/sbin/fpanel-php ping, \
     /usr/local/sbin/fpanel-php list *, \
     /usr/local/sbin/fpanel-php matrix, \

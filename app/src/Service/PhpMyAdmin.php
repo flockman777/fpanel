@@ -5,48 +5,48 @@ namespace Fpanel\Service;
 use Fpanel\Database\Connection;
 
 /**
- * phpMyAdmin per-database dengan token sekali pakai.
+ * Per-database phpMyAdmin with one-time tokens.
  *
- * Cara kerjanya:
- *   1. User klik "phpMyAdmin" pada salah satu user database.
- *   2. Service membuat token acak, lalu menulis file konfigurasi phpMyAdmin
- *      ke /etc/phpmyadmin/conf.d/<token>.php yang berisi kredensial DB user itu.
- *   3. User diarahkan ke /pma/<token>/index.php.
- *   4. File konfigurasi dihapus otomatis setelah TTL.
+ * How it works:
+ *   1. The user clicks "phpMyAdmin" on one of their database users.
+ *   2. The service generates a random token, then writes a phpMyAdmin config
+ *      file to /etc/phpmyadmin/conf.d/<token>.php holding that DB user's credentials.
+ *   3. The user is redirected to /pma/<token>/index.php.
+ *   4. The config file is deleted automatically after the TTL.
  *
- * Dua lapis pengaman, keduanya wajib:
- *   - nginx hanya meneruskan request yang tokennya punya file konfigurasi.
- *     Tanpa file itu, jawabannya 404 walau tokennya benar.
- *   - file konfigurasi hanya berlaku bila REQUEST_URI memang memuat tokennya
- *     (dicek di dalam file itu sendiri). Jadi kalau file somehow tertinggal,
- *     file tersebut tidak memberi akses ke request lain.
+ * Two layers of protection, both required:
+ *   - nginx only forwards requests whose token has a config file.
+ *     Without that file the answer is 404, even with a valid token.
+ *   - the config file only applies when REQUEST_URI really contains its token
+ *     (checked inside the file itself). So if a file is somehow left behind,
+ *     it does not grant access to any other request.
  *
- * Password di sini adalah password user database milik user tersebut, yang
- * sudah dia sendiri yang buat di panel. Tidak ada privilege escalation:
- * hak akses ke satu database, dan hanya_db dikunci agar tidak bisa melihat
- * database lain di server yang sama.
+ * The password here belongs to that user's own database user, one they
+ * created themselves in the panel. There is no privilege escalation:
+ * access is limited to a single database, and only_db is locked so other
+ * databases on the same server cannot be seen.
  */
 final class PhpMyAdmin
 {
-    /** phpMyAdmin memuat semua file *.php di direktori ini lewat glob. */
+    /** phpMyAdmin loads every *.php file in this directory through glob. */
     private const CONF_DIR = '/etc/phpmyadmin/conf.d';
 
     public const URL_PREFIX = '/pma';
 
-    /** Lama token berlaku. Cukup untuk satu sesi kerja. */
+    /** How long a token lasts. Enough for one working session. */
     public const TTL_MINUTES = 30;
 
-    /** Server index phpMyAdmin yang dipakai. Dipaksa 1 supaya tidak bisa pindah. */
+    /** phpMyAdmin server index in use. Forced to 1 so it cannot shift. */
     private const SERVER_INDEX = 1;
 
     /**
-     * Buat token + file konfigurasi, kembalikan URL tujuan.
+     * Create a token + config file, return the target URL.
      */
     public static function launch(string $username, int $dbId, int $dbUserId): array
     {
         $row = self::owned($username, $dbId, $dbUserId);
         if ($row === null) {
-            return ['ok' => false, 'error' => 'Database atau user database tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Database or database user not found.'];
         }
 
         $cred = MariaDb::reveal($username, $dbId, $dbUserId);
@@ -56,24 +56,24 @@ final class PhpMyAdmin
 
         $dir = self::CONF_DIR;
         if (!is_dir($dir) || !is_writable($dir)) {
-            return ['ok' => false, 'error' => 'Direktori konfigurasi phpMyAdmin tidak tersedia.'];
+            return ['ok' => false, 'error' => 'The phpMyAdmin config directory is not available.'];
         }
 
-        // Bersihkan token kedaluwarsa dulu, supaya direktori tidak menumpuk.
+        // Clear expired tokens first so the directory does not pile up.
         self::sweep();
 
-        $token = bin2hex(random_bytes(16));          // 128 bit, tebak tidak mungkin
+        $token = bin2hex(random_bytes(16));          // 128 bit, impossible to guess
         $file  = $dir . '/' . $token . '.php';
 
         $conf = self::renderConfig($token, (string)$row['phys_user'],
             (string)$cred['password'], (string)$row['phys_db']);
         if (@file_put_contents($file, $conf, LOCK_EX) === false) {
-            return ['ok' => false, 'error' => 'Gagal menulis konfigurasi phpMyAdmin.'];
+            return ['ok' => false, 'error' => 'Failed to write the phpMyAdmin config.'];
         }
         @chmod($file, 0640);
 
-        // Landung di halaman daftar database. ?server=1 tanpa route
-        // menghasilkan halaman kosong di phpMyAdmin 5.x.
+        // Land on the database list page. ?server=1 without a route
+        // produces a blank page in phpMyAdmin 5.x.
         $url = self::URL_PREFIX . '/' . $token
              . '/index.php?route=/server/databases&server=' . self::SERVER_INDEX;
         return ['ok' => true, 'error' => null, 'url' => $url, 'token' => $token,
@@ -81,7 +81,7 @@ final class PhpMyAdmin
     }
 
     /**
-     * Hapus file token yang sudah lewat TTL.
+     * Delete token files that are past their TTL.
      */
     public static function sweep(?int $ttlMinutes = null): int
     {
@@ -108,7 +108,7 @@ final class PhpMyAdmin
             && is_dir('/usr/share/phpmyadmin');
     }
 
-    /** Jumlah token yang masih hidup (untuk display/diagnostic). */
+    /** Number of live tokens (for display/diagnostics). */
     public static function activeTokens(): int
     {
         $files = glob(self::CONF_DIR . '/*.php') ?: [];
@@ -118,8 +118,8 @@ final class PhpMyAdmin
     // ------------------------------------------------------------------ internal
 
     /**
-     * Baris database + user yang dimiliki user tersebut, dengan nama fisik
-     * ikut diambil. Null kalau bukan miliknya (IDOR).
+     * The database + user rows owned by this user, with physical names
+     * included. Null when they do not own them (IDOR).
      */
     private static function owned(string $username, int $dbId, int $dbUserId): ?array
     {
@@ -146,11 +146,11 @@ final class PhpMyAdmin
     }
 
     /**
-     * Isi file konfigurasi phpMyAdmin.
+     * Contents of the phpMyAdmin config file.
      *
-     * Perhatikan bagian awal: file ini hanya berlaku untuk request yang
-     * path-nya memuat token yang sama. Tanpa itu, file yang tertinggal
-     * akan tetap memberi kredensial ke semua orang.
+     * Note the opening section: this file only applies to requests whose
+     * path contains the same token. Without it, a leftover file would hand
+     * those credentials to everyone.
      */
     private static function renderConfig(string $token, string $user, string $pass, string $db): string
     {
@@ -159,9 +159,9 @@ final class PhpMyAdmin
         $pw = addslashes($pass);
 
         $php = "<?php\n";
-        $php .= "// FPanel: sesi phpMyAdmin sekali pakai, token {$tk}.\n";
-        $php .= "// Berkas ini dihapus otomatis oleh PhpMyAdmin::sweep().\n";
-        $php .= "// Hanya berlaku untuk request yang path-nya memuat token ini.\n";
+        $php .= "// FPanel: one-time phpMyAdmin session, token {$tk}.\n";
+        $php .= "// This file is deleted automatically by PhpMyAdmin::sweep().\n";
+        $php .= "// Only applies to requests whose path contains this token.\n";
         $php .= "\$__fpUri = (string) (\$_SERVER['REQUEST_URI'] ?? '');\n";
         $php .= "if (!preg_match('#/pma/([a-f0-9]{32})#', \$__fpUri, \$__fpM)\n";
         $php .= "    || !hash_equals('{$tk}', \$__fpM[1])) {\n";
@@ -172,13 +172,13 @@ final class PhpMyAdmin
         $php .= "\$cfg['Servers'][{$i}]['host']           = 'localhost';\n";
         $php .= "\$cfg['Servers'][{$i}]['user']           = '{$user}';\n";
         $php .= "\$cfg['Servers'][{$i}]['password']       = '{$pw}';\n";
-        // Hanya ini yang membatasi tampilan: user DB-nya sendiri sudah tidak
-        // punya hak atas database lain, dan only_db memastikan daftar yang
-        // ditampilkan juga cuma satu.
+        // This is the only thing limiting the view: the DB user itself has no
+        // rights to other databases, and only_db keeps the shown list to just
+        // one entry.
         $php .= "\$cfg['Servers'][{$i}]['only_db']        = '{$db}';\n";
         $php .= "\$cfg['Servers'][{$i}]['AllowNoPassword'] = false;\n";
-        // Config storage bawaan Debian tidak dipakai: tabel pma__* bukan
-        // milik user ini, dan memakainya berarti panel ikut mengubahnya.
+        // Debian's default config storage is not used: the pma__* tables are not
+        // this user's, and using them would mean the panel modifies them too.
         $php .= "\$cfg['Servers'][{$i}]['pmadb']          = null;\n";
         $php .= "\$cfg['Servers'][{$i}]['controluser']    = null;\n";
         $php .= "\$cfg['Servers'][{$i}]['controlpass']    = null;\n";

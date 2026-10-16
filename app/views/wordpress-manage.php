@@ -1,10 +1,10 @@
 <?php
 /**
- * Kelola satu instalasi WordPress.
+ * Manage a single WordPress installation.
  *
  * @var string $csrf
  * @var array $me, array $s
- * @var array $ov ringkasan dari Wp::overview()
+ * @var array $ov summary from Wp::overview()
  */
 $e = static fn (mixed $v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
@@ -22,7 +22,7 @@ $hasUpdates = ((int)($up['core'] ?? 0)) + ((int)($up['plugins'] ?? 0)) + ((int)(
   <div class="mx-auto max-w-4xl space-y-4">
 
     <div class="flex flex-wrap items-start gap-3">
-      <a href="/wordpress" class="btn-icon mt-1" title="Kembali ke WordPress Manager">
+      <a href="/wordpress" class="btn-icon mt-1" title="Back to WordPress Manager">
         <i data-lucide="arrow-left" class="h-4 w-4"></i>
       </a>
       <span class="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl ring-1 ring-slate-900/5 dark:ring-white/10">
@@ -35,27 +35,27 @@ $hasUpdates = ((int)($up['core'] ?? 0)) + ((int)($up['plugins'] ?? 0)) + ((int)(
         <p class="mt-0.5 text-sm text-slate-500">
           Core <span class="font-mono"><?= $e((string)($ov['core'] ?? '-')) ?></span>
           <?php if ((string)($ov['running_core'] ?? '-') !== '-'): ?>
-            &middot;dilaporkan instalasi <span class="font-mono"><?= $e((string)$ov['running_core']) ?></span>
+            &middot;reported installation <span class="font-mono"><?= $e((string)$ov['running_core']) ?></span>
           <?php endif; ?>
-          &middot; staging <span class="font-mono"><?= (int)($ov['is_staging'] ?? 0) === 1 ? 'ya' : 'tidak' ?></span>
+          &middot; staging <span class="font-mono"><?= (int)($ov['is_staging'] ?? 0) === 1 ? 'yes' : 'no' ?></span>
         </p>
       </div>
       <a href="https://<?= $e($dom) ?>/wp-admin/" target="_blank" rel="noopener"
          class="btn-secondary h-9 px-3 text-sm">
-        <i data-lucide="layout-dashboard" class="h-4 w-4"></i><span>Buka wp-admin</span>
+        <i data-lucide="layout-dashboard" class="h-4 w-4"></i><span>Open wp-admin</span>
       </a>
     </div>
 
     <!-- ===== status update ===== -->
     <section class="card p-4">
-      <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Pembaruan</h2>
+      <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Updates</h2>
       <?php if (!$hasUpdates): ?>
         <p class="mt-1.5 flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
           <i data-lucide="check-circle-2" class="h-4 w-4"></i>
-          Semua sudah terbaru
+          Everything is up to date
         </p>
         <p class="mt-0.5 text-xs text-slate-500">
-          Core, plugin, dan tema tidak punya versi baru. Pemeriksaan ini memakai WP-CLI.
+          Core, plugins, and themes have no new versions. This check uses WP-CLI.
         </p>
       <?php else: ?>
         <ul class="mt-3 grid gap-2 sm:grid-cols-3">
@@ -68,7 +68,7 @@ $hasUpdates = ((int)($up['core'] ?? 0)) + ((int)($up['plugins'] ?? 0)) + ((int)(
               <span class="text-sm font-medium text-slate-800 dark:text-slate-100"><?= $e($label) ?></span>
               <span class="text-xs font-medium <?= $n > 0
                   ? 'text-amber-700 dark:text-amber-300'
-                  : 'text-slate-500' ?>"><?= $n > 0 ? $n . ' perlu update' : 'terbaru' ?></span>
+                  : 'text-slate-500' ?>"><?= $n > 0 ? $n . ' need update' : 'up to date' ?></span>
             </li>
           <?php endforeach; ?>
         </ul>
@@ -86,10 +86,10 @@ $hasUpdates = ((int)($up['core'] ?? 0)) + ((int)($up['plugins'] ?? 0)) + ((int)(
             </label>
           <?php endforeach; ?>
           <button class="btn-primary h-9 px-3 text-sm"
-                  onclick="return confirm('Perbarui sekarang? Situs bisa tidak tersedia sesaat.')">
-            <i data-lucide="refresh-cw" class="h-4 w-4"></i><span>Perbarui</span>
+                  onclick="return confirm('Update now? The site may be briefly unavailable.')">
+            <i data-lucide="refresh-cw" class="h-4 w-4"></i><span>Update</span>
           </button>
-          <span class="text-xs text-slate-500">Berjalan di luar request, jadi halaman ini disegarkan sendiri.</span>
+          <span class="text-xs text-slate-500">Runs outside the request, so this page refreshes itself.</span>
         </form>
       <?php endif; ?>
     </section>
@@ -102,10 +102,10 @@ $hasUpdates = ((int)($up['core'] ?? 0)) + ((int)($up['plugins'] ?? 0)) + ((int)(
       <dl class="divide-y divide-slate-100 text-sm dark:divide-slate-800">
         <?php foreach ([
           ['Domain', $dom],
-          ['Versi core terpasang', (string)($ov['core'] ?? '-')],
-          ['Versi core terbaru', (string)($ov['latest'] ?? '-')],
+          ['Installed core version', (string)($ov['core'] ?? '-')],
+          ['Latest core version', (string)($ov['latest'] ?? '-')],
           ['Docroot', (string)($ov['docroot'] ?? '-')],
-          ['Dibuat', (string)($ov['created_at'] ?? '-')],
+          ['Created', (string)($ov['created_at'] ?? '-')],
         ] as [$k, $v]): ?>
           <div class="flex flex-wrap items-baseline gap-2 px-4 py-2.5">
             <dt class="w-44 shrink-0 text-xs font-medium text-slate-500"><?= $e($k) ?></dt>
@@ -115,12 +115,12 @@ $hasUpdates = ((int)($up['core'] ?? 0)) + ((int)($up['plugins'] ?? 0)) + ((int)(
       </dl>
     </section>
 
-    <!-- ===== tindakan lain ===== -->
+    <!-- ===== other actions ===== -->
     <section class="card p-4">
-      <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Tindakan lain</h2>
+      <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Other actions</h2>
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <a href="https://<?= $e($dom) ?>/" target="_blank" rel="noopener" class="btn-secondary h-9 px-3 text-sm">
-          <i data-lucide="external-link" class="h-4 w-4"></i><span>Buka situs</span>
+          <i data-lucide="external-link" class="h-4 w-4"></i><span>Open site</span>
         </a>
         <form method="post" action="/wordpress/staging" class="inline">
           <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
@@ -131,11 +131,11 @@ $hasUpdates = ((int)($up['core'] ?? 0)) + ((int)($up['plugins'] ?? 0)) + ((int)(
           </button>
         </form>
         <form method="post" action="/wordpress/forget" class="inline"
-              onsubmit="return confirm('Hapus dari daftar? File dan database tidak akan dihapus.')">
+              onsubmit="return confirm('Remove from the list? Files and database will not be deleted.')">
           <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
           <input type="hidden" name="id" value="<?= $id ?>">
           <button class="btn-secondary h-9 px-3 text-sm text-rose-600 hover:text-rose-700 dark:text-rose-400">
-            <i data-lucide="trash-2" class="h-4 w-4"></i><span>Hapus dari daftar</span>
+            <i data-lucide="trash-2" class="h-4 w-4"></i><span>Remove from the list</span>
           </button>
         </form>
       </div>

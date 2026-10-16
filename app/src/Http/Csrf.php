@@ -2,7 +2,7 @@
 declare(strict_types=1);
 namespace Fpanel\Http;
 
-/** Token per sesi, dibandingkan dengan hash_equals. */
+/** Per-session token, compared with hash_equals. */
 final class Csrf
 {
     public const COOKIE = 'fp_csrf';
@@ -13,7 +13,7 @@ final class Csrf
             setcookie(self::COOKIE, $token, [
                 'expires'  => time() + 86400 * 14,
                 'path'     => '/',
-                'httponly' => false,   // form membaca via cookie
+                'httponly' => false,   // the form reads it via cookie
                 'samesite' => 'Lax',
                 'secure'   => (($_SERVER['HTTPS'] ?? '') === 'on'),
             ]);

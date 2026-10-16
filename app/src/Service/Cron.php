@@ -6,17 +6,17 @@ namespace Fpanel\Service;
 use Fpanel\Database\Connection;
 
 /**
- * Cron jobs milik user.
+ * User-owned cron jobs.
  *
- * Setiap job disimpan di tabel cron_jobs lalu disinkronkan ke file
- * /etc/cron.d/fpanel-cron-<user> oleh helper root (fpanel-cron sync).
- * Eksekusi dan log ditangani helper fpanel-cron run, jadi panel tidak perlu
- * menjalankan cron daemon sendiri.
+ * Each job is stored in the cron_jobs table and then synced to the file
+ * /etc/cron.d/fpanel-cron-<user> by the root helper (fpanel-cron sync).
+ * Execution and logging are handled by the fpanel-cron run helper, so the panel
+ * does not need to run its own cron daemon.
  *
- * Catatan keamanan: command milik user dieksekusi sebagai www-data, sama
- * seperti di hosting panel lain. Yang membutuhkan root hanya "sync" yang
- * menulis file cron, dan helper memvalidasi tiap baris dengan pola ketat
- * sehingga tidak ada perintah bebas yang bisa masuk ke cron daemon.
+ * Security note: user commands are executed as www-data, the same
+ * as in other hosting panels. Only "sync" needs root, because it
+ * writes the cron file, and the helper validates every line against a strict
+ * pattern so no arbitrary command can reach the cron daemon.
  */
 final class Cron
 {
@@ -26,24 +26,24 @@ final class Cron
     private const MAX_NAME    = 100;
     public const MAX_JOBS    = 50;
 
-    /** Batas log yang ditampilkan di UI; helper memotong log di 256 KB. */
+    /** Log size limit displayed in the UI; the helper truncates the log at 256 KB. */
     public const LOG_TAIL_BYTES = 16 * 1024;
 
-    // Indeks field jadwal crontab.
+    // Field indexes of the crontab schedule.
     private const F_MIN   = 0;
     private const F_HOUR  = 1;
     private const F_DOM   = 2;
     private const F_MONTH = 3;
     private const F_DOW   = 4;
 
-    // Delimiter ~ dipakai karena class karakter mengandung "/" (untuk langkah
-    // seperti */5). Kalau delimiter-nya "/", regex akan tertutup sendiri.
+    // The ~ delimiter is used because the character class contains "/" (for
+    // steps like */5). If the delimiter were "/", the regex would close itself early.
     private const FIELD_RE = '~^[0-9*/,\-]{1,60}$~';
 
     // ------------------------------------------------------------------ public
 
     /**
-     * Daftar job milik satu user.
+     * List the jobs owned by one user.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -60,7 +60,7 @@ final class Cron
     }
 
     /**
-     * Buat job baru.
+     * Create a new job.
      *
      * @return array{ok: bool, error: string|null, message: string|null}
      */
@@ -68,21 +68,21 @@ final class Cron
     {
         $uid = self::userId($username);
         if ($uid < 1) {
-            return self::err('User tidak ditemukan.');
+            return self::err('User not found.');
         }
         $name   = trim($name);
         $cmd    = trim($command);
         $sched  = trim($schedule);
 
         if ($name === '' || mb_strlen($name) > self::MAX_NAME) {
-            return self::err('Nama cron job wajib diisi dan maksimal 100 karakter.');
+            return self::err('The cron job name is required and must be at most 100 characters.');
         }
         $err = self::validateCommand($cmd);
         if ($err !== null) {
             return self::err($err);
         }
         if (!self::validSchedule($sched)) {
-            return self::err('Jadwal tidak valid. Contoh: */5 * * * *');
+            return self::err('Invalid schedule. Example: */5 * * * *');
         }
 
         $existing = (int)Connection::value(
@@ -90,7 +90,7 @@ final class Cron
             ['u' => $uid]
         );
         if ($existing >= self::MAX_JOBS) {
-            return self::err('Kuota cron job sudah penuh (' . self::MAX_JOBS . ').');
+            return self::err('The cron job quota is full (' . self::MAX_JOBS . ').');
         }
 
         Connection::run(
@@ -102,15 +102,15 @@ final class Cron
 
         $r = self::sync($username);
         if (!$r['ok']) {
-            // Jangan sisakan job yang tidak akan pernah dijalankan.
+            // Do not leave behind a job that would never run.
             Connection::run('DELETE FROM cron_jobs WHERE id = :i', ['i' => $id]);
             return $r;
         }
-        return ['ok' => true, 'error' => null, 'message' => 'Cron job dibuat.'];
+        return ['ok' => true, 'error' => null, 'message' => 'Cron job created.'];
     }
 
     /**
-     * Ubah job milik user. Parameter null berarti "tidak diubah".
+     * Update a user's job. A null parameter means "leave unchanged".
      *
      * @return array{ok: bool, error: string|null, message: string|null}
      */
@@ -123,7 +123,7 @@ final class Cron
         ?bool $enabled
     ): array {
         if (self::find($username, $id) === null) {
-            return self::err('Cron job tidak ditemukan.');
+            return self::err('Cron job not found.');
         }
         $set = [];
         $par = ['i' => $id, 'u' => self::userId($username)];
@@ -131,7 +131,7 @@ final class Cron
         if ($name !== null) {
             $name = trim($name);
             if ($name === '' || mb_strlen($name) > self::MAX_NAME) {
-                return self::err('Nama cron job wajib diisi dan maksimal 100 karakter.');
+                return self::err('The cron job name is required and must be at most 100 characters.');
             }
             $set[] = 'name = :n';
             $par['n'] = $name;
@@ -148,7 +148,7 @@ final class Cron
         if ($schedule !== null) {
             $schedule = trim($schedule);
             if (!self::validSchedule($schedule)) {
-                return self::err('Jadwal tidak valid. Contoh: */5 * * * *');
+                return self::err('Invalid schedule. Example: */5 * * * *');
             }
             $set[] = 'schedule = :s';
             $par['s'] = $schedule;
@@ -158,7 +158,7 @@ final class Cron
             $par['e'] = $enabled ? 1 : 0;
         }
         if ($set === []) {
-            return ['ok' => true, 'error' => null, 'message' => 'Tidak ada perubahan.'];
+            return ['ok' => true, 'error' => null, 'message' => 'No changes.'];
         }
 
         Connection::run(
@@ -166,52 +166,52 @@ final class Cron
             $par
         );
         $r = self::sync($username);
-        return $r['ok'] ? ['ok' => true, 'error' => null, 'message' => 'Cron job diperbarui.'] : $r;
+        return $r['ok'] ? ['ok' => true, 'error' => null, 'message' => 'Cron job updated.'] : $r;
     }
 
     /**
-     * Hapus job milik user.
+     * Delete a user's job.
      *
      * @return array{ok: bool, error: string|null, message: string|null}
      */
     public static function delete(string $username, int $id): array
     {
         if (self::find($username, $id) === null) {
-            return self::err('Cron job tidak ditemukan.');
+            return self::err('Cron job not found.');
         }
         Connection::run(
             'DELETE FROM cron_jobs WHERE id = :i AND user_id = :u',
             ['i' => $id, 'u' => self::userId($username)]
         );
         $r = self::sync($username);
-        return $r['ok'] ? ['ok' => true, 'error' => null, 'message' => 'Cron job dihapus.'] : $r;
+        return $r['ok'] ? ['ok' => true, 'error' => null, 'message' => 'Cron job deleted.'] : $r;
     }
 
     /**
-     * Jalankan satu job sekarang juga, di luar jadwal.
+     * Run one job right now, outside its schedule.
      *
-     * Helper dipanggil TANPA sudo: eksekusi memang harus sebagai www-data,
-     * dan tidak boleh punya jalur sudo sama sekali.
+     * The helper is called WITHOUT sudo: execution must indeed run as www-data,
+     * and it must not have any sudo path at all.
      *
      * @return array{ok: bool, error: string|null, message: string|null}
      */
     public static function runNow(string $username, int $id): array
     {
         if (self::find($username, $id) === null) {
-            return self::err('Cron job tidak ditemukan.');
+            return self::err('Cron job not found.');
         }
         [$rc, $out] = self::helper(['run', $username, (string)$id], withSudo: false);
         if ($rc !== 0) {
-            return self::err('Gagal menjalankan job: ' . ($out !== '' ? $out : 'tanpa pesan dari helper'));
+            return self::err('Failed to run the job: ' . ($out !== '' ? $out : 'no message from the helper'));
         }
         Connection::run(
             'UPDATE cron_jobs SET last_run = :t, last_exit = 0 WHERE id = :i',
             ['t' => gmdate('Y-m-d H:i:s'), 'i' => $id]
         );
-        return ['ok' => true, 'error' => null, 'message' => $out !== '' ? $out : 'Job dijalankan.'];
+        return ['ok' => true, 'error' => null, 'message' => $out !== '' ? $out : 'Job executed.'];
     }
 
-    /** Ekor log job, untuk ditampilkan di UI. */
+    /** Tail of the job log, for display in the UI. */
     public static function logTail(string $username, int $id, int $bytes = self::LOG_TAIL_BYTES): string
     {
         if (self::find($username, $id) === null) {
@@ -240,7 +240,7 @@ final class Cron
     }
 
     /**
-     * Tulis ulang file /etc/cron.d milik user dari daftar job aktif.
+     * Rewrite the user's /etc/cron.d file from the list of enabled jobs.
      *
      * @return array{ok: bool, error: string|null, message: string|null}
      */
@@ -257,7 +257,7 @@ final class Cron
 
         [$rc, $out] = self::helper(['sync', $username], $lines);
         if ($rc !== 0) {
-            return self::err('Gagal menyinkronkan cron: ' . ($out !== '' ? $out : 'tanpa pesan dari helper'));
+            return self::err('Failed to sync cron: ' . ($out !== '' ? $out : 'no message from the helper'));
         }
         return ['ok' => true, 'error' => null, 'message' => $out];
     }
@@ -265,11 +265,11 @@ final class Cron
     // ---------------------------------------------------------------- schedule
 
     /**
-     * Validasi ekspresi 5 field.
+     * Validate a 5-field expression.
      *
-     * Sengaja ketat: hanya angka, *, /, , dan -. Alias seperti @daily dan
-     * nama hari (Mon) ditolak supaya parser kita dan cron daemon tidak pernah
-     * punya arti yang berbeda.
+     * Deliberately strict: only digits, *, /, , and -. Aliases like @daily and
+     * day names (Mon) are rejected so our parser and the cron daemon never
+     * interpret them differently.
      */
     public static function validSchedule(string $schedule): bool
     {
@@ -288,7 +288,7 @@ final class Cron
         return true;
     }
 
-    /** Nilai di luar rentang field, misalnya menit "70". */
+    /** Value outside the field's range, for example minute "70". */
     private static function fieldOutOfRange(string $field, int $index): bool
     {
         foreach (explode(',', $field) as $part) {
@@ -307,7 +307,7 @@ final class Cron
             if ($base === '' || $base === '*') {
                 continue;
             }
-            // Range perlu dua ujung diperiksa, bukan satu string utuh.
+            // A range needs both ends checked, not one whole string.
             $ends = str_contains($base, '-') ? explode('-', $base, 2) : [$base];
             foreach ($ends as $end) {
                 if (preg_match('/^[0-9]{1,2}$/', $end) !== 1) {
@@ -334,10 +334,10 @@ final class Cron
     }
 
     /**
-     * Perkiraan waktu jalan berikutnya, dalam UTC.
+     * Estimated next run time, in UTC.
      *
-     * Cukup untuk ditampilkan di UI, jadi implementasinya brute force dengan
-     * lompatan per menit dan jam, bukan parser cron lengkap.
+     * Good enough for display in the UI, so the implementation is brute force
+     * with per-minute and per-hour jumps, not a full cron parser.
      */
     public static function nextRun(string $schedule, ?string $from = null): ?string
     {
@@ -354,9 +354,9 @@ final class Cron
         if ($start === false) {
             $start = time();
         }
-        $ts = $start - ($start % 60) + 60; // awal menit berikutnya
+        $ts = $start - ($start % 60) + 60; // start of the next minute
 
-        // Batas 400 hari supaya ekspresi yang mustahil tidak looping selamanya.
+        // 400-day limit so an impossible expression does not loop forever.
         $limit = $ts + (400 * 86400);
         while ($ts < $limit) {
             if (isset($sets[self::F_MIN][(int)date('i', $ts)])
@@ -370,7 +370,7 @@ final class Cron
             if (!isset($sets[self::F_MIN][$minute])) {
                 $next = self::nextValue($sets[self::F_MIN], $minute, 59);
                 if ($next === null) {
-                    // Tidak ada menit yang cocok di jam ini: lompat ke jam berikutnya.
+                    // No minute matches in this hour: jump to the next hour.
                     $ts = $ts - ($minute * 60) + 3600;
                     continue;
                 }
@@ -381,8 +381,8 @@ final class Cron
     }
 
     /**
-     * Aturan cron standar untuk hari: kalau hari-bulan dan hari-minggu sama-sama
-     * dibatasi (bukan "*"), job jalan kalau salah satunya cocok.
+     * Standard cron rule for days: if both day-of-month and day-of-week are
+     * restricted (not "*"), the job runs when either one matches.
      *
      * @param array<int, array<int, bool>> $sets
      */
@@ -391,8 +391,8 @@ final class Cron
         $domSet = $sets[self::F_DOM];
         $dowSet = $sets[self::F_DOW];
 
-        $domAll = count($domSet) >= 31;                  // semua hari 1-31 terpenuhi
-        $dowAll = count($dowSet) >= 7;                  // semua hari 0-6 terpenuhi
+        $domAll = count($domSet) >= 31;                  // all days 1-31 covered
+        $dowAll = count($dowSet) >= 7;                  // all days 0-6 covered
 
         $domHit = isset($domSet[(int)date('j', $ts)]);
         $dow    = (int)date('w', $ts);
@@ -421,7 +421,7 @@ final class Cron
     }
 
     /**
-     * Ubah satu field jadwal menjadi himpunan nilai yang boleh.
+     * Expand one schedule field into the set of allowed values.
      *
      * @return array<int, bool>
      */
@@ -432,7 +432,7 @@ final class Cron
             self::F_HOUR  => 23,
             self::F_DOM   => 31,
             self::F_MONTH => 12,
-            self::F_DOW   => 6,   // 7 dinormalkan ke 0 di bawah
+            self::F_DOW   => 6,   // 7 is normalized to 0 below
             default       => 59,
         };
         $out = [];
@@ -478,27 +478,27 @@ final class Cron
     // -------------------------------------------------------------- validation
 
     /**
-     * Tolak command yang jelas berbahaya atau tidak masuk akal.
+     * Reject commands that are clearly dangerous or nonsensical.
      *
-     * Command tetap diperlakukan sebagai "perintah milik user" seperti di
-     * hosting panel lain. Yang dicek di sini adalah pola yang hampir selalu
-     * salah ketik atau jelas tidak pernah dibutuhkan di shared hosting.
+     * Commands are still treated as a "user command" like in other hosting
+     * panels. What is checked here are patterns that are almost always a typo
+     * or clearly never needed on shared hosting.
      */
     private static function validateCommand(string $command): ?string
     {
         if ($command === '') {
-            return 'Command wajib diisi.';
+            return 'Command is required.';
         }
         if (mb_strlen($command) > self::MAX_COMMAND) {
-            return 'Command terlalu panjang (maksimal ' . self::MAX_COMMAND . ' karakter).';
+            return 'Command is too long (maximum ' . self::MAX_COMMAND . ' characters).';
         }
         if (str_contains($command, "\0") || preg_match('/[\x01-\x08\x0B\x0C\x0E-\x1F]/', $command) === 1) {
-            return 'Command mengandung karakter kontrol yang tidak valid.';
+            return 'The command contains invalid control characters.';
         }
         $banned = ['shutdown', 'reboot', 'halt', 'poweroff', 'mkfs', 'init 0', 'init 6'];
         foreach ($banned as $word) {
             if (preg_match('/(^|[;&|]\s*|\s)' . preg_quote($word, '/') . '(\s|$)/', $command) === 1) {
-                return 'Command ini tidak diizinkan.';
+                return 'This command is not allowed.';
             }
         }
         return null;
@@ -527,9 +527,9 @@ final class Cron
     }
 
     /**
-     * Jalankan helper.
+     * Run the helper.
      *
-     * @return array{0: int, 1: string} kode keluar dan output gabungan
+     * @return array{0: int, 1: string} exit code and combined output
      */
     private static function helper(array $args, string $stdin = '', bool $withSudo = true): array
     {
@@ -538,7 +538,7 @@ final class Cron
         $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
         $proc = @proc_open($cmd, $desc, $pipes);
         if (!is_resource($proc)) {
-            return [1, 'helper tidak bisa dijalankan'];
+            return [1, 'the helper could not be run'];
         }
         if ($stdin !== '') {
             @fwrite($pipes[0], $stdin);

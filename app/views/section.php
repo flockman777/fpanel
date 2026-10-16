@@ -24,13 +24,13 @@
 
     <?php if (($panel ?? '') !== ''): require __DIR__ . '/partials/' . $panel . '.php'; endif; ?>
 
-    <?php if (($noTable ?? false) === true) { /* tabel sudah ada di dalam panel */ } else { ?>
+    <?php if (($noTable ?? false) === true) { /* the table already lives inside the panel */ } else { ?>
     <section class="card overflow-hidden">
       <?php if ($rows === []): ?>
         <div class="p-10 text-center">
           <i data-lucide="inbox" class="mx-auto h-8 w-8 text-slate-300"></i>
           <p class="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200"><?= htmlspecialchars($empty) ?></p>
-          <p class="mt-1 text-sm text-slate-500">Data akan muncul di sini setelah dibuat.</p>
+          <p class="mt-1 text-sm text-slate-500">Data will appear here once created.</p>
         </div>
       <?php else: ?>
       <div class="overflow-x-auto">

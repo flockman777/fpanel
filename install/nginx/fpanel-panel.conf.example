@@ -1,6 +1,6 @@
-# FPanel - panel kontrol di domain resmi
-# Struktur location dicerminkan dari /etc/nginx/sites-available/fpanel (port 8090)
-# supaya perilaku aplikasi identik di 8090 maupun 443.
+# FPanel - control panel on the official domain
+# The location structure mirrors /etc/nginx/sites-available/fpanel (port 8090)
+# so the app behaves identically on 8090 and 443.
 server {
     listen 80;
     listen [::]:80;
@@ -9,8 +9,8 @@ server {
     root /var/www/acme/challenges;
     index index.html;
 
-    # Tantangan ACME dilayani apa adanya sebelum redirect, kalau tidak
-    # renewal certbot akan ikut dialihkan ke HTTPS dan gagal.
+    # ACME challenges are served as-is before the redirect, otherwise
+    # certbot renewal would be redirected to HTTPS and fail.
     location ^~ /.well-known/acme-challenge/ {
         alias /var/www/acme/challenges/.well-known/acme-challenge/;
         default_type "text/plain";
@@ -35,10 +35,10 @@ server {
     ssl_stapling_verify on;
     ssl_trusted_certificate /etc/letsencrypt/live/panel.example.tld/fullchain.pem;
 
-    # Header keamanan TIDAK didefinisikan di sini. Aplikasi sudah mengirimnya
-    # sendiri, dan dua add_header untuk kunci yang sama menghasilkan header
-    # dobel (mis. dua X-Frame-Options dengan nilai berbeda).
-    # HSTS tetap di sini karena hanya relevan di lapisan TLS.
+    # Security headers are NOT defined here. The application already sends them
+    # itself, and two add_header directives for the same key produce
+    # duplicate headers (e.g. two X-Frame-Options with different values).
+    # HSTS stays here because it is only relevant at the TLS layer.
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     root /srv/fpanel/app/public;
@@ -53,7 +53,7 @@ server {
     location = /favicon.svg { alias /srv/fpanel/app/public/assets/img/favicon.svg; }
     location = /favicon.ico { alias /srv/fpanel/app/public/assets/img/favicon.ico; }
 
-    # ---- tolak berkas internal (harus sebelum location .php$) -------------
+    # ---- reject internal files (must come before location .php$) ----------
     location ~ /\.                                          { deny all; }
     location ~* ^/(var|config|bin|tests|install|node_modules|app/src)/ { deny all; }
 
@@ -65,24 +65,24 @@ server {
     
     
         # BEGIN FPANEL-PMA
-    # ---- phpMyAdmin per-database (token sekali pakai) -----------------
-    # Alur: /pma/<token>/... -> rewrite -> /fpma/... (internal) -> front
-    # controller fpma-index.php yang memvalidasi token lalu memanggil
-    # phpMyAdmin. Validasi token sengaja ada di PHP, bukan di nginx:
-    # di nginx memakai "if (!-f ...)" sulit dipastikan perilakunya,
-    # sedangkan di PHP hasilnya eksplisit: 404 atau phpMyAdmin.
+    # ---- per-database phpMyAdmin (single-use token) -------------------
+    # Flow: /pma/<token>/... -> rewrite -> /fpma/... (internal) -> front
+    # controller fpma-index.php, which validates the token and then calls
+    # phpMyAdmin. Token validation deliberately lives in PHP, not in nginx:
+    # with "if (!-f ...)" in nginx the behavior is hard to pin down,
+    # while in PHP the result is explicit: 404 or phpMyAdmin.
     #
-    # Regex WAJIB diapit tanda kutip: tanpa tanda kutip nginx menganggap "}"
-    # sebagai penutup blok; di-escape ("\{32\}") pun PCRE memperlakukannya
-    # sebagai kurung kurawal literal, bukan pengulangan.
+    # The regex MUST be quoted: without quotes nginx treats "}"
+    # as the end of the block; even escaped ("\{32\}") PCRE treats it
+    # as literal curly braces, not a repetition.
     location ~ "^/pma/(?<fptok>[a-f0-9]{32})(/.*)?$" {
         rewrite "^/pma/[a-f0-9]{32}(/.*)?$" /fpma$1 last;
     }
-    # Tanpa token: tidak ada apa-apa di sini.
+    # Without a token: there is nothing here.
     location = /pma { return 404; }
     location /pma/ { return 404; }
 
-    # Target internal: tidak bisa diakses langsung, hanya lewat rewrite di atas.
+    # Internal target: cannot be accessed directly, only through the rewrite above.
     location ~ ^/fpma/.+\.php$ {
         internal;
         include fastcgi_params;

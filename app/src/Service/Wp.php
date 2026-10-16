@@ -7,53 +7,53 @@ use Fpanel\Database\Connection;
 use Fpanel\Support\Audit;
 
 /**
- * Installer WordPress satu-klik.
+ * One-click WordPress installer.
  *
- * Alur: unduh core dari wordpress.org, ekstrak ke docroot domain, buat
- * database + user lewat MariaDb, tulis wp-config.php (salt diacak sendiri di
- * server), lalu `wp core install` dengan WP-CLI.
+ * Flow: download core from wordpress.org, extract it into the domain docroot,
+ * create the database + user through MariaDb, write wp-config.php (salts
+ * generated on the server), then `wp core install` with WP-CLI.
  *
- * Kalau salah satu langkah gagal, semua yang sudah dibuat dibuang supaya tidak
- * ada instalasi setengah jadi atau database yatim.
+ * When any step fails, everything created so far is dropped so no half-
+ * finished installation or orphan database is left behind.
  *
- * Yang perlu diketahui arsitektur: semua domain dilayani pool PHP-FPM milik
- * www-data, jadi file WordPress harus dibaca www-data. Karena itu WP-CLI
- * dijalankan sebagai user yang sama, tanpa sudo.
+ * Architecture note: every domain is served by the www-data PHP-FPM pool, so
+ * WordPress files must be readable by www-data. That is why WP-CLI runs as
+ * the same user, without sudo.
  */
 final class Wp
 {
-    /** Cache versi di tabel settings; 6 jam cukup untuk satu hari. */
+    /** Version cache in the settings table; 6 hours is enough for one day. */
     private const CACHE_KEY    = 'wp_versions';
     private const CACHE_TTL    = 21600;
     private const API_VERSIONS = 'https://api.wordpress.org/core/version-check/1.7/';
     private const DOWNLOAD     = 'https://downloads.wordpress.org/release/wordpress-%s.zip';
 
-    /** Batas unduhan: core WP zip sekitar 25-30 MB. */
+    /** Download limit: the WP core zip is about 25-30 MB. */
     private const MAX_ZIP_BYTES = 90 * 1024 * 1024;
 
-    // Unduhan core WP sekitar 37 MB. Kecepatan dari server ini bisa turun
-    // ke ~150 KB/s (terukur 245 detik untuk 37 MB), jadi batas 5 menit terlalu
-    // kecil. Installer jalan di latar belakang tanpa menunggu user, jadi
-    // timeout longgar tidak mengganggu apa pun.
+    // The WP core download is about 37 MB. Speed from this server can drop to
+    // ~150 KB/s (measured 245 seconds for 37 MB), so a 5-minute limit is too
+    // small. The installer runs in the background without waiting for a user,
+    // so a loose timeout disturbs nothing.
     private const TIMEOUT_SEC   = 1800;
 
-    /** Status instalasi (JSON per job) supaya UI bisa menampilkan progres. */
+    /** Installation status (JSON per job) so the UI can show progress. */
     private const JOB_DIR       = '/var/lib/fpanel/wp';
 
-    /** Batas kecepatan unduhan: di bawah 12 KB/s selama 45 detik = macet. */
+    /** Download speed limit: below 12 KB/s for 45 seconds = stalled. */
     private const LOW_SPEED_LIMIT = 12288;
     private const LOW_SPEED_TIME  = 45;
 
-    /** Berapa kali mencoba unduhan sebelum menyerah. */
+    /** How many download attempts before giving up. */
     private const DL_ATTEMPTS = 3;
 
-    /** Cache core zip per versi, supaya instalasi kedua tidak unduh ulang. */
+    /** Core zip cache per version, so a second install does not re-download. */
     private const CACHE_DIR = '/var/cache/fpanel/wp';
 
     // ------------------------------------------------------------------ public
 
     /**
-     * Daftar versi WP yang bisa dipilih, terbaru dulu.
+     * List of WP versions that can be chosen, newest first.
      *
      * @return array<int, string>
      */
@@ -83,7 +83,7 @@ final class Wp
                 }
             }
         }
-        // Tanpa akses ke API, pakai daftar bawaan supaya fitur tetap jalan.
+        // Without API access, use the built-in list so the feature still works.
         if ($out === []) {
             $out = ['7.1.2', '7.1.1', '7.1.0', '7.0.6', '6.9.9'];
         }
@@ -102,7 +102,7 @@ final class Wp
     }
 
     /**
-     * Daftar instalasi WP milik user, lengkap dengan nama domainnya.
+     * All WP installations owned by the user, complete with their domain names.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -119,12 +119,12 @@ final class Wp
     }
 
     /**
-     * Mulai instalasi WordPress di latar belakang.
+     * Start a WordPress installation in the background.
      *
-     * Instalasi harus jalan di luar request HTTP: unduh core saja bisa 25-60
-     * detik, sedangkan max_execution_time pool FPM 30 detik. Request ini hanya
-     * memvalidasi lalu mencetak job; CLI (tanpa batas waktu PHP) yang
-     * mengerjakan unduh-ekstrak-install.
+     * Installation must run outside the HTTP request: downloading core alone
+     * can take 25-60 seconds, while the FPM pool allows 30. This request only
+     * validates and then spawns the job; the CLI (with no PHP time limit)
+     * does the download-extract-install work.
      *
      * @param array{version?: string, title?: string, admin_user?: string,
      *              admin_password?: string, admin_email?: string,
@@ -142,46 +142,46 @@ final class Wp
 
         $domain = self::domain($username, $domainName);
         if ($domain === null) {
-            return self::err('Domain tidak ditemukan.');
+            return self::err('Domain not found.');
         }
         if ((string)$domain['type'] !== 'php') {
-            return self::err("Domain {$domainName} bertipe " . (string)$domain['type']
-                . '. WordPress butuh domain tipe PHP.');
+            return self::err("Domain {$domainName} is of type " . (string)$domain['type']
+                . '. WordPress needs a PHP-type domain.');
         }
 
         $docroot = (string)$domain['docroot'];
         if (!self::safeDocroot($docroot, $username)) {
-            return self::err('Docroot domain tidak valid.');
+            return self::err('The domain docroot is not valid.');
         }
 
-        // Kuota paket.
+        // Package quota.
         $q = self::quota($username);
         $used = (int)Connection::value(
             'SELECT COUNT(*) FROM wp_sites w JOIN users u ON u.id = w.user_id WHERE u.username = :u',
             ['u' => $username]
         );
         if ($used >= $q['max_wp']) {
-            return self::err("Kuota WordPress penuh ({$used}/{$q['max_wp']}).");
+            return self::err("WordPress quota is full ({$used}/{$q['max_wp']}).");
         }
 
         if ($adminUser === '' || preg_match('/^[A-Za-z0-9 ._@\-]{3,60}$/', $adminUser) !== 1) {
-            return self::err('Nama admin WordPress tidak valid (3-60 karakter).');
+            return self::err('Invalid WordPress admin name (3-60 characters).');
         }
         if (strlen($adminPass) < 8 || strlen($adminPass) > 72) {
-            return self::err('Password admin WordPress minimal 8 karakter.');
+            return self::err('The WordPress admin password must be at least 8 characters.');
         }
         if ($adminMail === '' || filter_var($adminMail, FILTER_VALIDATE_EMAIL) === false) {
-            return self::err('Email admin WordPress tidak valid.');
+            return self::err('Invalid WordPress admin email.');
         }
         if ($title === '') {
             $title = (string)$domainName;
         }
 
         if (is_file($docroot . '/wp-load.php')) {
-            return self::err('Domain ini sudah punya WordPress. Hapus lewat File Manager bila ingin memasang ulang.');
+            return self::err('This domain already has WordPress. Delete it through the File Manager to install again.');
         }
 
-        // Version: pakai yang diminta kalau ada di daftar, else yang terbaru.
+        // Version: use the requested one when listed, otherwise the newest.
         $known = self::versions();
         if ($version === '' || !in_array($version, $known, true)) {
             $version = $known[0] ?? 'latest';
@@ -190,7 +190,7 @@ final class Wp
         $job = self::newJob($username, $domainName);
         self::writeJob($job, [
             'state'   => 'running',
-            'step'    => 'menunggu',
+            'step'    => 'waiting',
             'version' => $version,
             'started' => gmdate('Y-m-d H:i:s'),
         ]);
@@ -213,13 +213,13 @@ final class Wp
         return [
             'ok'      => true,
             'error'   => null,
-            'message' => "Instalasi WordPress ke $domainName dimulai di latar belakang. Halaman ini diperbarui otomatis.",
+            'message' => "WordPress installation to $domainName started in the background. This page refreshes automatically.",
             'job'     => $job,
         ];
     }
 
     /**
-     * Kerja berat instalasi. Dipanggil dari CLI, bukan dari request HTTP.
+     * The heavy installation work. Called from the CLI, not from an HTTP request.
      *
      * @param array<string, mixed> $args
      * @return array{ok: bool, error: string|null, message: string|null}
@@ -233,40 +233,40 @@ final class Wp
 
         $domain = self::domain($username, $domainName);
         if ($domain === null) {
-            self::writeJob($job, ['state' => 'error', 'step' => 'domain tidak ditemukan']);
-            return self::err('Domain tidak ditemukan.');
+            self::writeJob($job, ['state' => 'error', 'step' => 'domain not found']);
+            return self::err('Domain not found.');
         }
         $docroot = (string)$domain['docroot'];
         if (!self::safeDocroot($docroot, $username)) {
-            self::writeJob($job, ['state' => 'error', 'step' => 'docroot tidak valid']);
-            return self::err('Docroot tidak valid.');
+            self::writeJob($job, ['state' => 'error', 'step' => 'docroot not valid']);
+            return self::err('Invalid docroot.');
         }
 
-        self::writeJob($job, ['step' => 'membuat database']);
+        self::writeJob($job, ['step' => 'creating the database']);
         $suffix  = bin2hex(random_bytes(5));
         $dbName  = 'wp_' . $suffix;
         $dbUser  = 'wpu_' . $suffix;
         $created = MariaDb::create($username, $dbName, $dbUser);
         if (empty($created['ok'])) {
-            $msg = 'Gagal membuat database: ' . (string)($created['error'] ?? 'tanpa pesan');
+            $msg = 'Failed to create the database: ' . (string)($created['error'] ?? 'no message');
             self::writeJob($job, ['state' => 'error', 'step' => $msg, 'finished' => gmdate('Y-m-d H:i:s')]);
             return self::err($msg);
         }
         $dbId = (int)($created['db_id'] ?? 0);
-        // Password HARUS diambil dari hasil create(). MariaDb yang membuat dan
-        // menyimpan passwordnya sendiri; password buatan kita sendiri tidak
-        // pernah dipakai, sehingga wp-config.php tidak bisa konek.
+        // The password MUST come from the create() result. MariaDb generates
+        // and stores its own password; one made up here would never be used,
+        // so wp-config.php could not connect.
         $dbPass = (string)($created['password'] ?? '');
-        // MariaDb::create() mengembalikan NAMA PENDEK, sedangkan helper root
-        // membuat user dengan prefiks user panel (mis. admin_wpu_abc123).
-        // wp-config.php harus memakai nama fisik, kalau tidak MariaDB membalas
+        // MariaDb::create() returns the SHORT NAME, while the root helper
+        // creates the user with the panel user prefix (e.g. admin_wpu_abc123).
+        // wp-config.php must use the physical name, otherwise MariaDB replies
         // "Access denied for user 'wpu_abc123'@'localhost'".
         $dbUserReal = MariaDb::physUser($username, $dbUser);
-        // Sama seperti user, nama database di MariaDB juga diberi prefiks user
-        // panel, jadi wp-config.php harus memakai nama fisik.
+        // Like users, the database name in MariaDB also gets the panel user
+        // prefix, so wp-config.php must use the physical name.
         $dbNameReal = MariaDb::physDb($username, $dbName);
         if ($dbPass === '') {
-            $msg = 'Password database tidak tersedia dari MariaDb.';
+            $msg = 'The database password is not available from MariaDb.';
             self::writeJob($job, ['state' => 'error', 'step' => $msg, 'finished' => gmdate('Y-m-d H:i:s')]);
             return self::err($msg);
         }
@@ -292,7 +292,7 @@ final class Wp
             }
         } catch (\Throwable $e) {
             self::cleanup($username, $dbId, $docroot);
-            $msg = 'Instalasi gagal: ' . $e->getMessage();
+            $msg = 'Installation failed: ' . $e->getMessage();
             self::writeJob($job, ['state' => 'error', 'step' => $msg, 'finished' => gmdate('Y-m-d H:i:s')]);
             return self::err($msg);
         }
@@ -315,17 +315,17 @@ final class Wp
 
         self::writeJob($job, [
             'state'    => 'done',
-            'step'     => "WordPress $installed terpasang",
+            'step'     => "WordPress $installed installed",
             'finished' => gmdate('Y-m-d H:i:s'),
         ]);
         self::pruneJobs();
 
-        return ['ok' => true, 'error' => null, 'message' => "WordPress $installed terpasang di $domainName."];
+        return ['ok' => true, 'error' => null, 'message' => "WordPress $installed installed on $domainName."];
     }
 
-    // ------------------------------------------------------------ status job
+    // ------------------------------------------------------------- job status
 
-    /** Job terakhir milik user, untuk progres di UI. */
+    /** The last job of the user, for progress in the UI. */
     public static function latestJob(string $username): ?array
     {
         self::ensureJobDir();
@@ -397,7 +397,7 @@ final class Wp
         return is_array($decoded) ? $decoded : null;
     }
 
-    /** Buang job lama supaya folder tidak menumpuk. */
+    /** Drop old jobs so the folder does not pile up. */
     private static function pruneJobs(): void
     {
         $cut = time() - (24 * 3600);
@@ -409,17 +409,17 @@ final class Wp
     }
 
     /**
-     * Jalankan CLI installer di latar belakang, lepas dari sesi HTTP.
+     * Run the installer CLI in the background, detached from the HTTP session.
      *
-     * setsid dipakai supaya proses tidak ikut mati saat worker FPM selesai.
-     * Payload di-encode base64url sehingga tidak ada karakter shell di dalamnya.
+     * setsid is used so the process does not die when the FPM worker finishes.
+     * The payload is base64url-encoded so it contains no shell characters.
      */
     /**
-     * Decode payload base64url yang dikirim spawn().
+     * Decode the base64url payload sent by spawn().
      *
-     * base64_decode() dengan strict=true menolak panjang yang tidak kelipatan
-     * 4, sedangkan payload sengaja dipangkas padding-nya. Padding ditambahkan
-     * dulu di sini.
+     * base64_decode() with strict=true rejects lengths that are not multiples
+     * of 4, while the payload deliberately trims its padding. The padding is
+     * added back here first.
      *
      * @return array<string, mixed>|null
      */
@@ -445,10 +445,10 @@ final class Wp
         exec('setsid /usr/bin/php /srv/fpanel/bin/fpanel wp:' . $safe . ' ' . $payload . ' >/dev/null 2>&1 &');
     }
 
-    // ------------------------------------------------------------------ kelola
+    // ------------------------------------------------------------------ manage
 
     /**
-     * Ringkasan satu instalasi untuk panel "Kelola".
+     * Summary of one installation for the "Manage" panel.
      *
      * @return array{ok:bool,error?:string,data?:array<string,mixed>}
      */
@@ -456,7 +456,7 @@ final class Wp
     {
         $w = self::own($username, $id);
         if ($w === null) {
-            return ['ok' => false, 'error' => 'Instalasi tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Installation not found.'];
         }
         $docroot = (string)$w['docroot'];
         $core    = self::installedCore($docroot);
@@ -512,27 +512,27 @@ final class Wp
     }
 
     /**
-     * Perbarui core WordPress instalasi tertentu.
+     * Update the WordPress core of a given installation.
      *
-     * Dijalankan lewat spawn karena wp core update bisa mengunduh berkas dan
-     * pool FPM hanya punya 30 detik. Job-nya sendiri yang dilaporkan lewat
-     * latestJob(), jadi UI bisa menampilkan progres seperti saat instalasi.
+     * Runs through spawn because wp core update can download files and the
+     * FPM pool only allows 30 seconds. The job itself is reported through
+     * latestJob(), so the UI can show progress like during an installation.
      */
     public static function startUpdate(string $username, int $id, string $parts = 'core,plugins,themes'): array
     {
         $w = self::own($username, $id);
         if ($w === null) {
-            return ['ok' => false, 'error' => 'Instalasi tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Installation not found.'];
         }
         $allowed = ['core', 'plugins', 'themes'];
         $pick    = array_values(array_intersect(explode(',', $parts), $allowed));
         if ($pick === []) {
-            return ['ok' => false, 'error' => 'Tidak ada yang bisa diperbarui.'];
+            return ['ok' => false, 'error' => 'Nothing to update.'];
         }
         $job = self::newJob($username, (string)$w['domain_name']);
         self::writeJob($job, [
             'state'   => 'running',
-            'step'    => 'Menyiapkan pembaruan ' . implode(', ', $pick) . '…',
+            'step'    => 'Preparing the update of ' . implode(', ', $pick) . '…',
             'started' => gmdate('Y-m-d H:i:s'),
             'site_id' => (int)$w['id'],
             'parts'   => $pick,
@@ -546,12 +546,12 @@ final class Wp
         ], 'update');
 
         return ['ok' => true, 'error' => null, 'job' => $job,
-                'message' => 'Pembaruan ' . implode(', ', $pick)
-                    . ' dijadwalkan untuk ' . (string)$w['domain_name'] . '.'];
+                'message' => 'Update of ' . implode(', ', $pick)
+                    . ' scheduled for ' . (string)$w['domain_name'] . '.'];
     }
 
     /**
-     * Eksekusi pembaruan; dipanggil CLI, bukan dari HTTP.
+     * Execute the update; called from the CLI, not from HTTP.
      */
     public static function runUpdate(array $args): array
     {
@@ -559,13 +559,13 @@ final class Wp
         $docroot = (string)($args['docroot'] ?? '');
         $parts   = array_map('trim', explode(',', (string)($args['parts'] ?? '')));
         if ($job < 1 || $docroot === '' || !is_dir($docroot)) {
-            return ['ok' => false, 'error' => 'Argumen pembaruan tidak lengkap.'];
+            return ['ok' => false, 'error' => 'Incomplete update arguments.'];
         }
 
         $labels = [
-            'core'    => 'Memperbarui core WordPress',
-            'plugins' => 'Memperbarui plugin',
-            'themes'  => 'Memperbarui tema',
+            'core'    => 'Updating WordPress core',
+            'plugins' => 'Updating plugins',
+            'themes'  => 'Updating themes',
         ];
         $done = [];
         foreach ($parts as $p) {
@@ -578,11 +578,11 @@ final class Wp
             if ($rc !== 0) {
                 self::writeJob($job, [
                     'state'    => 'error',
-                    'step'     => $labels[$p] . ' GAGAL',
+                    'step'     => $labels[$p] . ' FAILED',
                     'finished' => gmdate('Y-m-d H:i:s'),
                     'error'    => substr($out, 0, 500),
                 ]);
-                return ['ok' => false, 'error' => $labels[$p] . ' gagal: ' . substr($out, 0, 300)];
+                return ['ok' => false, 'error' => $labels[$p] . ' failed: ' . substr($out, 0, 300)];
             }
             $done[] = $p;
         }
@@ -590,37 +590,37 @@ final class Wp
         $core = self::installedCore($docroot) ?? '-';
         self::writeJob($job, [
             'state'    => 'done',
-            'step'     => 'Pembaruan selesai. Core sekarang ' . $core . '.',
+            'step'     => 'Update finished. Core is now ' . $core . '.',
             'finished' => gmdate('Y-m-d H:i:s'),
         ]);
         if (isset($args['site_id'])) {
             Connection::update('wp_sites', ['core_version' => $core], 'id = :i',
                 ['i' => (int)$args['site_id']]);
         }
-        return ['ok' => true, 'error' => null, 'message' => 'Pembaruan selesai. Core ' . $core . '.'];
+        return ['ok' => true, 'error' => null, 'message' => 'Update finished. Core ' . $core . '.'];
     }
 
     /**
-     * Ubah penanda staging untuk satu instalasi.
+     * Change the staging marker for one installation.
      *
-     * Hanya mengubah label di panel; tidak memindahkan berkas atau database.
-     * Pemisahan produksi/staging yang sesungguhnya ada di domain dan database
-     * masing-masing, bukan di flag ini.
+     * Only changes the label in the panel; it moves no files or databases.
+     * Real production/staging separation lives in the separate domains and
+     * databases, not in this flag.
      */
     public static function setStaging(string $username, int $id, bool $staging): array
     {
         $w = self::own($username, $id);
         if ($w === null) {
-            return ['ok' => false, 'error' => 'Instalasi tidak ditemukan.'];
+            return ['ok' => false, 'error' => 'Installation not found.'];
         }
         Connection::update('wp_sites', ['is_staging' => $staging ? 1 : 0], 'id = :i',
             ['i' => (int)$w['id']]);
         return ['ok' => true, 'error' => null,
-                'message' => ($staging ? 'Ditandai sebagai staging.' : 'Ditandai sebagai produksi.')];
+                'message' => ($staging ? 'Marked as staging.' : 'Marked as production.')];
     }
 
     /**
-     * Hapus catatan instalasi (file dan database tidak dihapus).
+     * Delete the installation record (files and database are not deleted).
      *
      * @return array{ok: bool, error: string|null, message: string|null}
      */
@@ -628,14 +628,14 @@ final class Wp
     {
         $row = self::own($username, $id);
         if ($row === null) {
-            return self::err('Instalasi tidak ditemukan.');
+            return self::err('Installation not found.');
         }
         Connection::run('DELETE FROM wp_sites WHERE id = :i', ['i' => $id]);
         Audit::log('wp.forget', (int)$row['user_id'], $username, 'wp_site', (string)$id, '-', 'ok', []);
-        return ['ok' => true, 'error' => null, 'message' => 'Instalasi dihapus dari daftar. File dan database tidak dihapus.'];
+        return ['ok' => true, 'error' => null, 'message' => 'Installation removed from the list. Files and database were not deleted.'];
     }
 
-    /** Core version yang benar-benar terpasang, dibaca dari file WP. */
+    /** The core version really installed, read from the WP file. */
     public static function installedCore(string $docroot): ?string
     {
         $f = $docroot . '/wp-includes/version.php';
@@ -673,7 +673,7 @@ final class Wp
             @mkdir($docroot, 0755, true);
         }
         if (!is_dir($docroot) || !is_writable($docroot)) {
-            return ['ok' => false, 'error' => "Docroot tidak bisa ditulis: $docroot"];
+            return ['ok' => false, 'error' => "Docroot is not writable: $docroot"];
         }
 
         $zipUrl = $version === 'latest'
@@ -682,58 +682,58 @@ final class Wp
 
         $tmp = tempnam(sys_get_temp_dir(), 'wp');
         if ($tmp === false) {
-            return ['ok' => false, 'error' => 'Tidak bisa membuat berkas sementara.'];
+            return ['ok' => false, 'error' => 'Could not create a temporary file.'];
         }
         try {
-                // Pakai cache kalau ada: unduhan 37 MB di server ini bisa memakan
-            // 4-5 menit, dan biasanya versinya sama.
-            $dl = ['code' => 0, 'error' => 'tidak mencoba'];
+                // Use the cache when present: a 37 MB download on this server can
+            // take 4-5 minutes, and the version is usually the same.
+            $dl = ['code' => 0, 'error' => 'not attempted'];
             $cached = self::cachedZip($version);
             if ($cached !== null) {
-                $say('memakai core dari cache lokal');
+                $say('using core from the local cache');
                 @copy($cached, $tmp);
                 $dl = ['code' => is_file($tmp) ? 200 : 0, 'error' => ''];
             }
 
-            // Koneksi ke CDN WordPress kadang STALL di tengah (terlihat macet
-            // di 55%). Tanpa batas kecepatan, curl menunggu sampai timeout
-            // penuh 30 menit. Jadi: abort kalau melambat, lalu coba lagi.
+            // The connection to the WordPress CDN sometimes STALLS midway
+            // (looks stuck at 55%). Without a speed limit, curl waits for the
+            // full 30-minute timeout. So: abort when it slows down, then retry.
             for ($attempt = 1; $attempt <= self::DL_ATTEMPTS; $attempt++) {
                 if ((int)($dl['code'] ?? 0) === 200) {
                     break;
                 }
-                $say('mengunduh core WordPress'
-                    . ($attempt > 1 ? " (percobaan $attempt)" : ''));
+                $say('downloading WordPress core'
+                    . ($attempt > 1 ? " (attempt $attempt)" : ''));
                 @unlink($tmp);
                     $dl = self::download($zipUrl, $tmp, $say);
                 if ((int)$dl['code'] === 200) {
                     break;
                 }
-                $say('unduhan gagal, mencoba lagi…');
+                $say('download failed, trying again…');
                 sleep(3);
             }
             if ((int)$dl['code'] !== 200) {
-                return ['ok' => false, 'error' => "Unduhan core WordPress gagal: " . (string)$dl['error']];
+                return ['ok' => false, 'error' => "WordPress core download failed: " . (string)$dl['error']];
             }
             self::storeZip($version, $tmp);
             $size = (int)filesize($tmp);
             if ($size < 1024 * 1024) {
-                return ['ok' => false, 'error' => 'Berkas zip terunduh terlalu kecil, mungkin bukan core WordPress.'];
+                return ['ok' => false, 'error' => 'The downloaded zip is too small; it may not be the WordPress core.'];
             }
             if ($size > self::MAX_ZIP_BYTES) {
-                return ['ok' => false, 'error' => 'Berkas zip terlalu besar.'];
+                return ['ok' => false, 'error' => 'The zip file is too large.'];
             }
 
-            $say('mengekstrak core');
+            $say('extracting core');
             $extract = self::extract($tmp, $docroot);
             if (!$extract['ok']) {
                 return ['ok' => false, 'error' => (string)$extract['error']];
             }
 
-            $say('menulis wp-config.php');
+            $say('writing wp-config.php');
             self::writeConfig($docroot, $dbName, $dbUser, $dbPass);
 
-            $say('menjalankan wp core install');
+            $say('running wp core install');
 
             [$rc, $out] = self::wpCli([
                 'core', 'install',
@@ -746,7 +746,7 @@ final class Wp
                 '--skip-email',
             ]);
             if ($rc !== 0) {
-                return ['ok' => false, 'error' => 'wp core install gagal: ' . self::firstLine($out)];
+                return ['ok' => false, 'error' => 'wp core install failed: ' . self::firstLine($out)];
             }
 
             $installed = self::installedCore($docroot) ?? $version;
@@ -757,20 +757,20 @@ final class Wp
     }
 
     /**
-     * Unduh core ke $target.
+     * Download core to $target.
      *
-     * @return array{code: int, error: string} kode HTTP dan pesan error curl
+     * @return array{code: int, error: string} HTTP code and curl error message
      */
     private static function download(string $url, string $target, ?callable $progress = null): array
     {
         if (!function_exists('curl_init')) {
             return 0;
         }
-        // CURLOPT_FILE menuntut HANDLE, bukan string path. Kalau diberi path,
-        // curl gagal dengan "supplied argument is not a valid File-Handle".
+        // CURLOPT_FILE wants a HANDLE, not a string path. Given a path, curl
+        // fails with "supplied argument is not a valid File-Handle".
         $fh = @fopen($target, 'wb');
         if ($fh === false) {
-            return ['code' => 0, 'error' => 'tidak bisa membuat berkas unduhan'];
+            return ['code' => 0, 'error' => 'could not create the download file'];
         }
 
         $lastPct = -1;
@@ -783,21 +783,21 @@ final class Wp
             CURLOPT_CONNECTTIMEOUT => 15,
             CURLOPT_USERAGENT      => 'FPanel/1.0 (+wordpress installer)',
             CURLOPT_NOPROGRESS     => false,
-            // Kecepatan di bawah ambang selama N detik = transfer dianggap
-            // macet, lalu gagal supaya percobaan berikutnya jalan.
+            // Speed below the threshold for N seconds = the transfer counts as
+            // stalled and fails, so the next attempt can run.
             CURLOPT_LOW_SPEED_LIMIT  => self::LOW_SPEED_LIMIT,
             CURLOPT_LOW_SPEED_TIME   => self::LOW_SPEED_TIME,
         ]);
         if (is_callable($progress)) {
-            // Progress dipanggil sangat sering; hanya kirim kalau persennya
-            // berubah supaya file status tidak ditulis ribuan kali.
+            // Progress is called very often; only send when the percentage
+            // changes so the status file is not written thousands of times.
             curl_setopt($ch, CURLOPT_PROGRESSFUNCTION,
                 static function ($_ch, $dlTotal, $dlNow) use ($progress, &$lastPct): int {
                     if ($dlTotal > 0) {
                         $pct = (int)floor(($dlNow / $dlTotal) * 100);
                         if ($pct !== $lastPct && $pct % 5 === 0) {
                             $lastPct = $pct;
-                            $progress("mengunduh core WordPress $pct%");
+                            $progress("downloading WordPress core $pct%");
                         }
                     }
                     return 0;
@@ -816,8 +816,8 @@ final class Wp
         if ($ok === false || $err !== 0 || $code !== 200) {
             @unlink($target);
             if ($err !== 0) {
-                // curl error 28 = timeout. Ini yang pernah terjadi karena batas
-                // 5 menit terlalu kecil untuk 37 MB di kecepatan rendah.
+                // curl error 28 = timeout. This happened because a 5-minute
+                // limit is too small for 37 MB at low speed.
                 return ['code' => 0, 'error' => $emsg !== '' ? $emsg . ' (curl ' . $err . ')' : 'curl error ' . $err];
             }
             return ['code' => $code, 'error' => 'HTTP ' . $code];
@@ -826,7 +826,7 @@ final class Wp
     }
 
     /**
-     * Ekstrak zip dan pindahkan isi folder wordpress/ ke docroot.
+     * Extract the zip and move the contents of the wordpress/ folder into the docroot.
      *
      * @return array{ok: bool, error?: string}
      */
@@ -834,51 +834,51 @@ final class Wp
     {
         $tmpDir = sys_get_temp_dir() . '/wpx-' . bin2hex(random_bytes(6));
         if (!@mkdir($tmpDir, 0755, true)) {
-            return ['ok' => false, 'error' => 'Folder sementara tidak bisa dibuat.'];
+            return ['ok' => false, 'error' => 'The temporary folder could not be created.'];
         }
 
-        // Installer jalan di PHP CLI, dan ekstensi zip belum tentu aktif di
-        // sana (di server ini zip hanya dimuat untuk FPM). Jadi biner unzip
-        // dipakai lebih dulu, ZipArchive hanya cadangan.
+        // The installer runs in PHP CLI, and the zip extension is not necessarily
+        // active there (on this server zip is only loaded for FPM). So the unzip
+        // binary is used first, with ZipArchive only as a fallback.
         $unzip = self::which('unzip');
         if ($unzip !== null) {
             $cmd = [$unzip, '-q', '-o', $zip, '-d', $tmpDir];
             $rc  = self::runQuiet($cmd, $tmpDir);
             if ($rc !== 0) {
                 self::rmTree($tmpDir);
-                return ['ok' => false, 'error' => 'Ekstraksi core WordPress gagal (unzip).'];
+                return ['ok' => false, 'error' => 'WordPress core extraction failed (unzip).'];
             }
         } elseif (class_exists(\ZipArchive)) {
             $za = new \ZipArchive();
             if ($za->open($zip) !== true) {
                 @rmdir($tmpDir);
-                return ['ok' => false, 'error' => 'Berkas zip WordPress tidak bisa dibuka.'];
+                return ['ok' => false, 'error' => 'The WordPress zip file cannot be opened.'];
             }
             $ok = $za->extractTo($tmpDir);
             $za->close();
             if ($ok !== true) {
                 self::rmTree($tmpDir);
-                return ['ok' => false, 'error' => 'Ekstraksi core WordPress gagal.'];
+                return ['ok' => false, 'error' => 'WordPress core extraction failed.'];
             }
         } else {
             @rmdir($tmpDir);
-            return ['ok' => false, 'error' => 'unzip dan ekstensi ZipArchive sama-sama tidak tersedia.'];
+            return ['ok' => false, 'error' => 'Neither unzip nor the ZipArchive extension is available.'];
         }
 
         $src = $tmpDir . '/wordpress';
         if (!is_dir($src)) {
-            // Beberapa zip tanpa folder induk; pakai isi direktori kerja.
+            // Some zips have no top-level folder; use the working directory contents.
             $src = $tmpDir;
         }
         if (!self::copyTree($src, $docroot)) {
             self::rmTree($tmpDir);
-            return ['ok' => false, 'error' => 'Pemindahan file WordPress ke docroot gagal.'];
+            return ['ok' => false, 'error' => 'Moving the WordPress files into the docroot failed.'];
         }
         self::rmTree($tmpDir);
         return ['ok' => true];
     }
 
-    /** Tulis wp-config.php dengan kredensial DB dan salt yang diacak di server. */
+    /** Write wp-config.php with DB credentials and salts generated on the server. */
     private static function writeConfig(string $docroot, string $dbName, string $dbUser, string $dbPass): void
     {
         $keys = ['AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY',
@@ -890,10 +890,10 @@ final class Wp
 
         $config = "<?php\n"
             . "/**\n"
-            . " * wp-config.php dibuat otomatis oleh FPanel. Jangan diedit manual.\n"
+            . " * wp-config.php is generated automatically by FPanel. Do not edit manually.\n"
             . " *\n"
-            . " * Kredensial database tersimpan di berkas ini, sama seperti panel\n"
-            . " * hosting lain. Jangan masukkan file ini ke backup publik.\n"
+            . " * The database credentials are stored in this file, just like other\n"
+            . " * hosting panels. Never put this file into a public backup.\n"
             . " */\n"
             . "define('DB_NAME', '" . $dbName . "');\n"
             . "define('DB_USER', '" . $dbUser . "');\n"
@@ -902,8 +902,8 @@ final class Wp
             . "define('DB_CHARSET', 'utf8mb4');\n"
             . "define('DB_COLLATE', '');\n\n"
             . $defs . "\n"
-            // Tanpa $table_prefix, wp-settings.php gagal dengan
-            // "Undefined variable $table_prefix" dan instalasi berhenti.
+            // Without $table_prefix, wp-settings.php fails with
+            // "Undefined variable $table_prefix" and the install stops.
             . "\$table_prefix = 'wp_';\n\n"
             . "define('WP_DEBUG', false);\n"
             . "define('FS_METHOD', 'direct');\n"
@@ -920,14 +920,14 @@ final class Wp
         @chmod($docroot . '/wp-config.php', 0640);
     }
 
-    /** Jalankan WP-CLI dengan argumen array (tanpa shell). */
+    /** Run WP-CLI with an argument array (no shell). */
     private static function wpCli(array $args): array
     {
         $cmd = array_merge(['/usr/local/bin/wp'], $args);
         $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
         $proc = @proc_open($cmd, $desc, $pipes, '/var/www');
         if (!is_resource($proc)) {
-            return [1, 'gagal menjalankan wp-cli'];
+            return [1, 'failed to run wp-cli'];
         }
         @fclose($pipes[0]);
         $out = (string)stream_get_contents($pipes[1]);
@@ -937,14 +937,14 @@ final class Wp
         return [proc_close($proc), trim($out . "\n" . $err)];
     }
 
-    /** Buang sisa instalasi yang gagal: file WP dan database. */
+    /** Drop the leftovers of a failed installation: WP files and the database. */
     private static function cleanup(string $username, int $dbId, string $docroot): void
     {
         if ($dbId > 0) {
             MariaDb::delete($username, $dbId);
         }
-        // Hanya file inti WordPress yang dihapus; file milik user lain di
-        // docroot tidak boleh ikut terhapus.
+        // Only WordPress core files are deleted; other users' files in the
+        // docroot must not be touched.
         foreach (['wp-admin', 'wp-includes', 'wp-login.php', 'wp-settings.php',
                   'wp-load.php', 'index.php', 'wp-config.php', 'wp-content',
                   'wp-blog-header.php', 'wp-comments-post.php', 'wp-cron.php',
@@ -984,7 +984,7 @@ final class Wp
         );
     }
 
-    /** Docroot harus di dalam /var/www/<user>/ supaya tidak keluar dariMilik user. */
+    /** The docroot must be inside /var/www/<user>/ so it cannot escape into another user's files. */
     private static function safeDocroot(string $docroot, string $username): bool
     {
         $base = '/var/www/' . $username . '/';
@@ -1012,7 +1012,7 @@ final class Wp
         return $out;
     }
 
-    /** 64 karakter dari character set yang aman untuk konstanta PHP. */
+    /** 64 characters from a character set safe for PHP constants. */
     private static function salt(): string
     {
         $abc = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#%^&*()-_[]{}<>~`+=,.;:/?|';
@@ -1095,7 +1095,7 @@ final class Wp
     private static function firstLine(string $text): string
     {
         $lines = preg_split('/\R/', trim($text), -1, PREG_SPLIT_NO_EMPTY);
-        return substr((string)($lines[0] ?? 'tanpa pesan'), 0, 200);
+        return substr((string)($lines[0] ?? 'no message'), 0, 200);
     }
 
     private static function cachedZip(string $version): ?string
@@ -1115,7 +1115,7 @@ final class Wp
         }
     }
 
-    /** Cari biner di PATH. */
+    /** Find a binary in PATH. */
     private static function which(string $bin): ?string
     {
         $path = (string)(getenv('PATH') ?: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin');
@@ -1128,7 +1128,7 @@ final class Wp
         return null;
     }
 
-    /** Jalankan perintah tanpa output; kembalikan kode keluar. */
+    /** Run a command without output; return the exit code. */
     private static function runQuiet(array $cmd, string $cwd): int
     {
         $desc = [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']];

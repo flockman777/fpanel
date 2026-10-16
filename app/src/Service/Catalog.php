@@ -3,8 +3,8 @@ declare(strict_types=1);
 namespace Fpanel\Service;
 
 /**
- * Katalog fitur beranda. `href` = route NYATA.
- * `requires` = kunci resource paket; null = selalu ada.
+ * Homepage feature catalog. `href` = REAL route.
+ * `requires` = package resource key; null = always available.
  */
 final class Catalog
 {
@@ -54,7 +54,7 @@ final class Catalog
             foreach ($c['tiles'] as $tile) {
                 $req = $tile['requires'];
                 if ($req !== null && array_key_exists($req, $t) && $t[$req] === false) {
-                    continue; // resource dimatikan di paket
+                    continue; // resource disabled in the package
                 }
                 $tiles[] = $tile;
             }

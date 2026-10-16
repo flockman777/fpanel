@@ -1,14 +1,15 @@
 #!/bin/bash
-# FPanel helper administrasi extension PHP.
+# FPanel helper for PHP extension administration.
 #
-# Dipanggil www-data lewat sudo (lihat /etc/sudoers.d/fpanel-php).
-# Extension PHP dimuat/tidak dari file .ini di conf.d, dan perubahan baru
-# berlaku setelah pool FPM versi itu di-restart. Karena keduanya butuh root,
-# aksinya lewat helper ini — PHP tidak pernah memegang akses root.
+# Called by www-data through sudo (see /etc/sudoers.d/fpanel-php).
+# PHP extensions are loaded/unloaded through .ini files in conf.d, and changes
+# only take effect after the FPM pool for that version is restarted. Both need
+# root, so the action goes through this helper — PHP itself never holds root
+# access.
 #
-# Prinsip: JANGAN pernah menghapus file .ini bawaan distro. Extension yang
-# dimatikan file .ininya dipindahkan (bukan dihapus) lalu dicatat di state file,
-# sehingga bisa dikembalikan persis seperti semula.
+# Principle: NEVER delete the distro's own .ini files. A disabled
+# extension's .ini is moved aside (not deleted) and recorded in the state file,
+# so it can be restored exactly as it was.
 set -euo pipefail
 
 STATE_DIR=/var/lib/fpanel/php-ext
@@ -18,38 +19,38 @@ PAT_EXT='^[a-z0-9_]+$'
 die() { echo "ERR: $*" >&2; exit 2; }
 
 need_ver() {
-  [ "${1:-}" != "" ] || die "versi PHP wajib diisi"
-  [[ "$1" =~ $PAT_VER ]] || die "versi PHP tidak valid: $1"
+  [ "${1:-}" != "" ] || die "PHP version is required"
+  [[ "$1" =~ $PAT_VER ]] || die "invalid PHP version: $1"
 }
 
 need_ext() {
-  [ "${1:-}" != "" ] || die "nama extension wajib diisi"
-  [[ "$1" =~ $PAT_EXT ]] || die "nama extension tidak valid: $1"
+  [ "${1:-}" != "" ] || die "extension name is required"
+  [[ "$1" =~ $PAT_EXT ]] || die "invalid extension name: $1"
 }
 
 conf_dir() { echo "/etc/php/$1/fpm/conf.d"; }
 
-# extension_dir untuk versi ini. ID API berubah antar versi (20210902 untuk
-# 8.1, 20230831 untuk 8.3, 20240924 untuk 8.4), jadi tidak boleh ditebak dari
-# nomor versinya. php-config yang jadi sumber kebenaran.
+# extension_dir for this version. The API ID changes between versions (20210902
+# for 8.1, 20230831 for 8.3, 20240924 for 8.4), so it must not be guessed from
+# the version number. php-config is the source of truth.
 ext_dir() {
   local ver="$1" dir=""
-  # Sumber 1: php-config (dari paket phpX.Y-dev, sering tidak terpasang).
+  # Source 1: php-config (from the phpX.Y-dev package, often not installed).
   if [ -x "/usr/bin/php-config$ver" ]; then
     dir="$(/usr/bin/php-config$ver --extension-dir 2>/dev/null || true)"
   fi
-  # Sumber 2: binary PHP itu sendiri. Versi sudah divalidasi regex di atas,
-  # jadi nama file-nya aman dipanggil.
+  # Source 2: the PHP binary itself. The version was already regex-validated
+  # above, so its filename is safe to invoke.
   if [ -z "$dir" ] && [ -x "/usr/bin/php$ver" ]; then
     dir="$(/usr/bin/php$ver -r 'echo ini_get("extension_dir");' 2>/dev/null || true)"
   fi
   if [ -z "$dir" ] || [ ! -d "$dir" ]; then
-    die "tidak bisa menentukan extension_dir untuk PHP $ver"
+    die "cannot determine extension_dir for PHP $ver"
   fi
   echo "${dir%/}"
 }
 
-# true kalau ada .ini di conf.d yang mengaktifkan extension ini.
+# true when a .ini in conf.d enables this extension.
 enabled_by() {
   local ver="$1" ext="$2" d f
   d="$(conf_dir "$ver")"
@@ -69,15 +70,15 @@ list() {
   for so in "$dir"/*.so; do
     [ -f "$so" ] || continue
     ext="$(basename "$so" .so)"
-    if enabled_by "$ver" "$ext" >/dev/null; then st="aktif"; else st="nonaktif"; fi
+    if enabled_by "$ver" "$ext" >/dev/null; then st="enabled"; else st="disabled"; fi
     printf '%s\t%s\n' "$ext" "$st"
   done
 }
 
-# Kembalikan file .ini distro yang sebelumnya dipindah untuk satu extension.
-# Dipanggil dari enable(): kalau tidak, extension akan aktif DUA kali
-# (dari file distro yang dipulihkan + dari 50-fpanel-<ext>.ini) dan PHP
-# memunculkan warning "Module already loaded".
+# Restore the distro .ini file previously moved aside for one extension.
+# Called from enable(): otherwise the extension would load TWICE
+# (from the restored distro file + from 50-fpanel-<ext>.ini) and PHP
+# would emit a "Module already loaded" warning.
 restore_one() {
   local ver="$1" ext="$2"
   [ -f "$STATE_DIR/off.list" ] || return 0
@@ -102,26 +103,26 @@ enable() {
   need_ver "$1"; need_ext "$2"
   local ver="$1" ext="$2" dir d
   dir="$(ext_dir "$ver")"
-  [ -f "$dir/$ext.so" ] || die "extension '$ext' tidak terpasang untuk PHP $ver"
+  [ -f "$dir/$ext.so" ] || die "extension '$ext' is not installed for PHP $ver"
   d="$(conf_dir "$ver")"
 
   mkdir -p "$STATE_DIR"
-  # Kembalikan file distro yang mungkin masih tersimpan dari disable sebelumnya.
+  # Restore the distro file that may still be stashed from a previous disable.
   local restored=0
   restore_one "$ver" "$ext" && restored=1
-  # Kalau file distro sudah kembali, file kita tidak perlu ada lagi.
+  # If the distro file is already back, our file is no longer needed.
   if [ "$restored" = "1" ] && enabled_by "$ver" "$ext" >/dev/null; then
     rm -f "$d/50-fpanel-$ext.ini"
-    echo "OK $ext dipulihkan ke file bawaan distro untuk PHP $ver"
+    echo "OK $ext restored to the distro's own file for PHP $ver"
     return 0
   fi
   if enabled_by "$ver" "$ext" >/dev/null; then
-    echo "OK $ext sudah aktif untuk PHP $ver"; return 0
+    echo "OK $ext is already enabled for PHP $ver"; return 0
   fi
-  printf '; FPanel: extension %s untuk PHP %s\n; priority=50\nextension=%s.so\n' \
+  printf '; FPanel: extension %s for PHP %s\n; priority=50\nextension=%s.so\n' \
     "$ext" "$ver" "$ext" > "$d/50-fpanel-$ext.ini"
   chown root:root "$d/50-fpanel-$ext.ini"; chmod 0644 "$d/50-fpanel-$ext.ini"
-  echo "OK $ext diaktifkan untuk PHP $ver (restart pool agar berlaku)"
+  echo "OK $ext enabled for PHP $ver (restart the pool to apply)"
 }
 
 disable() {
@@ -130,37 +131,37 @@ disable() {
   d="$(conf_dir "$ver")"
   f="$(enabled_by "$ver" "$ext" || true)"
   if [ -z "$f" ]; then
-    echo "OK $ext memang sudah nonaktif untuk PHP $ver"; return 0
+    echo "OK $ext is already disabled for PHP $ver"; return 0
   fi
 
   mkdir -p "$STATE_DIR"
-  # File milik FPanel: hapus saja.
+  # File owned by FPanel: just delete it.
   case "$(basename "$f")" in
     50-fpanel-*)
       rm -f "$f"
-      echo "OK $ext dimatikan untuk PHP $ver"
+      echo "OK $ext disabled for PHP $ver"
       return 0
       ;;
   esac
-  # File bawaan distro: PINDAH, jangan dihapus, dan catat supaya bisa balik.
+  # Distro's own file: MOVE it, do not delete it, and record it so it can return.
   base="$f.fpanel-off"
   mv "$f" "$base"
   printf '%s\t%s\t%s\n' "$ver" "$ext" "$base" >> "$STATE_DIR/off.list"
-  echo "OK $ext dimatikan untuk PHP $ver (file distro disimpan, bisa dikembalikan)"
+  echo "OK $ext disabled for PHP $ver (distro file stashed, can be restored)"
 }
 
 restore() {
   need_ver "$1"
   local ver="$1" line v e path
-  [ -f "$STATE_DIR/off.list" ] || { echo "OK tidak ada yang perlu dipulihkan"; return 0; }
+  [ -f "$STATE_DIR/off.list" ] || { echo "OK nothing to restore"; return 0; }
   local tmp="$STATE_DIR/off.list.new" ; : > "$tmp"
   while IFS=$'\t' read -r v e path; do
     [ -n "${v:-}" ] || continue
     if [ "$v" = "$ver" ] && [ -f "$path" ]; then
       mv "$path" "${path%.fpanel-off}"
-      echo "OK $e dipulihkan untuk PHP $ver"
+      echo "OK $e restored for PHP $ver"
     elif [ "$v" = "$ver" ]; then
-      echo "GAGAL: file untuk $e tidak ditemukan: $path" >&2
+      echo "Error: file for $e not found: $path" >&2
     else
       printf '%s\t%s\t%s\n' "$v" "$e" "$path" >> "$tmp"
     fi
@@ -170,19 +171,19 @@ restore() {
 
 extdir() { need_ver "$1"; ext_dir "$1"; }
 
-# Muat ulang pool secara graceful (SIGUSR2 lewat systemctl reload).
+# Reload the pool gracefully (SIGUSR2 through systemctl reload).
 #
-# Dipakai setelah override php.ini per-domain dihapus: pool FPM menahan nilai
-# PHP_VALUE dari request sebelumnya, jadi nilainya baru hilang setelah pool
-# dimuat ulang. Berbeda dengan restart, reload TIDAK menutup socket listener,
-# jadi tidak ada jendela 502 untuk site yang sedang dilayani.
+# Used after a per-domain php.ini override is removed: the FPM pool keeps the
+# PHP_VALUE from the previous request, so the value only disappears after the
+# pool is reloaded. Unlike a restart, reload does NOT close the listener
+# socket, so there is no 502 window for sites currently being served.
 reload_pool() {
   ver="${1:-}"
-  [[ "$ver" =~ ^[0-9]+\.[0-9]+$ ]] || { echo "ERR: versi tidak valid" >&2; exit 2; }
+  [[ "$ver" =~ ^[0-9]+\.[0-9]+$ ]] || { echo "ERR: invalid version" >&2; exit 2; }
   if systemctl reload "php${ver}-fpm" 2>/dev/null; then
-    echo "OK pool php${ver}-fpm dimuat ulang"
+    echo "OK pool php${ver}-fpm reloaded"
   else
-    echo "ERR: reload pool php${ver}-fpm gagal" >&2
+    echo "ERR: failed to reload pool php${ver}-fpm" >&2
     exit 1
   fi
 }
@@ -190,19 +191,19 @@ reload_pool() {
 restart() {
   need_ver "$1"
   local ver="$1"
-  [ -d "/etc/php/$ver/fpm" ] || die "PHP $ver tidak terpasang"
+  [ -d "/etc/php/$ver/fpm" ] || die "PHP $ver is not installed"
 
-  # PENTING: restart harus DILETAK dari proses pemanggil dan diberi jeda.
+  # IMPORTANT: the restart must be DETACHED from the calling process and delayed.
   #
-  # Permintaan ini datang dari PHP-FPM. Kalau pool yang sama direstart secara
-  # sinkron, master php-fpm menunggu worker menyelesaikan request, sementara
-  # worker itu sendiri menunggu `systemctl restart` selesai -> deadlock.
-  # Akibatnya worker dibunuh dan nginx mengembalikan 502 ke user.
+  # This request comes from PHP-FPM. If the same pool were restarted
+  # synchronously, the php-fpm master waits for the worker to finish its request,
+  # while that worker itself waits for `systemctl restart` to return -> deadlock.
+  # As a result the worker gets killed and nginx returns 502 to the user.
   #
-  # Solusinya: lepaskan (setsid) + jeda 1 detik supaya response yang sedang
-  # dibangun sempat keluar dulu.
+  # The fix: detach (setsid) + a 1-second delay so the response currently being
+  # built gets a chance to leave first.
   setsid bash -c "sleep 1; systemctl restart 'php${ver}-fpm'" >/dev/null 2>&1 </dev/null &
-  echo "OK pool php${ver}-fpm dijadwalkan restart (1 detik)"
+  echo "OK pool php${ver}-fpm scheduled for a restart (1 second)"
 }
 
 cmd="${1:-}"; shift || true
@@ -214,11 +215,11 @@ case "$cmd" in
   extdir)   extdir "${1:-}" ;;
   restart)  restart "${1:-}" ;;
   reload)   reload_pool "${1:-}" ;;
-  # Satu panggilan untuk semua versi, supaya UI bisa menampilkan matriks
-  # "extension ini tersedia di versi mana saja" tanpa memanggil helper 4x.
+  # A single call for every version, so the UI can show the matrix
+  # "which versions provide this extension" without calling the helper 4x.
   matrix)
-    # Sengaja tanpa `local`: cabang case ini bukan fungsi, dan `local` di
-    # luar fungsi akan keluar dengan error "can only be used in a function".
+    # Deliberately no `local`: this case branch is not a function, and `local`
+    # outside a function exits with the error "can only be used in a function".
     for v in /etc/php/*/fpm; do
       [ -d "$v" ] || continue
       ver="$(basename "$(dirname "$v")")"
@@ -227,7 +228,7 @@ case "$cmd" in
       for so in "$dir"/*.so; do
         [ -f "$so" ] || continue
         ext="$(basename "$so" .so)"
-        if enabled_by "$ver" "$ext" >/dev/null; then st="aktif"; else st="nonaktif"; fi
+        if enabled_by "$ver" "$ext" >/dev/null; then st="enabled"; else st="disabled"; fi
         printf '%s\t%s\t%s\n' "$ver" "$ext" "$st"
       done
     done
@@ -235,8 +236,8 @@ case "$cmd" in
 
   ping)     echo OK ;;
   *)
-    echo "ERR: subcommand tidak dikenal: '$cmd'" >&2
-    echo "ERR: yang valid: list|matrix|enable|disable|restore|extdir|restart|reload|ping" >&2
+    echo "ERR: unknown subcommand: '$cmd'" >&2
+    echo "ERR: valid ones: list|matrix|enable|disable|restore|extdir|restart|reload|ping" >&2
     exit 2
     ;;
 esac

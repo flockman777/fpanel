@@ -1,10 +1,10 @@
-/* fpanel mockup - client runtime (dummy data only, tidak memanggil bin/f-*) */
+/* fpanel mockup - client runtime (dummy data only, does not call bin/f-*) */
 (function () {
   "use strict";
 
   const BASE = (document.currentScript && document.currentScript.dataset.base) || "";
 
-  /* render ikon: pakai bundle trimmed (assets/js/icons.js), fallback ke lucide penuh */
+  /* render icons: use the trimmed bundle (assets/js/icons.js), fall back to full lucide */
   const paintIcons = () => {
     const f = window.fpanelIcons || window.lucide;
     f && f.createIcons && f.createIcons();
@@ -26,7 +26,7 @@
   };
 
   const I18n = {
-    lang: localStorage.getItem("fpanel.lang") || "id",
+    lang: localStorage.getItem("fpanel.lang") || "en",
     dict: {},
     fallback: {},
     ready: false,
@@ -37,7 +37,7 @@
       document.documentElement.lang = lang;
       try {
         this.dict = await this._fetch(BASE + "i18n/" + lang + ".json");
-        this.fallback = lang === "id" ? {} : await this._fetch(BASE + "i18n/id.json");
+        this.fallback = lang === "en" ? {} : await this._fetch(BASE + "i18n/en.json");
       } catch (e) {
         this.dict = {};
       }
@@ -59,7 +59,7 @@
       return s;
     },
 
-    /* isi elemen beratribut data-i18n* (statis di HTML) */
+    /* fill elements with data-i18n* attributes (static in HTML) */
     apply(root) {
       const sel = (a) => (root || document).querySelectorAll(a);
       sel("[data-i18n]").forEach((el) => (el.textContent = this.t(el.dataset.i18n)));
@@ -72,7 +72,7 @@
     set(lang) { if (lang !== this.lang) this.load(lang); },
   };
 
-  /* search store: filter fitur client-side dari window.FPANEL_FEATURES */
+  /* search store: client-side feature filter from window.FPANEL_FEATURES */
   const Search = {
     q: "",
     open: false,
@@ -90,8 +90,8 @@
     },
   };
 
-  /* Alpine CDN build menjalankan start() di queueMicrotask, jadi alpine:init bisa
-     sudah lewat sebelum app.js (defer) berjalan. Boot dibuat idempoten + fallback. */
+  /* The Alpine CDN build runs start() in a queueMicrotask, so alpine:init may
+     have passed before app.js (defer) runs. Boot is made idempotent + fallback. */
   let booted = false;
   function boot() {
     if (booted || !window.Alpine) return;
@@ -100,7 +100,7 @@
     Alpine.store("admin", { open: false });
     Alpine.store("theme", Theme);
     Alpine.store("i18n", I18n);
-    /* panggil lewat proxy store supaya reaktifitas Alpine ikut sinkron */
+    /* call via the store proxy so Alpine reactivity stays in sync */
     const i18n = Alpine.store("i18n");
     const theme = Alpine.store("theme");
     theme.init();

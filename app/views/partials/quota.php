@@ -1,5 +1,5 @@
 <?php
-/** Panel kuota nyata - dipanggil dari section.php dengan $q */
+/** Real quota panel - called from section.php with $q */
 $q = ($q ?? []) ?: ($s['quota'] ?? []);
 $t = static fn (int $a, int $b): string => $b > 0 ? $a . ' / ' . $b : (string)$a;
 $items = [
@@ -18,8 +18,8 @@ $items = [
   <div class="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
     <span class="grid h-7 w-7 place-items-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
       <i data-lucide="gauge" class="h-4 w-4"></i></span>
-    <h2 class="text-sm font-semibold text-slate-800 dark:text-slate-100">Paket: <?= htmlspecialchars((string)($q['name'] ?? '-')) ?></h2>
-    <span class="ml-auto text-xs text-slate-400">kuota &amp; pemakaian nyata</span>
+    <h2 class="text-sm font-semibold text-slate-800 dark:text-slate-100">Plan: <?= htmlspecialchars((string)($q['name'] ?? '-')) ?></h2>
+    <span class="ml-auto text-xs text-slate-400">quota &amp; actual usage</span>
   </div>
   <div class="grid grid-cols-2 gap-px bg-slate-100 dark:bg-slate-800 sm:grid-cols-3 lg:grid-cols-5">
     <?php foreach ($items as [$label, $used, $max]):

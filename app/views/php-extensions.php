@@ -1,20 +1,20 @@
 <?php
 /**
- * Select PHP Version — halaman ala cPanel/phpSelector.
+ * Select PHP Version — a cPanel/phpSelector-style page.
  *
- * Sengaja TIDAK sama dengan MultiPHP Manager. Di cPanel:
- *   - Select PHP Version  -> versi AKUN + Extensions + PHP Settings
- *   - MultiPHP Manager    -> versi PHP per DOMAIN
- * Halaman ini memakai versi akun: extension dan php.ini berlaku untuk semua
- * domain milik user. Pengaturan versi per domain ada di /multiphp.
+ * Deliberately NOT the same as MultiPHP Manager. In cPanel:
+ *   - Select PHP Version  -> ACCOUNT version + Extensions + PHP Settings
+ *   - MultiPHP Manager    -> PHP version per DOMAIN
+ * This page uses the account version: extensions and php.ini apply to every
+ * domain the user owns. Per-domain version settings live in /multiphp.
  *
  * @var string $csrf
  * @var array $me, array $s
- * @var array $data   hasil PhpExtensions::listing()
- * @var array $domains daftar domain milik user
- * @var int $nDomains jumlah domain user
+ * @var array $data   result of PhpExtensions::listing()
+ * @var array $domains list of the user's domains
+ * @var int $nDomains number of user domains
  * @var array $iniDefault PhpSettings::defaults()
- * @var array $iniCurrent gabungan override semua domain
+ * @var array $iniCurrent combined overrides of all domains
  * @var bool $iniCustom
  * @var string|null $error, string|null $ok
  */
@@ -27,7 +27,7 @@ $vers    = (array)($d['versions'] ?? []);
 $exts    = (array)($d['extensions'] ?? []);
 $ver     = (string)($d['version'] ?? '');
 $dOk     = !empty($d['ok']);
-$err     = ($dOk ? '' : (string)($d['error'] ?? 'Gagal memuat daftar extension.'));
+$err     = ($dOk ? '' : (string)($d['error'] ?? 'Failed to load the extension list.'));
 $domains = (array)($domains ?? []);
 $nDom    = (int)($nDomains ?? count($domains));
 
@@ -41,7 +41,7 @@ foreach ($exts as $x) {
     }
 }
 
-// Dipisah Basic/Advanced seperti tab di phpSelector.
+// Split into Basic/Advanced like the tabs in phpSelector.
 $BASIC = ['memory_limit', 'max_execution_time', 'max_input_time', 'max_input_vars',
           'display_errors', 'upload_max_filesize', 'post_max_size'];
 $ADVANCED = ['display_startup_errors', 'error_reporting', 'opcache.enable',
@@ -64,8 +64,8 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
       <div class="min-w-0 flex-1">
         <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-2xl">Select PHP Version</h1>
         <p class="mt-0.5 text-sm text-slate-500">
-          Versi, extension, dan PHP Settings untuk semua domain Anda.
-          Versi per domain diatur di <a href="/multiphp" class="font-medium text-brand-600 hover:underline dark:text-brand-300">MultiPHP Manager</a>.
+          Versions, extensions, and PHP settings for all your domains.
+          Per-domain versions are configured in <a href="/multiphp" class="font-medium text-brand-600 hover:underline dark:text-brand-300">MultiPHP Manager</a>.
         </p>
       </div>
     </div>
@@ -81,7 +81,7 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
     <?php if ($ver !== '' && $ver === $PHP_HOST): ?>
       <div class="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
         <i data-lucide="alert-triangle" class="mt-0.5 h-4 w-4 shrink-0"></i>
-        <span><strong>PHP <?= $e($ver) ?> juga dipakai panel ini.</strong> Setiap Apply me-restart pool itu, jadi panel tidak tersedia selama sekitar sedetik.</span>
+        <span><strong>PHP <?= $e($ver) ?> is also used by this panel.</strong> Every Apply restarts that pool, so the panel is unavailable for about a second.</span>
       </div>
     <?php endif; ?>
 
@@ -92,7 +92,7 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
       </section>
     <?php else: ?>
 
-    <!-- ===== PHP Version (akun) ===== -->
+    <!-- ===== PHP Version (account) ===== -->
     <section class="card p-4">
       <form method="post" action="/php-extensions/version" class="flex flex-wrap items-end gap-3">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
@@ -106,7 +106,7 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
         </label>
         <button class="btn-primary h-9 px-4 text-sm"><i data-lucide="check" class="h-4 w-4"></i><span>Select</span></button>
         <p class="text-xs text-slate-500">
-          Berlaku untuk <strong><?= $e($nDom) ?></strong> domain Anda yang mengikuti versi akun.
+          Applies to <strong><?= $e($nDom) ?></strong> of your domains that follow the account version.
         </p>
       </form>
     </section>
@@ -118,7 +118,7 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
         <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
           <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Extensions</h2>
           <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-            <?= $e($nAktif) ?>/<?= $e(count($exts)) ?> aktif
+            <?= $e($nAktif) ?>/<?= $e(count($exts)) ?> enabled
           </span>
           <span class="ml-auto text-[11px] text-slate-400">PHP <?= $e($ver) ?></span>
         </div>
@@ -135,14 +135,14 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
               ?>
               <label class="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-slate-50 dark:hover:bg-slate-800/60"
                      data-ext="<?= $e($name) ?>" data-sens="<?= $sens ? '1' : '0' ?>">
-                <!-- Status saat ini selalu ikut terkirim, jadi centang yang
-                    dilepas berarti "matikan" (bukan sekadar tidak terkirim). -->
+                <!-- The current status is always submitted too, so a cleared
+                    checkbox means "turn it off" (not merely "not submitted"). -->
                 <input type="hidden" name="cur[<?= $e($name) ?>]" value="<?= $on ? '1' : '0' ?>">
                 <input type="checkbox" name="on[<?= $e($name) ?>]" value="1" <?= $on ? 'checked' : '' ?>
                        class="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-2 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-800">
                 <span class="truncate font-mono text-[13px] text-slate-800 dark:text-slate-200"><?= $e($name) ?></span>
                 <?php if ($sens): ?>
-                  <span class="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">sensitif</span>
+                  <span class="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">sensitive</span>
                 <?php endif; ?>
               </label>
               <?php endforeach; ?>
@@ -150,7 +150,7 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
           </div>
           <div class="flex items-center gap-2 border-t border-slate-100 px-4 py-3 dark:border-slate-800">
             <button class="btn-primary h-9 px-4 text-sm"><i data-lucide="check" class="h-4 w-4"></i><span>Apply</span></button>
-            <span class="text-xs text-slate-500">Berlaku untuk semua domain yang memakai PHP <?= $e($ver) ?>.</span>
+            <span class="text-xs text-slate-500">Applies to all domains using PHP <?= $e($ver) ?>.</span>
           </div>
         </form>
       </section>
@@ -160,13 +160,13 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
         <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
           <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">PHP Settings</h2>
           <?php if ($iniCustom): ?>
-            <span class="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">diubah</span>
+            <span class="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">modified</span>
           <?php else: ?>
             <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400">default</span>
           <?php endif; ?>
         </div>
 
-        <!-- tab Basic / Advanced, sama seperti phpSelector -->
+        <!-- Basic / Advanced tabs, just like phpSelector -->
         <div class="flex gap-1 border-b border-slate-100 px-3 pt-2 dark:border-slate-800">
           <button type="button" data-tab="basic"
                   class="tab-btn rounded-t px-3 py-2 text-xs font-medium">Basic</button>
@@ -208,8 +208,8 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
           <div class="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-3 dark:border-slate-800">
             <button class="btn-primary h-9 px-4 text-sm"><i data-lucide="save" class="h-4 w-4"></i><span>Save</span></button>
             <?php if ($iniCustom): ?>
-              <button form="reset-ini" class="btn-icon" title="Kembalikan ke default server"
-                      onclick="return confirm('Kembalikan PHP Settings ke default server untuk semua domain?')">
+              <button form="reset-ini" class="btn-icon" title="Revert to the server default"
+                      onclick="return confirm('Revert PHP settings to the server default for all domains?')">
                 <i data-lucide="undo-2" class="h-4 w-4"></i>
               </button>
               <form id="reset-ini" method="post" action="/domains/php-settings" class="hidden">
@@ -220,7 +220,7 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
                 <input type="hidden" name="ver" value="<?= $e($ver) ?>">
               </form>
             <?php endif; ?>
-            <span class="text-xs text-slate-500">Berlaku untuk <strong><?= $e($nDom) ?></strong> domain Anda.</span>
+            <span class="text-xs text-slate-500">Applies to <strong><?= $e($nDom) ?></strong> of your domains.</span>
           </div>
         </form>
       </section>
@@ -230,11 +230,11 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
 </main>
 
 <style>
-  /* Tab aktif mengikuti tema panel (light/dark). */
+  /* The active tab follows the panel theme (light/dark). */
   .tab-btn[data-active="1"] { @apply bg-slate-100 font-semibold text-slate-900 dark:bg-slate-800 dark:text-slate-50; }
 </style>
 <script>
-  // Tab Basic / Advanced
+  // Basic / Advanced tabs
   (function () {
     var btns = document.querySelectorAll('.tab-btn');
     var panels = document.querySelectorAll('[data-panel]');
@@ -246,22 +246,22 @@ $PHP_HOST = (string)(PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION);
     if (btns.length) { show(btns[0].dataset.tab); }
   })();
 
-  // Konfirmasi sebelum Apply kalau ada extension sensitif yang dimatikan.
+  // Confirm before Apply when a sensitive extension is being turned off.
   (function () {
     var form = document.getElementById('form-ext');
     if (!form) return;
     form.addEventListener('submit', function (ev) {
-      var dimatikan = [];
+      var disabled = [];
       form.querySelectorAll('[data-sens="1"]').forEach(function (el) {
         var box = el.querySelector('input[type=checkbox]');
         var before = el.querySelector('input[type=hidden]');
         if (box && !box.checked && before && before.value === '1') {
-          dimatikan.push(el.dataset.ext);
+          disabled.push(el.dataset.ext);
         }
       });
-      if (!dimatikan.length) return;
-      if (!confirm('Matikan extension sensitif berikut?\n\n' + dimatikan.join(', ') +
-                   '\n\nAplikasi yang memakainya bisa error.')) {
+      if (!disabled.length) return;
+      if (!confirm('Disable the following sensitive extensions?\n\n' + disabled.join(', ') +
+                   '\n\nApplications using them may break.')) {
         ev.preventDefault();
       }
     });

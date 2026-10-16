@@ -1,4 +1,4 @@
-<?php /* Data dummy untuk mockup (tidak menyentuh sistem, tidak memanggil bin/f-*) */
+<?php /* Dummy data for the mockup (does not touch the system, does not call bin/f-*) */
 
 function dummy_domains(): array {
   return [

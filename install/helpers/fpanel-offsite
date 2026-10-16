@@ -1,10 +1,10 @@
 #!/bin/bash
-# FPanel: kirim arsip backup terbaru ke bucket offsite, lalu pangkas yang lama.
+# FPanel: send the latest backup archive to the offsite bucket, then prune the old ones.
 #
-# Dipanggil dari cron sebagai root. Root dibutuhkan karena arsip backup ada di
-# direktori 0700 root dan offsite.conf juga hanya root yang bisa baca. Semua
-# logika signature S3 dan enkripsi tetap di aplikasi (bin/fpanel), di sini
-# hanya dicari nama arsip terbaru lalu commercialization.
+# Called from cron as root. Root is needed because the backup archives live in
+# a root 0700 directory and only root can read offsite.conf as well. All
+# S3 signature and encryption logic stays in the application (bin/fpanel); here
+# only the name of the latest archive is looked up and then it is sent.
 set -uo pipefail
 
 BACKUP_DIR=/var/backups/fpanel
@@ -14,26 +14,26 @@ LOG=/var/log/fpanel-offsite.log
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >> "$LOG"; }
 
 if [ ! -f /etc/fpanel/offsite.conf ]; then
-  log "lewati: /etc/fpanel/offsite.conf belum ada"
+  log "skip: /etc/fpanel/offsite.conf does not exist yet"
   exit 0
 fi
 
 latest="$(find "$BACKUP_DIR" -maxdepth 1 -name 'fpanel-*.tar.gz' -printf '%f\n' 2>/dev/null \
   | grep -E "$PAT" | sort | tail -1)"
 if [ -z "$latest" ]; then
-  log "lewati: tidak ada arsip backup untuk dikirim"
+  log "skip: no backup archives to send"
   exit 0
 fi
 
-log "mengirim $latest"
+log "sending $latest"
 if out="$(/usr/bin/php /srv/fpanel/bin/fpanel offsite:upload "$latest" 2>&1)"; then
   log "OK $out"
 else
-  log "GAGAL: $out"
+  log "FAILED: $out"
   exit 1
 fi
 
-# Pangkas offsite setelah upload sukses: kalau upload gagal, arsip lama masih
-# utuh dan tidak ikut hilang karena job berhenti di titik ini.
+# Prune offsite only after a successful upload: if the upload fails, the old
+# archives stay intact and are not lost because the job stops at this point.
 /usr/bin/php /srv/fpanel/bin/fpanel offsite:prune 14 >>"$LOG" 2>&1 \
-  && log "pangkas offsite OK" || log "pangkas offsite GAGAL"
+  && log "offsite prune OK" || log "offsite prune FAILED"

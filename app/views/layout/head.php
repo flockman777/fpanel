@@ -5,7 +5,7 @@ $active   = $active   ?? '';
 $bodyClass= $bodyClass?? '';
 $__v      = trim((string)@file_get_contents(FPANEL_ROOT . '/app/public/assets/VERSION') ?: '') ?: '1';
 ?><!doctype html>
-<html lang="id" class="h-full">
+<html lang="en" class="h-full">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

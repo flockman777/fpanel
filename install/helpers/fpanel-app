@@ -1,18 +1,18 @@
 #!/bin/bash
-# FPanel helper Supervision app runtime (Node.js / Python).
+# FPanel helper: supervision of app runtimes (Node.js / Python).
 #
-# Setiap app jadi satu systemd unit: fpanel-app-<nama>.service
-# Dipanggil www-data lewat sudo (lihat /etc/sudoers.d/fpanel-app).
+# Each app becomes one systemd unit: fpanel-app-<name>.service
+# Called by www-data through sudo (see /etc/sudoers.d/fpanel-app).
 #
-# Kenapa systemd, bukan pm2:
-#   - native di server ini, tidak butuh daemon tambahan yang harus di-save
-#     supaya hidup lagi setelah reboot;
-#   - logs tersedia lewat journalctl;
-#   - start/stop/status satu perintah yang jelas.
+# Why systemd and not pm2:
+#   - native to this server, no extra daemon that has to be saved
+#     so it comes back after a reboot;
+#   - logs are available through journalctl;
+#   - start/stop/status with one clear command.
 #
-# Semua argumen divalidasi ketat di sini. Nama unit dirakit dari nama app,
-# jadi nama app WAJIB sudah lolos validasi (^[a-z0-9][a-z0-9_-]{1,30}$)
-# sebelum menyentuh systemd.
+# Every argument is validated strictly here. The unit name is assembled from the app name,
+# so the app name MUST already have passed validation (^[a-z0-9][a-z0-9_-]{1,30}$)
+# before touching systemd.
 set -euo pipefail
 
 PAT_NAME='^[a-z0-9][a-z0-9_-]{1,30}$'
@@ -24,34 +24,34 @@ UNIT_PREFIX=fpanel-app-
 
 die() { echo "ERR: $*" >&2; exit 2; }
 
-need() { [ -n "${1:-}" ] || die "argumen kurang"; }
+need() { [ -n "${1:-}" ] || die "missing argument"; }
 
 check_name() {
   need "$1"
-  [[ "$1" =~ $PAT_NAME ]] || die "nama app tidak valid: $1"
+  [[ "$1" =~ $PAT_NAME ]] || die "invalid app name: $1"
 }
 
-# Folder app: absolut, tanpa "..".
+# App folder: absolute, without "..".
 check_path() {
   need "$1"
-  [[ "$1" =~ $PAT_PATH ]] || die "path tidak valid"
-  [[ "$1" == /* ]] || die "path harus absolut"
-  [[ ! "$1" =~ \.\. ]] || die "path tidak boleh berisi .."
+  [[ "$1" =~ $PAT_PATH ]] || die "invalid path"
+  [[ "$1" == /* ]] || die "the path must be absolute"
+  [[ ! "$1" =~ \.\. ]] || die "the path must not contain .."
 }
 
-# File entry: RELATIF terhadap folder app, tanpa "..". Path relatif di sini
-# benar; check_path tidak boleh dipakai untuk entry karena entry tidak absolut.
+# Entry file: RELATIVE to the app folder, without "..". A relative path is
+# correct here; check_path must not be used for the entry because the entry is not absolute.
 check_entry() {
   need "$1"
-  [[ "$1" =~ $PAT_ENTRY ]] || die "entry tidak valid"
-  [[ "$1" != /* ]] || die "entry harus relatif terhadap folder app"
-  [[ ! "$1" =~ \.\. ]] || die "entry tidak boleh berisi .."
+  [[ "$1" =~ $PAT_ENTRY ]] || die "invalid entry"
+  [[ "$1" != /* ]] || die "the entry must be relative to the app folder"
+  [[ ! "$1" =~ \.\. ]] || die "the entry must not contain .."
 }
 
 check_port() {
   need "$1"
-  [[ "$1" =~ $PAT_PORT ]] || die "port tidak valid"
-  [ "$1" -ge 1024 ] && [ "$1" -le 65535 ] || die "port di luar rentang"
+  [[ "$1" =~ $PAT_PORT ]] || die "invalid port"
+  [ "$1" -ge 1024 ] && [ "$1" -le 65535 ] || die "port out of range"
 }
 
 unit_name() { echo "${UNIT_PREFIX}$1.service"; }
@@ -67,13 +67,13 @@ write_unit() {
     exec="/usr/bin/node $root/$entry"
   else
     workdir="$root"
-    # Pakai python dari virtualenv app kalau ada; ini yang bikin aplikasi
-    # Python bisa punya dependensi sendiri tanpa menyentuh sistem.
+    # Use python from the app's virtualenv when present; this is what lets a
+    # Python app have its own dependencies without touching the system.
     local py=""
     for cand in "$root/.venv/bin/python3" "$root/venv/bin/python3" "/var/www/.venv/bin/python3" "/usr/bin/python3"; do
       if [ -x "$cand" ]; then py="$cand"; break; fi
     done
-    [ -n "$py" ] || die "tidak menemukan python untuk app $name"
+    [ -n "$py" ] || die "no python found for app $name"
     if command -v gunicorn3 >/dev/null 2>&1; then G=gunicorn3; else G=gunicorn; fi
     exec="$py -m gunicorn --chdir $root --bind 127.0.0.1:$port --workers 2 --timeout 60 wsgi:application"
   fi
@@ -82,9 +82,9 @@ write_unit() {
 [Unit]
 Description=FPanel app: $name ($kind)
 After=network.target
-# StartLimit WAJIB ditulis di [Unit], bukan [Service]. Kalau salah section,
-# systemd menolak memuat unit saat daemon-reload, sehingga app yang tadinya
-# jalan ikut mati tanpa error yang jelas di log panel.
+# StartLimit MUST be written in [Unit], not [Service]. In the wrong section,
+# systemd refuses to load the unit on daemon-reload, so an app that was
+# running dies along with it without a clear error in the panel log.
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -109,7 +109,7 @@ WantedBy=multi-user.target
 UNIT
   chmod 0644 "$file"
   systemctl daemon-reload
-  echo "unit ditulis: $unit"
+  echo "unit written: $unit"
 }
 
 cmd="${1:-}"
@@ -123,21 +123,21 @@ case "$cmd" in
     check_port "${1:-}"; PORT="$1"; shift
     KIND="${1:-}"; shift || true
     HOME_DIR="${1:-/var/www}"
-    [ -d "$ROOT" ] || die "folder app tidak ada: $ROOT"
-    [ -f "$ROOT/$ENTRY" ] || die "entry tidak ada: $ROOT/$ENTRY"
-    case "$KIND" in node|python) ;; *) die "jenis tidak valid: $KIND" ;; esac
-    # Port harus benar-benar belum dipakai app lain.
+    [ -d "$ROOT" ] || die "the app folder does not exist: $ROOT"
+    [ -f "$ROOT/$ENTRY" ] || die "the entry does not exist: $ROOT/$ENTRY"
+    case "$KIND" in node|python) ;; *) die "invalid kind: $KIND" ;; esac
+    # The port must really not be in use by another app.
     if ss -ltn 2>/dev/null | awk 'NR>1{print $4}' | sed 's/.*://' | grep -qx "$PORT"; then
-      die "port $PORT sedang dipakai proses lain"
+      die "port $PORT is already in use by another process"
     fi
     write_unit "$NAME" "$KIND" "$ROOT" "$ENTRY" "$PORT" "$HOME_DIR"
     systemctl enable "$(unit_name "$NAME")" >/dev/null 2>&1 || true
     systemctl restart "$(unit_name "$NAME")"
     sleep 1
     if systemctl is-active --quiet "$(unit_name "$NAME")"; then
-      echo "OK app $NAME jalan di 127.0.0.1:$PORT"
+      echo "OK app $NAME running at 127.0.0.1:$PORT"
     else
-      echo "GAGAL app $NAME tidak mau jalan" >&2
+      echo "FAILED: app $NAME will not start" >&2
       journalctl -u "$(unit_name "$NAME")" -n 15 --no-pager 2>/dev/null | sed 's/^/  /' >&2
       exit 1
     fi
@@ -146,13 +146,13 @@ case "$cmd" in
   stop)
     check_name "${1:-}"
     systemctl stop "$(unit_name "$1")" >/dev/null 2>&1 || true
-    echo "OK app $1 dihentikan"
+    echo "OK app $1 stopped"
     ;;
 
   restart)
     check_name "${1:-}"
     systemctl restart "$(unit_name "$1")"
-    echo "OK app $1 direstart"
+    echo "OK app $1 restarted"
     ;;
 
   status)
@@ -164,7 +164,7 @@ case "$cmd" in
   logs)
     check_name "${1:-}"
     N="${2:-60}"
-    [[ "$N" =~ $PAT_INT ]] || die "jumlah baris tidak valid"
+    [[ "$N" =~ $PAT_INT ]] || die "invalid number of lines"
     journalctl -u "$(unit_name "$1")" -n "$N" --no-pager 2>/dev/null || true
     ;;
 
@@ -175,7 +175,7 @@ case "$cmd" in
     systemctl disable "$U" >/dev/null 2>&1 || true
     rm -f "/etc/systemd/system/$U"
     systemctl daemon-reload
-    echo "OK app $1 dihapus"
+    echo "OK app $1 removed"
     ;;
 
   list)
@@ -188,8 +188,8 @@ case "$cmd" in
     ;;
 
   *)
-    echo "ERR: subcommand tidak dikenal: '$cmd'" >&2
-    echo "ERR: yang valid: start|stop|restart|status|logs|remove|list|ping" >&2
+    echo "ERR: unknown subcommand: '$cmd'" >&2
+    echo "ERR: valid ones: start|stop|restart|status|logs|remove|list|ping" >&2
     exit 2
     ;;
 esac

@@ -61,16 +61,16 @@ $router->get('/api/health', function (): Response {
     return Response::json($checks, $checks['db'] === 'ok' ? 200 : 503);
 });
 
-// Token CSRF untuk form/AJAX. Selalu menerbitkan token baru sehingga
-// tidak pernah kedaluwarsa walau GET /login sudah ter-redirect.
+// CSRF token for forms/AJAX. It always issues a fresh token so it
+// never expires even when GET /login has already been redirected.
 $router->get('/api/csrf', function () use ($csrfToken): Response {
     return Response::json(['csrf' => $csrfToken()]);
 });
 
 // ---------- auth ----------
-// Tanpa ini, /
-// balas 404. Akar harus selalu punya tujuan: ke dashboard bila sudah
-// masuk, ke login bila belum.
+// Without this, /
+// replies 404. The root must always have a destination: to the dashboard
+// when signed in, to login when not.
 $router->get('/', function () use ($auth): Response {
     return Response::redirect($auth->check() ? '/dashboard' : '/login');
 });
@@ -92,7 +92,7 @@ $router->post('/login', function (Request $req) use ($auth, $csrfToken): Respons
     if (!Csrf::check($cookie, is_string($field) ? $field : null)) {
         return Response::html(View::render('login', [
             'csrf'   => $csrfToken(),
-            'error'  => 'Token CSRF tidak valid. Muat ulang halaman lalu coba lagi.',
+            'error'  => 'Invalid CSRF token. Reload the page and try again.',
             'notice' => null,
         ]), 419);
     }
@@ -108,21 +108,21 @@ $router->post('/login', function (Request $req) use ($auth, $csrfToken): Respons
             'notice'   => null,
         ]), 401);
     }
-    // Password benar tapi 2FA aktif: login belum selesai. attempt() sudah membuat
-    // sesi antar-langkah, jadi user diarahkan ke halaman kode, bukan ke dashboard.
+    // Correct password but 2FA active: login is not finished. attempt() has already
+    // created the intermediate session, so the user goes to the code page, not the dashboard.
     if (!empty($r['need_totp'])) {
         return Response::redirect('/login/2fa');
     }
-    // Token perangkat hanya diterbitkan setelah 2FA juga lolos. Kalau terbit
-    // di langkah password, siapa pun yang tahu password bisa mendapat remember-me
-    // tanpa pernah melewati kode 2FA.
+    // A device token is only issued after 2FA passes too. If it were issued
+    // at the password step, anyone who knows the password could get remember-me
+    // without ever going through the 2FA code.
     if ($remember && !empty($r['user_id'])) {
         RememberDevice::issue((int)$r['user_id'], $req->ip(), $req->userAgent());
     }
     return Response::redirect('/dashboard');
 });
 
-// Tautan login sekali pakai: /login/link/<token>
+// One-time login link: /login/link/<token>
 $router->get('/login/link/{token}', function (Request $req, array $params) use ($auth, $session, $csrfToken): Response {
     if ($auth->check()) {
         return Response::redirect('/dashboard');
@@ -146,8 +146,8 @@ $router->get('/login/link/{token}', function (Request $req, array $params) use (
     ], 'id = :id', ['id' => (int)$row['id']]);
     Audit::log('auth.login', (int)$row['id'], (string)$row['username'], 'user',
         (int)$row['id'], $req->ip(), 'ok', ['method' => 'link']);
-    // Halaman ini pakai token di URL, jadi jangan pernahIzinkan halaman lain
-    // merujuk balik ke sini lewat Referer.
+    // This page carries the token in the URL, so never let other pages
+    // link back here through the Referer.
     return Response::html(View::render('login-link-ok', [
         'me' => $row, 'csrf' => $csrfToken(),
     ]))->withHeader('Referrer-Policy', 'no-referrer');
@@ -170,7 +170,7 @@ $router->get('/login/2fa', function (Request $req) use ($auth, $csrfToken, $sess
 
 $router->post('/login/2fa', function (Request $req) use ($auth, $csrfToken, $session): Response {
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $pending = $session->pendingUser('totp');
     if ($pending === null) {
@@ -191,19 +191,19 @@ $router->post('/logout', function (Request $req) use ($auth, $csrfToken): Respon
     $cookie = $req->cookie(Csrf::COOKIE);
     $field  = $req->post_('_csrf');
     if (!Csrf::check($cookie, is_string($field) ? $field : null)) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $auth->logout();
     return Response::redirect('/login');
 });
 
 /**
- * Perpanjang sesi dari cookie "ingat perangkat ini".
+ * Extend the session from the "remember this device" cookie.
  *
- * Dipanggil halaman login saat cookie perangkat ada tapi sesi sudah habis.
- * Sesi yang baru dibuat hanya berumur pendek (mis. 7 hari), bukan 90 hari
- * seperti cookie perangkat: cookie remember-me adalah credential yang bisa dicabut,
- * jadi sesi hasil penggunaannya tidak perlu ikut berumur panjang.
+ * Called by the login page when the device cookie is present but the session
+ * is already gone. The new session is only short-lived (e.g. 7 days), not 90
+ * days like the device cookie: the remember-me cookie is a revocable
+ * credential, so sessions created from it need not live long as well.
  */
 $router->get('/login/remember', function (Request $req) use ($auth, $session): Response {
     if ($auth->check()) {
@@ -220,8 +220,8 @@ $router->get('/login/remember', function (Request $req) use ($auth, $session): R
         ['i' => $devId]
     );
     if ($row === null || (string)$row['status'] !== 'active') {
-        // Perangkat dicabut atau akun ditangguhkan: bersihkan cookienya supaya
-        // tidak terus mencoba.
+        // Device revoked or account suspended: clear its cookie so it does
+        // not keep retrying.
         RememberDevice::clearCookie();
         return Response::redirect('/login');
     }
@@ -250,7 +250,7 @@ $router->get('/api/me', function (Request $req) use ($auth): Response {
     ]);
 });
 
-// ---------- pencarian global ----------
+// ---------- global search ----------
 $router->get('/api/search', function (Request $req) use ($auth): Response {
     $me = $auth->user();
     if ($me === null) {
@@ -262,7 +262,7 @@ $router->get('/api/search', function (Request $req) use ($auth): Response {
     ]);
 });
 
-// ---------- halaman panel ----------
+// ---------- panel pages ----------
 $page = static function (string $view, array $extra = []) use ($auth, $csrfToken): Response {
     $me = $auth->user();
     if ($me === null) {
@@ -280,7 +280,7 @@ $router->get('/dashboard', fn (Request $r) => $page('dashboard', [
     'catalog' => Catalog::forUser($s['quota'] ?? [], (string)($s['quota']['resources'] ?? '{}')),
 ]));
 
-// --- Domains: data nyata + form create/delete nyata ---
+// --- Domains: real data + real create/delete forms ---
 $domainView = static function (Request $req, ?string $error = null, ?string $ok = null) use ($page, $auth): Response {
     $me   = $auth->user() ?? [];
     $rows = Connection::all(
@@ -295,17 +295,17 @@ $domainView = static function (Request $req, ?string $error = null, ?string $ok 
     $qOk  = trim((string)$req->query('ok', ''));
     if ($qErr !== '') { $err = $qErr; }
     if ($qOk  !== '') { $ok  = $qOk; }
-    // Sisa hari diambil dari certbot, bukan dari kolom DB, supaya UI tetap
-    // benar walau certbot.timer sudah me-renew di luar aplikasi.
+    // Days left come from certbot, not from a DB column, so the UI stays
+    // correct even when certbot.timer has already renewed outside the app.
     foreach ($rows as &$r) {
         $r['ssl_days'] = LetsEncrypt::daysLeft((string)$r['name']);
         $r['ssl_live'] = LetsEncrypt::hasCert((string)$r['name']);
     }
     unset($r);
     return $page('section', [
-        'active' => '/domains', 'title' => 'Domains', 'lead' => 'Kelola domain dan subdomain hosting Anda.',
+        'active' => '/domains', 'title' => 'Domains', 'lead' => 'Manage your hosting domains and subdomains.',
         'icon' => 'globe', 'panel' => 'form-domain', 'noTable' => true,
-        'rows' => $rows, 'empty' => 'Belum ada domain.',
+        'rows' => $rows, 'empty' => 'No domains yet.',
         'phpInstalled' => Panel::installedPhp(),
         'phpDefaults'  => \Fpanel\Service\PhpSettings::defaults(),
         'phpDefault'   => (string)Config::get('php.default', '8.3'),
@@ -321,14 +321,14 @@ $router->post('/domains', function (Request $req) use ($domainView, $auth): Resp
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $name = (string)$req->post_('name', '');
     $type = (string)$req->post_('type', 'php');
     $php  = (string)$req->post_('php_version', '');
-    // Hanya nilai "1" yang dianggap ya. Checkbox HTML mengirim "1" saat
-    // dicentang, dan tidak mengirim apa-apa saat tidak; menguji "!== ''"
-    // akan mengaktifkan SSL kalau ada yang mengirim issue_tls=0.
+    // Only the value "1" counts as yes. A HTML checkbox sends "1" when
+    // checked, and sends nothing when not; testing "!== ''" would
+    // enable SSL if someone sends issue_tls=0.
     $wantTls = $req->post_('issue_tls', '') === '1';
     $r = DomainManager::create(
         (int)$me['id'], (string)$me['username'], $name, $type,
@@ -337,12 +337,12 @@ $router->post('/domains', function (Request $req) use ($domainView, $auth): Resp
     if (!$r['ok']) {
         return $domainView($req, (string)$r['error']);
     }
-    $ok = 'Domain ' . $r['domain']['name'] . ' dibuat. Vhost nginx sudah aktif.';
-    // SSL gagal tidak membatalkan domain, jadi dilaporkan sebagai peringatan.
+    $ok = 'Domain ' . $r['domain']['name'] . ' created. The nginx vhost is already active.';
+    // SSL failure does not cancel the domain, so it is reported as a warning.
     if (is_array($r['ssl'] ?? null)) {
         $ok .= $r['ssl']['ok']
-            ? ' Sertifikat SSL juga aktif.'
-            : ' SSL gagal: ' . $r['ssl']['message'];
+            ? ' The SSL certificate is active as well.'
+            : ' SSL failed: ' . $r['ssl']['message'];
     }
     return $domainView($req, null, $ok);
 });
@@ -353,7 +353,7 @@ $router->post('/domains/ssl', function (Request $req) use ($domainView, $auth): 
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $id   = (int)$req->post_('id', '0');
     $act  = (string)$req->post_('action', 'issue');
@@ -362,16 +362,16 @@ $router->post('/domains/ssl', function (Request $req) use ($domainView, $auth): 
         ['i' => $id, 'u' => (int)$me['id']]
     );
     if ($d === null) {
-        return $domainView($req, 'Domain tidak ditemukan.');
+        return $domainView($req, 'Domain not found.');
     }
 
     if ($act === 'revoke') {
         $ok  = DomainManager::revokeCertificate((int)$d['id'], (string)$d['name']);
         $msg = $ok
-            ? 'Sertifikat ' . $d['name'] . ' dicabut. Domain tetap jalan via HTTP.'
-            : 'Sertifikat tidak bisa dicabut. Hapus manual di server.';
+            ? 'Certificate for ' . $d['name'] . ' revoked. The domain still serves over HTTP.'
+            : 'The certificate could not be revoked. Remove it manually on the server.';
         Audit::log('domain.ssl.revoke', (int)$me['id'], (string)$me['username'], 'domain', $id, '', $ok ? 'ok' : 'error', ['name' => $d['name']]);
-        // Vhost perlu dibangun ulang supaya blok 443 hilang.
+        // The vhost must be rebuilt so the 443 block goes away.
         $row = Connection::one('SELECT * FROM domains WHERE id = :i', ['i' => $id]);
         if ($ok && is_array($row)) {
             PhpSettings::apply((string)$row['name'], (string)$me['username'], $row);
@@ -389,20 +389,20 @@ $router->post('/domains/delete', function (Request $req) use ($domainView, $auth
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $r = DomainManager::delete((int)$me['id'], (string)$me['username'], (int)$req->post_('id', '0'));
-    // DomainManager boleh return ok=true sambil menyertakan error, mis. saat
-    // ada berkas sisa. Menelan error itu membuat user mengira bersih.
+    // DomainManager may return ok=true while including an error, e.g. when
+    // leftover files exist. Swallowing that error makes the user think it is clean.
     $warn = isset($r['error']) ? (string)$r['error'] : null;
     return $domainView(
         $req,
         $r['ok'] ? $warn : $warn,
-        $r['ok'] ? 'Domain dihapus.' : null
+        $r['ok'] ? 'Domain deleted.' : null
     );
 });
 
-// --- Databases: CRUD nyata lewat MariaDb (helper root) ---
+// --- Databases: real CRUD through MariaDb (root helper) ---
 $dbView = function (Request $req, ?string $err = null, ?string $ok = null, ?array $newCred = null) use ($page, $auth) {
     $me = $auth->user();
     if ($me === null) {
@@ -420,13 +420,13 @@ $dbView = function (Request $req, ?string $err = null, ?string $ok = null, ?arra
 };
 
 $router->get('/databases', function (Request $req) use ($dbView): Response {
-    // Pesan error dari redirect (mis. gagal membuat token phpMyAdmin).
+    // Error message from a redirect (e.g. failing to create the phpMyAdmin token).
     $err = trim((string)$req->query('err', ''));
     return $dbView($req, $err === '' ? null : $err);
 });
 
-// Semua aksi DB melewati satu wrapper: auth + CSRF, lalu render ulang halaman
-// dengan pesan hasil (kredensial baru ikut diteruskan ke view).
+// Every DB action goes through one wrapper: auth + CSRF, then re-render the page
+// with the result message (new credentials are passed on to the view too).
 $dbAction = function (string $route, callable $fn) use ($auth, $dbView, $router): void {
     $router->post($route, function (Request $req) use ($auth, $dbView, $fn): Response {
         $me = $auth->user();
@@ -434,7 +434,7 @@ $dbAction = function (string $route, callable $fn) use ($auth, $dbView, $router)
             return Response::redirect('/login');
         }
         if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-            return Response::text('419 CSRF tidak valid', 419);
+            return Response::text('419 invalid CSRF', 419);
         }
         $r = $fn($me, $req);
         return $dbView($req, $r['error'], $r['ok'] ? ($r['msg'] ?? null) : null,
@@ -445,13 +445,13 @@ $dbAction = function (string $route, callable $fn) use ($auth, $dbView, $router)
 $dbAction('/databases/create', function (array $me, Request $req): array {
     $r = MariaDb::create((string)$me['username'],
         (string)$req->post_('db', ''), (string)$req->post_('user', ''),
-        (string)$req->post_('priv', 'STANDAR'));
+        (string)$req->post_('priv', 'STANDARD'));
     Audit::log('db.create', (int)$me['id'], (string)$me['username'], 'database',
         (string)$req->post_('db', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', []);
     if (!$r['ok']) {
         return ['ok' => false, 'error' => $r['error']];
     }
-    return ['ok' => true, 'error' => null, 'msg' => 'Database ' . $r['db'] . ' dibuat.',
+    return ['ok' => true, 'error' => null, 'msg' => 'Database ' . $r['db'] . ' created.',
             'newCred' => ['db' => $r['db'], 'user' => $r['user'], 'password' => $r['password']]];
 });
 
@@ -461,18 +461,18 @@ $dbAction('/databases/delete', function (array $me, Request $req): array {
     Audit::log('db.delete', (int)$me['id'], (string)$me['username'], 'database',
         (string)$id, $req->ip(), $r['ok'] ? 'ok' : 'error', []);
     return ['ok' => $r['ok'], 'error' => $r['error'],
-            'msg' => $r['ok'] ? 'Database dihapus.' : null];
+            'msg' => $r['ok'] ? 'Database deleted.' : null];
 });
 
 $dbAction('/databases/user-add', function (array $me, Request $req): array {
     $r = MariaDb::addUser((string)$me['username'], (int)$req->post_('db', 0),
-        (string)$req->post_('user', ''), (string)$req->post_('priv', 'STANDAR'));
+        (string)$req->post_('user', ''), (string)$req->post_('priv', 'STANDARD'));
     Audit::log('db.user_add', (int)$me['id'], (string)$me['username'], 'dbuser',
         (string)$req->post_('user', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', []);
     if (!$r['ok']) {
         return ['ok' => false, 'error' => $r['error']];
     }
-    return ['ok' => true, 'error' => null, 'msg' => 'User ' . $r['user'] . ' ditambahkan.',
+    return ['ok' => true, 'error' => null, 'msg' => 'User ' . $r['user'] . ' added.',
             'newCred' => ['db' => (string)$req->post_('db', ''), 'user' => $r['user'], 'password' => $r['password']]];
 });
 
@@ -482,19 +482,19 @@ $dbAction('/databases/user-delete', function (array $me, Request $req): array {
     Audit::log('db.user_delete', (int)$me['id'], (string)$me['username'], 'dbuser',
         (string)$req->post_('dbuser', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', []);
     return ['ok' => $r['ok'], 'error' => $r['error'],
-            'msg' => $r['ok'] ? 'User database dihapus.' : null];
+            'msg' => $r['ok'] ? 'Database user deleted.' : null];
 });
 
-// phpMyAdmin: token sekali pakai, lalu redirect ke /pma/<token>/.
-// Sengaja POST (bukan GET) supaya token tidak bocor dari prefetch/link
-// peramban maupun dari log akses halaman daftar database.
+// phpMyAdmin: one-time token, then redirect to /pma/<token>/.
+// Deliberately POST (not GET) so the token does not leak from browser
+// prefetch/links or from the access log of the database list page.
 $router->post('/databases/phpmyadmin', function (Request $req) use ($auth): Response {
     $me = $auth->user();
     if ($me === null) {
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $r = PhpMyAdmin::launch((string)$me['username'],
         (int)$req->post_('db', 0), (int)$req->post_('dbuser', 0));
@@ -506,9 +506,9 @@ $router->post('/databases/phpmyadmin', function (Request $req) use ($auth): Resp
     return Response::redirect((string)$r['url']);
 });
 
-// --- Backup: daftar, buat, verifikasi, hapus ------------------------------
-// Restore SENGAJA tidak ada di sini: restore menimpa database yang sedang
-// hidup, jadi hanya bisa dijalankan dari shell oleh operator.
+// --- Backup: list, create, verify, delete ------------------------------
+// Restore is DELIBERATELY not here: restore overwrites the live database,
+// so it can only be run from the shell by an operator.
 $backupView = function (Request $req, ?string $err = null, ?string $ok = null,
                         ?string $report = null) use ($page, $auth) {
     $me = $auth->user();
@@ -531,25 +531,25 @@ $backupView = function (Request $req, ?string $err = null, ?string $ok = null,
     ]);
 };
 
-// Halaman ini hanya untuk admin: daftar arsip, ukuran, dan log cron
-// membocarkan informasi seluruh server. User biasa tidak boleh sampai
-// ke view, jadi gate di sini (bukan hanya di setiap aksi POST).
+// This page is admin-only: the archive list, sizes, and cron log leak
+// information about the whole server. Regular users must not reach
+// the view, so gate here (not only on each POST action).
 $router->get('/backups', function (Request $req) use ($auth, $backupView) {
     $me = $auth->user();
     if ($me === null) {
         return Response::redirect('/login');
     }
     if (($me['role'] ?? '') !== 'admin') {
-        return Response::text('403 Hanya admin', 403);
+        return Response::text('403 admins only', 403);
     }
     return $backupView($req);
 });
 
 /**
- * Aksi backup, khusus admin.
+ * Backup actions, admin-only.
  *
- * Backup berisi seluruh data panel (SQLite + file user + database), jadi user
- * non-admin tidak boleh melihat daftar maupun memicu pembuatan.
+ * A backup contains all panel data (SQLite + user files + databases), so
+ * non-admin users must not see the list or trigger creation.
  */
 $backupAction = function (string $route, callable $fn) use ($auth, $backupView, $router): void {
     $router->post($route, function (Request $req) use ($auth, $backupView, $fn): Response {
@@ -558,17 +558,17 @@ $backupAction = function (string $route, callable $fn) use ($auth, $backupView, 
             return Response::redirect('/login');
         }
         if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-            return Response::text('419 CSRF tidak valid', 419);
+            return Response::text('419 invalid CSRF', 419);
         }
         if (($me['role'] ?? '') !== 'admin') {
-            return Response::text('403 Hanya admin', 403);
+            return Response::text('403 admins only', 403);
         }
         $r = $fn($me, $req);
         $back = '/backups';
         if (!$r['ok']) {
             return Response::redirect($back . '?err=' . rawurlencode((string)$r['error']));
         }
-        $target = $back . '?ok=' . rawurlencode((string)($r['message'] ?? 'Selesai.'));
+        $target = $back . '?ok=' . rawurlencode((string)($r['message'] ?? 'Done.'));
         if (($r['report'] ?? '') !== '') {
             $target .= '&report=' . rawurlencode((string)$r['report']);
         }
@@ -588,11 +588,11 @@ $backupAction('/backups/verify', function (array $me, Request $req): array {
     $r    = Backup::verify($name);
     Audit::log('backup.verify', (int)$me['id'], (string)$me['username'], 'backup',
         $name, $req->ip(), $r['ok'] ? 'ok' : 'error', []);
-    // Laporan ditampilkan apa pun hasilnya; outcome sukses supaya operator
-    // tetap membaca laporan lengkapnya walau verifikasi gagal.
+    // The report is shown whatever the outcome; the outcome is success so the
+    // operator still reads the full report even when verification fails.
     return ['ok' => true, 'error' => null,
-            'message' => $r['ok'] ? 'Verifikasi ' . $name . ' berhasil.'
-                                   : 'Verifikasi ' . $name . ' GAGAL.',
+            'message' => $r['ok'] ? 'Verification of ' . $name . ' succeeded.'
+                                   : 'Verification of ' . $name . ' FAILED.',
             'report'  => (string)$r['report']];
 });
 
@@ -639,8 +639,8 @@ $appsView = function (Request $req, ?string $err = null, ?string $ok = null,
 $router->get('/apps', fn (Request $req) => $appsView($req));
 
 /**
- * Wrapper POST untuk aksi app: auth + CSRF, lalu redirect dengan pesan.
- * Delete sengaja memakai wrapper sendiri karena butuh confirm di UI.
+ * POST wrapper for app actions: auth + CSRF, then redirect with a message.
+ * Delete deliberately uses its own wrapper because the UI needs a confirm.
  */
 $appsAction = function (string $route, callable $fn) use ($auth, $appsView, $router): void {
     $router->post($route, function (Request $req) use ($auth, $appsView, $fn): Response {
@@ -649,7 +649,7 @@ $appsAction = function (string $route, callable $fn) use ($auth, $appsView, $rou
             return Response::redirect('/login');
         }
         if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-            return Response::text('419 CSRF tidak valid', 419);
+            return Response::text('419 invalid CSRF', 419);
         }
         $r = $fn($me, $req);
         $back = '/apps';
@@ -665,10 +665,10 @@ $appsAction('/apps/create', function (array $me, Request $req): array {
     $docroot = (string)Connection::value(
         'SELECT docroot FROM domains WHERE name = :n AND user_id = :u',
         ['n' => $domain, 'u' => (int)$me['id']]);
-    // Folder relatif terhadap docroot, bukan path bebas dari user.
+    // Folder relative to the docroot, not a free-form path from the user.
     $rel = trim((string)$req->post_('root', ''), '/');
     if ($rel === '' || str_contains($rel, '..')) {
-        return ['ok' => false, 'error' => 'Folder app tidak valid.'];
+        return ['ok' => false, 'error' => 'The app folder is not valid.'];
     }
     $root = rtrim($docroot, '/') . '/' . $rel;
 
@@ -685,14 +685,14 @@ $appsAction('/apps/create', function (array $me, Request $req): array {
     if (!$r['ok']) {
         return ['ok' => false, 'error' => $r['error']];
     }
-    // Vhost harus dibangun ulang supaya domain-nya proxy ke port app.
+    // The vhost must be rebuilt so the domain proxies to the app port.
     $d = Connection::one('SELECT * FROM domains WHERE name = :n AND user_id = :u',
         ['n' => $domain, 'u' => (int)$me['id']]);
     if (is_array($d)) {
         \Fpanel\Service\DomainManager::rebuildFor((string)$me['username'], $d);
     }
     return ['ok' => true, 'error' => null,
-            'message' => 'App ' . $r['name'] . ' dibuat dan berjalan di port ' . $r['port'] . '.'];
+            'message' => 'App ' . $r['name'] . ' created and running on port ' . $r['port'] . '.'];
 });
 
 $appsAction('/apps/action', function (array $me, Request $req): array {
@@ -703,14 +703,14 @@ $appsAction('/apps/action', function (array $me, Request $req): array {
         'start'   => AppRuntime::start($u, $id),
         'stop'    => AppRuntime::stop($u, $id),
         'restart' => AppRuntime::restart($u, $id),
-        default   => ['ok' => false, 'error' => 'Aksi tidak dikenal.'],
+        default   => ['ok' => false, 'error' => 'Unknown action.'],
     };
     Audit::log('app.' . ($act !== '' ? $act : 'unknown'), (int)$me['id'], $u, 'app',
         (string)$id, $req->ip(), $r['ok'] ? 'ok' : 'error', []);
     if (!$r['ok']) {
         return ['ok' => false, 'error' => $r['error']];
     }
-    return ['ok' => true, 'error' => null, 'message' => 'App ' . $act . ' berhasil.'];
+    return ['ok' => true, 'error' => null, 'message' => 'App ' . $act . ' succeeded.'];
 });
 
 $router->post('/apps/logs', function (Request $req) use ($auth, $appsView): Response {
@@ -719,7 +719,7 @@ $router->post('/apps/logs', function (Request $req) use ($auth, $appsView): Resp
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $id = (int)$req->post_('app', 0);
     $r  = AppRuntime::logs((string)$me['username'], $id, 80);
@@ -741,7 +741,7 @@ $appsAction('/apps/delete', function (array $me, Request $req): array {
     if (!$r['ok']) {
         return ['ok' => false, 'error' => $r['error']];
     }
-    return ['ok' => true, 'error' => null, 'message' => 'App dihapus dari panel.'];
+    return ['ok' => true, 'error' => null, 'message' => 'App removed from the panel.'];
 });
 
 $appsAction('/apps/redeploy', function (array $me, Request $req): array {
@@ -749,13 +749,13 @@ $appsAction('/apps/redeploy', function (array $me, Request $req): array {
     $d = Connection::one('SELECT * FROM domains WHERE name = :n AND user_id = :u',
         ['n' => $domain, 'u' => (int)$me['id']]);
     if (!is_array($d)) {
-        return ['ok' => false, 'error' => 'Domain tidak ditemukan.'];
+        return ['ok' => false, 'error' => 'Domain not found.'];
     }
     \Fpanel\Service\DomainManager::rebuildFor((string)$me['username'], $d);
-    return ['ok' => true, 'error' => null, 'message' => 'Vhost domain dibangun ulang.'];
+    return ['ok' => true, 'error' => null, 'message' => 'Domain vhost rebuilt.'];
 });
 
-// --- PHP Extensions: toggle per versi PHP ----------------------------------
+// --- PHP Extensions: toggle per PHP version ----------------------------------
 $extView = function (Request $req, ?string $err = null, ?string $ok = null) use ($page, $auth) {
     $me = $auth->user();
     if ($me === null) {
@@ -765,18 +765,18 @@ $extView = function (Request $req, ?string $err = null, ?string $ok = null) use 
     $u   = (string)$me['username'];
     $uid = (int)$me['id'];
 
-    // Di cPanel, Select PHP Version bekerja pada level AKUN: extension dan
-    // php.ini berlaku untuk semua domain user, bukan satu domain. Karena itu
-    // tidak ada pemilih domain di halaman ini; versi per domain diatur di
+    // In cPanel, Select PHP Version works at the ACCOUNT level: extensions and
+    // php.ini apply to all of the user's domains, not one domain. That is why
+    // there is no domain picker on this page; per-domain versions live in
     // MultiPHP Manager (/multiphp).
     $domains = Connection::all(
         'SELECT id, name, type FROM domains WHERE user_id = :u ORDER BY name',
         ['u' => $uid]
     );
 
-    // Nilai php.ini ditampilkan sekali untuk seluruh akun. Override digabung
-    // berurutan (domain terakhir menang), lalu $mixed menandai apakah antar
-    // domain memang berbeda supaya view bisa jujur mengatakannya.
+    // php.ini values are shown once for the whole account. Overrides are merged
+    // in order (last domain wins), then $mixed flags whether domains really
+    // differ so the view can say so honestly.
     $merged = [];
     $mixed  = false;
     foreach ($domains as $dd) {
@@ -795,7 +795,7 @@ $extView = function (Request $req, ?string $err = null, ?string $ok = null) use 
     return $page('php-extensions', [
         'active'     => '/php-extensions',
         'title'      => 'Select PHP Version',
-        'lead'       => 'Versi PHP, extension, dan PHP Settings untuk semua domain Anda.',
+        'lead'       => 'PHP versions, extensions, and PHP Settings for all of your domains.',
         'icon'       => 'settings-2',
         'data'       => PhpExtensions::listing($ver),
         'domains'    => $domains,
@@ -810,34 +810,34 @@ $extView = function (Request $req, ?string $err = null, ?string $ok = null) use 
 };
 
 $router->get('/php-extensions', function (Request $req) use ($extView): Response {
-    // Pesan hasil toggle dikirim lewat query string karena aksinya POST lalu
-    // redirect. Tanpa ini flash-nya tidak pernah tampil.
+    // Toggle results are passed via the query string because the action POSTs
+    // then redirects. Without this, the flash message would never show.
     $err = trim((string)$req->query('err', ''));
     $ok  = trim((string)$req->query('ok', ''));
     return $extView($req, $err === '' ? null : $err, $ok === '' ? null : $ok);
 });
 
-// Versi PHP tingkat AKUN: applies ke semua domain yang php_version-nya kosong
-// (yaitu yang mengikuti versi akun). Domain dengan versi eksplisit hasil
-// MultiPHP Manager tidak ikut disentuh.
+// ACCOUNT-level PHP version: applies to all domains whose php_version is empty
+// (that is, the ones following the account version). Domains with an explicit
+// version set by MultiPHP Manager are not touched.
 $router->post('/php-extensions/version', function (Request $req) use ($auth, $extView): Response {
     $me = $auth->user();
     if ($me === null) {
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     if (($me['role'] ?? '') !== 'admin') {
-        return Response::text('403 Hanya admin', 403);
+        return Response::text('403 admins only', 403);
     }
     $u   = (string)$me['username'];
     $ver = (string)$req->post_('version', '');
     if (!in_array($ver, Vhost::installedPhpVersions(), true)) {
-        return Response::redirect('/php-extensions?err=' . rawurlencode('Versi PHP tidak dikenal.'));
+        return Response::redirect('/php-extensions?err=' . rawurlencode('Unknown PHP version.'));
     }
 
-    // Disimpan di tabel settings supaya bisa jadi rujukan tampilan lain.
+    // Stored in the settings table so other views can use it as a reference.
     Connection::run(
         'INSERT INTO settings (key, value, updated_at) VALUES (:k, :v, :t)
          ON CONFLICT(key) DO UPDATE SET value = :v2, updated_at = :t2',
@@ -859,28 +859,28 @@ $router->post('/php-extensions/version', function (Request $req) use ($auth, $ex
     Audit::log('php.version', (int)$me['id'], $u, 'account', 'php', $req->ip(), 'ok',
         ['version' => $ver, 'domains' => $changed]);
     return Response::redirect('/php-extensions?ver=' . rawurlencode($ver)
-        . '&ok=' . rawurlencode("PHP $ver diterapkan ke $changed domain."));
+        . '&ok=' . rawurlencode("PHP $ver applied to $changed domain(s)."));
 });
 
-// Apply sekaligus untuk seluruh extension pada satu versi (ala phpSelector:
-// satu tombol Apply, bukan satu request per extension).
+// Apply all extensions for one version at once (phpSelector style:
+// a single Apply button, not one request per extension).
 $router->post('/php-extensions/apply', function (Request $req) use ($auth, $extView): Response {
     $me = $auth->user();
     if ($me === null) {
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     if (($me['role'] ?? '') !== 'admin') {
-        return Response::text('403 Hanya admin', 403);
+        return Response::text('403 admins only', 403);
     }
     $ver = (string)$req->post_('version', '');
     $cur = (array)$req->post_('cur', []);
     $on  = (array)$req->post_('on', []);
 
-    // Hanya nama extension yang benar-benar ada di versi ini yang diproses,
-    // sehingga request crafted tidak bisa menyentuh file lain.
+    // Only extension names that really exist in this version are processed,
+    // so a crafted request cannot touch other files.
     $known = [];
     foreach ((array)(PhpExtensions::listing($ver)['extensions'] ?? []) as $x) {
         $known[(string)$x['name']] = true;
@@ -895,7 +895,7 @@ $router->post('/php-extensions/apply', function (Request $req) use ($auth, $extV
         }
         $want = isset($on[$ext]);
         if ($want === ((string)$was === '1')) {
-            continue; // tidak berubah, jangan restart pool tanpa perlu
+            continue; // unchanged, do not restart the pool needlessly
         }
         $r = PhpExtensions::toggle($ver, $ext, $want);
         if ($r['ok']) {
@@ -913,12 +913,12 @@ $router->post('/php-extensions/apply', function (Request $req) use ($auth, $extV
         return Response::redirect($back . '&err=' . rawurlencode(implode('; ', $errors)));
     }
     $msg = $changed === []
-        ? 'Tidak ada perubahan extension.'
-        : count($changed) . ' extension diperbarui untuk PHP ' . $ver . '.';
+        ? 'No extension changes.'
+        : count($changed) . ' extensions updated for PHP ' . $ver . '.';
     return Response::redirect($back . '&ok=' . rawurlencode($msg));
 });
 
-// --- MultiPHP Manager: versi PHP per domain -------------------------------
+// --- MultiPHP Manager: PHP version per domain -------------------------------
 $multiphpView = function (Request $req, ?string $err = null, ?string $ok = null) use ($page, $auth): Response {
     $me = $auth->user();
     if ($me === null) {
@@ -927,7 +927,7 @@ $multiphpView = function (Request $req, ?string $err = null, ?string $ok = null)
     return $page('multiphp', [
         'active'    => '/multiphp',
         'title'     => 'MultiPHP Manager',
-        'lead'      => 'Pilih versi PHP untuk setiap domain.',
+        'lead'      => 'Choose the PHP version for each domain.',
         'icon'      => 'layers',
         'versions'  => Vhost::installedPhpVersions(),
         'rows'      => Connection::all(
@@ -952,19 +952,19 @@ $router->post('/multiphp/apply', function (Request $req) use ($auth, $multiphpVi
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     if (($me['role'] ?? '') !== 'admin') {
-        return Response::text('403 Hanya admin', 403);
+        return Response::text('403 admins only', 403);
     }
     $u       = (string)$me['username'];
     $picked  = array_map('intval', array_keys((array)$req->post_('dom', [])));
     $vers    = (array)$req->post_('ver', []);
     $allowed = Vhost::installedPhpVersions();
 
-    // Hanya domain milik user ini yang boleh diubah.
-    // type <> 'static': domain static tidak menjalankan PHP, jadi tidak punya
-    // versi. alone atau tidak, select versinya tidak ditampilkan di view.
+    // Only domains owned by this user may be changed.
+    // type <> 'static': static domains do not run PHP, so they have no
+    // version. Either way, their version select is not shown in the view.
     $rows = $picked === [] ? [] : Connection::all(
         'SELECT * FROM domains WHERE user_id = :u AND type <> :static AND id IN (' .
         implode(',', array_fill(0, count($picked), '?')) . ')',
@@ -991,9 +991,9 @@ $router->post('/multiphp/apply', function (Request $req) use ($auth, $multiphpVi
 
     $back = '/multiphp';
     if ($changed === 0) {
-        return Response::redirect($back . '?ok=' . rawurlencode('Tidak ada versi yang berubah.'));
+        return Response::redirect($back . '?ok=' . rawurlencode('No versions changed.'));
     }
-    return Response::redirect($back . '?ok=' . rawurlencode("$changed domain diperbarui versinya."));
+    return Response::redirect($back . '?ok=' . rawurlencode("PHP version updated for $changed domain(s)."));
 });
 
 $router->post('/php-extensions/toggle', function (Request $req) use ($auth, $extView): Response {
@@ -1002,11 +1002,11 @@ $router->post('/php-extensions/toggle', function (Request $req) use ($auth, $ext
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $me = $auth->user();
     if (($me['role'] ?? '') !== 'admin') {
-        return Response::text('403 Hanya admin', 403);
+        return Response::text('403 admins only', 403);
     }
     $ver  = (string)$req->post_('version', '');
     $ext  = (string)$req->post_('ext', '');
@@ -1015,8 +1015,8 @@ $router->post('/php-extensions/toggle', function (Request $req) use ($auth, $ext
     Audit::log('php.extension', (int)$me['id'], (string)$me['username'], 'extension',
         $ext, $req->ip(), $r['ok'] ? 'ok' : 'error', ['version' => $ver, 'enabled' => $on]);
     $back = '/php-extensions?ver=' . rawurlencode($ver);
-    // Form centang extension ikut mengirim domain terpilih supaya redirect
-    // kembali ke panel settings yang sama, bukan ke domain pertama.
+    // The extension checkbox form also sends the selected domain so the
+    // redirect returns to the same settings panel, not to the first domain.
     $dom = trim((string)$req->post_('dom', ''));
     if ($dom !== '' && preg_match('/^[a-z0-9.-]+$/i', $dom)) {
         $back .= '&dom=' . rawurlencode($dom);
@@ -1033,10 +1033,10 @@ $router->post('/php-extensions/restore', function (Request $req) use ($auth, $ex
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     if (($me['role'] ?? '') !== 'admin') {
-        return Response::text('403 Hanya admin', 403);
+        return Response::text('403 admins only', 403);
     }
     $ver = (string)$req->post_('version', '');
     $r   = PhpExtensions::restore($ver);
@@ -1054,28 +1054,28 @@ $router->post('/domains/php-settings', function (Request $req) use ($auth): Resp
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $id = (int)$req->post_('domain', 0);
     $u  = (string)$me['username'];
     $action = (string)$req->post_('act', 'save');
 
-    // Semua field berawalan "ini_" diambil sekaligus; jangan ambil per nama
-    // supaya directive baru otomatis ikut tersimpan. Pemetaan nama field ke
-    // directive (termasuk yang bertitik seperti opcache.enable) ada di
+    // All fields prefixed with "ini_" are picked up at once; do not read them by
+    // name so new directives are saved automatically too. The mapping from field
+    // names to directives (including dotted ones like opcache.enable) lives in
     // PhpSettings::fromForm().
     $input = PhpSettings::fromForm($_POST);
 
-    // scope=all: dari halaman Select PHP Version, php.ini berlaku untuk semua
-    // domain milik user (bukan satu domain), jadi setiap domain disimpan dengan
-    // nilai yang sama lalu pool dimuat ulang sekali di akhir.
+    // scope=all: from the Select PHP Version page, php.ini applies to every
+    // domain the user owns (not one domain), so each domain is saved with the
+    // same values and the pool is reloaded once at the end.
     $scopeAll = (string)$req->post_('scope', '') === 'all';
     if ($scopeAll) {
         $ids = array_map('intval', array_column(Connection::all(
             'SELECT id FROM domains WHERE user_id = :u', ['u' => (int)$me['id']]
         ), 'id'));
         if ($ids === []) {
-            return Response::redirect('/php-extensions?err=' . rawurlencode('Belum ada domain.'));
+            return Response::redirect('/php-extensions?err=' . rawurlencode('No domains yet.'));
         }
         $okAll = true;
         $errAll = '';
@@ -1089,7 +1089,7 @@ $router->post('/domains/php-settings', function (Request $req) use ($auth): Resp
                 break;
             }
         }
-        // Muat ulang pool per versi yang terpakai, satu kali per versi.
+        // Reload the pool per used version, once for each version.
         foreach (array_unique(array_column(Connection::all(
             'SELECT DISTINCT COALESCE(php_version, "8.3") AS v FROM domains WHERE user_id = :u',
             ['u' => (int)$me['id']]
@@ -1105,8 +1105,8 @@ $router->post('/domains/php-settings', function (Request $req) use ($auth): Resp
             return Response::redirect($back2 . $sep2 . 'err=' . rawurlencode($errAll));
         }
         $msg2 = $action === 'reset'
-            ? 'PHP Settings dikembalikan ke default untuk semua domain.'
-            : 'PHP Settings disimpan untuk ' . count($ids) . ' domain.';
+            ? 'PHP Settings reset to the defaults for all domains.'
+            : 'PHP Settings saved for ' . count($ids) . ' domain(s).';
         return Response::redirect($back2 . $sep2 . 'ok=' . rawurlencode($msg2));
     }
 
@@ -1117,19 +1117,19 @@ $router->post('/domains/php-settings', function (Request $req) use ($auth): Resp
     Audit::log('domain.php_settings', (int)$me['id'], $u, 'domain', (string)$id,
         $req->ip(), $r['ok'] ? 'ok' : 'error', ['action' => $action]);
 
-    // Kalau form dikirim dari halaman PHP Extensions, balik ke sana; kalau
-    // dari halaman Domains, tetap di halaman Domains seperti sebelumnya.
+    // If the form was submitted from the PHP Extensions page, go back there; if
+    // from the Domains page, stay on the Domains page as before.
     $back = '/domains';
     $to   = trim((string)$req->post_('back', ''));
     if (str_starts_with($to, '/php-extensions')) {
         $back = '/php-extensions?ver=' . rawurlencode(trim((string)$req->post_('ver', '')));
     }
-    // Pemisah harus mengikuti $back: kalau sudah ada query string, pakai "&".
+    // The separator must follow $back: if a query string already exists, use "&".
     $sep = str_contains($back, '?') ? '&' : '?';
     if (!$r['ok']) {
         return Response::redirect($back . $sep . 'err=' . rawurlencode((string)$r['error']));
     }
-    $msg = $action === 'reset' ? 'Pengaturan PHP dikembalikan ke default.' : 'Pengaturan PHP disimpan.';
+    $msg = $action === 'reset' ? 'PHP settings restored to defaults.' : 'PHP settings saved.';
     return Response::redirect($back . $sep . 'ok=' . rawurlencode($msg));
 });
 
@@ -1141,12 +1141,12 @@ $dbAction('/databases/reveal', function (array $me, Request $req): array {
     if (!$r['ok']) {
         return ['ok' => false, 'error' => $r['error']];
     }
-    // Sengaja tidak displays password di URL: ini POST, jadi tidak masuk history.
+    // Deliberately does not show the password in the URL: this is POST, so it does not reach history.
     return ['ok' => true, 'error' => null,
             'newCred' => ['db' => '', 'user' => '', 'password' => $r['password']]];
 });
 
-// --- Files: File Manager (browse, upload, edit, rename, hapus) ---
+// --- Files: File Manager (browse, upload, edit, rename, delete) ---
 // --- Cron Jobs ---------------------------------------------------------------
 // --- WordPress installer ----------------------------------------------------
 // --- Resource Usage (per domain) ---------------------------------------------
@@ -1171,17 +1171,17 @@ $usageView = function (Request $req, ?string $err = null, ?string $ok = null) us
 
 $router->get('/usage', fn (Request $req) => $usageView($req));
 
-// Hitung ulang sekarang (admin). Penghitungan normal jalan per jam dari cron.
+// Recalculate now (admin). Normal collection runs hourly from cron.
 $router->post('/usage/collect', function (Request $req) use ($auth, $usageView): Response {
     $me = $auth->user();
     if ($me === null) {
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     if (($me['role'] ?? '') !== 'admin') {
-        return Response::text('403 Hanya admin', 403);
+        return Response::text('403 admins only', 403);
     }
     $r = Usage::collect();
     Audit::log('usage.collect', (int)$me['id'], (string)$me['username'], 'system', 'all',
@@ -1205,7 +1205,7 @@ $wpView = function (Request $req, ?string $err = null, ?string $ok = null) use (
         'sites'    => Wp::listing($u),
         'versions' => $versions,
         'latest'   => (string)($versions[0] ?? ''),
-        // Hanya domain PHP yang bisa jadi sasaran instalasi.
+        // Only PHP domains can be install targets.
         'domains'  => Connection::all(
             "SELECT name, type FROM domains WHERE user_id = :u AND type = 'php' ORDER BY name",
             ['u' => (int)$me['id']]
@@ -1225,7 +1225,7 @@ $router->post('/wordpress/install', function (Request $req) use ($auth, $wpView)
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $r = Wp::startInstall((string)$me['username'], (string)$req->post_('domain', ''), [
         'version'        => (string)$req->post_('version', ''),
@@ -1252,7 +1252,7 @@ $router->get('/wordpress/{id}/manage', function (Request $req, array $params) us
     }
     return $page('wordpress-manage', [
         'active' => '/wordpress',
-        'title'  => 'Kelola ' . (string)$ov['data']['domain'],
+        'title'  => 'Manage ' . (string)$ov['data']['domain'],
         'ov'     => $ov['data'],
     ]);
 });
@@ -1263,7 +1263,7 @@ $router->post('/wordpress/update', function (Request $req) use ($auth, $wpView):
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $parts = '';
     foreach (['core', 'plugins', 'themes'] as $p) {
@@ -1283,7 +1283,7 @@ $router->post('/wordpress/staging', function (Request $req) use ($auth, $wpView)
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $id  = (int)$req->post_('id', '0');
     $cur = Wp::own((string)$me['username'], $id);
@@ -1299,7 +1299,7 @@ $router->post('/wordpress/forget', function (Request $req) use ($auth, $wpView):
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $id = (int)$req->post_('id', 0);
     $r  = Wp::forget((string)$me['username'], $id);
@@ -1327,12 +1327,12 @@ $cronView = function (Request $req, ?string $err = null, ?string $ok = null) use
         'logJobId' => $logId,
         'logText' => $logId > 0 ? Cron::logTail($u, $logId) : '',
         'presets' => [
-            'Setiap menit'      => '* * * * *',
-            'Setiap 5 menit'    => '*/5 * * * *',
-            'Setiap jam'        => '0 * * * *',
-            'Setiap hari jam 3' => '0 3 * * *',
-            'Setiap Minggu'     => '0 3 * * 0',
-            'Tanggal 1 tiap bulan' => '0 4 1 * *',
+            'Every minute'      => '* * * * *',
+            'Every 5 minutes'   => '*/5 * * * *',
+            'Every hour'        => '0 * * * *',
+            'Every day at 3'    => '0 3 * * *',
+            'Every Sunday'      => '0 3 * * 0',
+            'Day 1 each month'  => '0 4 1 * *',
         ],
         'error'   => $err,
         'ok'      => $ok,
@@ -1341,7 +1341,7 @@ $cronView = function (Request $req, ?string $err = null, ?string $ok = null) use
 
 $router->get('/cron', fn (Request $req) => $cronView($req));
 
-// Semua aksi cron lewat satu wrapper: CSRF + audit + redirect dengan flash.
+// Every cron action goes through one wrapper: CSRF + audit + redirect with a flash.
 $cronAction = function (string $route, callable $fn, string $auditName) use ($auth, $cronView, $router): void {
     $router->post($route, function (Request $req) use ($auth, $cronView, $fn, $auditName): Response {
         $me = $auth->user();
@@ -1349,7 +1349,7 @@ $cronAction = function (string $route, callable $fn, string $auditName) use ($au
             return Response::redirect('/login');
         }
         if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-            return Response::text('419 CSRF tidak valid', 419);
+            return Response::text('419 invalid CSRF', 419);
         }
         $u      = (string)$me['username'];
         $id     = (int)$req->post_('id', 0);
@@ -1376,7 +1376,7 @@ $cronAction('/cron/update', function (string $u, Request $req, int $id): array {
 $cronAction('/cron/toggle', function (string $u, Request $req, int $id): array {
     $job = Cron::find($u, $id);
     if ($job === null) {
-        return ['ok' => false, 'error' => 'Cron job tidak ditemukan.', 'message' => null];
+        return ['ok' => false, 'error' => 'Cron job not found.', 'message' => null];
     }
     return Cron::update($u, $id, null, null, null, (int)$job['enabled'] !== 1);
 }, 'cron.toggle');
@@ -1425,7 +1425,7 @@ $fileAction = function (string $route, callable $fn) use ($auth, $fileView, $rou
             return Response::redirect('/login');
         }
         if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-            return Response::text('419 CSRF tidak valid', 419);
+            return Response::text('419 invalid CSRF', 419);
         }
         $r = $fn($me, $req, $req->ip());
         return $fileView($req, $r['error'], $r['ok'] ? ($r['msg'] ?? null) : null);
@@ -1433,10 +1433,10 @@ $fileAction = function (string $route, callable $fn) use ($auth, $fileView, $rou
 };
 
 // copy/move:
-//   path    = folder ASAL (sama seperti semua aksi lain, dari form utama)
-//   name    = nama item yang dipindahkan
-//   to      = folder TUJUAN ('' = folder asal)
-//   newname = nama baru saat dipindah (opsional)
+//   path    = SOURCE folder (same as all other actions, from the main form)
+//   name    = name of the item being moved
+//   to      = DESTINATION folder ('' = source folder)
+//   newname = new name when moved (optional)
 $fileAction('/files/copy', function (array $me, Request $req): array {
     $from = (string)$req->post_('path', '');
     $to   = (string)$req->post_('to', '');
@@ -1445,7 +1445,7 @@ $fileAction('/files/copy', function (array $me, Request $req): array {
     Audit::log('files.copy', (int)$me['id'], (string)$me['username'], 'file',
         (string)$req->post_('name', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', ['to' => $to]);
     return ['ok' => $r['ok'], 'error' => $r['error'],
-            'msg' => $r['ok'] ? ('Disalin ke ' . ($to === '' ? 'folder ini' : $to) . '.') : null];
+            'msg' => $r['ok'] ? ('Copied to ' . ($to === '' ? 'this folder' : $to) . '.') : null];
 });
 
 $fileAction('/files/move', function (array $me, Request $req): array {
@@ -1456,14 +1456,14 @@ $fileAction('/files/move', function (array $me, Request $req): array {
     Audit::log('files.move', (int)$me['id'], (string)$me['username'], 'file',
         (string)$req->post_('name', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', ['to' => $to]);
     return ['ok' => $r['ok'], 'error' => $r['error'],
-            'msg' => $r['ok'] ? ('Dipindahkan ke ' . ($to === '' ? 'folder ini' : $to) . '.') : null];
+            'msg' => $r['ok'] ? ('Moved to ' . ($to === '' ? 'this folder' : $to) . '.') : null];
 });
 
 $fileAction('/files/zip', function (array $me, Request $req): array {
     $r = FileManager::zip((string)$me['username'], (string)$req->post_('path', ''), (string)$req->post_('name', ''));
     Audit::log('files.zip', (int)$me['id'], (string)$me['username'], 'file',
         (string)$req->post_('name', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', []);
-    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => $r['ok'] ? ('Arsip ' . $r['zip'] . ' dibuat.') : null];
+    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => $r['ok'] ? ('Archive ' . $r['zip'] . ' created.') : null];
 });
 
 $fileAction('/files/unzip', function (array $me, Request $req): array {
@@ -1471,27 +1471,27 @@ $fileAction('/files/unzip', function (array $me, Request $req): array {
         (string)$req->post_('name', ''), (string)$req->post_('to', ''));
     Audit::log('files.unzip', (int)$me['id'], (string)$me['username'], 'file',
         (string)$req->post_('name', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', ['files' => $r['files'] ?? 0]);
-    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => $r['ok'] ? ($r['files'] . ' item diekstrak ke ' . $r['dest'] . '.') : null];
+    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => $r['ok'] ? ($r['files'] . ' item(s) extracted to ' . $r['dest'] . '.') : null];
 });
 
 $fileAction('/files/chmod', function (array $me, Request $req): array {
-    // Form mengirim "644" atau "0644" sebagai TEKS. Harus dibaca sebagai
-    // oktal (base 8): (int)'644' = 644 desimal, sedangkan permission 644
-    // oktal = 420 desimal. Salah parse akan menolak mode yang sebenarnya valid.
+    // The form sends "644" or "0644" as TEXT. It must be read as
+    // octal (base 8): (int)'644' = decimal 644, while permission 644
+    // octal = decimal 420. A wrong parse would reject actually valid modes.
     $raw = trim((string)$req->post_('mode', ''));
     if (!preg_match('/^0?[0-7]{3,4}$/', $raw)) {
-        return ['ok' => false, 'error' => 'Mode harus oktal 000-777.', 'msg' => null];
+        return ['ok' => false, 'error' => 'Mode must be octal 000-777.', 'msg' => null];
     }
     $mode = (int)octdec($raw);
     $r = FileManager::chmod((string)$me['username'], (string)$req->post_('path', ''),
         (string)$req->post_('name', ''), $mode);
     Audit::log('files.chmod', (int)$me['id'], (string)$me['username'], 'file',
         (string)$req->post_('name', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', ['mode' => $r['mode'] ?? null]);
-    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => $r['ok'] ? ('Permission diubah ke ' . $r['mode'] . '.') : null];
+    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => $r['ok'] ? ('Permissions changed to ' . $r['mode'] . '.') : null];
 });
 
-// Unduhan lewat GET: tidak bisa pakai $fileAction karena itu POST + CSRF.
-// CSRF tidak berlaku di sini karena tidak ada efek samping (hanya baca).
+// Download via GET: $fileAction cannot be used because it is POST + CSRF.
+// CSRF does not apply here because there are no side effects (read only).
 $router->get('/files/download', function (Request $req) use ($auth): Response {
     $me = $auth->user();
     if ($me === null) {
@@ -1500,7 +1500,7 @@ $router->get('/files/download', function (Request $req) use ($auth): Response {
     $d = FileManager::download((string)$me['username'],
         (string)$req->query('path', ''), (string)$req->query('name', ''));
     if ($d === null) {
-        return Response::text('Berkas tidak ditemukan atau tidak boleh diunduh.', 404);
+        return Response::text('File not found or not downloadable.', 404);
     }
     return Response::download($d['path'], $d['name']);
 });
@@ -1509,14 +1509,14 @@ $fileAction('/files/mkdir', function (array $me, Request $req): array {
     $r = FileManager::mkdir((string)$me['username'], (string)$req->post_('path', ''), (string)$req->post_('name', ''));
     Audit::log('files.mkdir', (int)$me['id'], (string)$me['username'], 'dir',
         (string)$req->post_('name', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', ['path' => $req->post_('path')]);
-    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => 'Folder dibuat.'];
+    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => 'Folder created.'];
 });
 
 $fileAction('/files/newfile', function (array $me, Request $req): array {
     $r = FileManager::newFile((string)$me['username'], (string)$req->post_('path', ''), (string)$req->post_('name', ''));
     Audit::log('files.newfile', (int)$me['id'], (string)$me['username'], 'file',
         (string)$req->post_('name', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', []);
-    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => 'File dibuat.'];
+    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => 'File created.'];
 });
 
 $fileAction('/files/rename', function (array $me, Request $req): array {
@@ -1524,7 +1524,7 @@ $fileAction('/files/rename', function (array $me, Request $req): array {
         (string)$req->post_('from', ''), (string)$req->post_('to', ''));
     Audit::log('files.rename', (int)$me['id'], (string)$me['username'], 'file',
         (string)$req->post_('from', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', ['to' => $req->post_('to')]);
-    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => 'Nama diubah.'];
+    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => 'Name changed.'];
 });
 
 $fileAction('/files/save', function (array $me, Request $req): array {
@@ -1532,7 +1532,7 @@ $fileAction('/files/save', function (array $me, Request $req): array {
         (string)$req->post_('name', ''), (string)$req->post_('body', ''));
     Audit::log('files.save', (int)$me['id'], (string)$me['username'], 'file',
         (string)$req->post_('name', ''), $req->ip(), $r['ok'] ? 'ok' : 'error', []);
-    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => 'File disimpan.'];
+    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => 'File saved.'];
 });
 
 $fileAction('/files/delete', function (array $me, Request $req): array {
@@ -1541,7 +1541,7 @@ $fileAction('/files/delete', function (array $me, Request $req): array {
     $r = FileManager::delete((string)$me['username'], (string)$req->post_('path', ''), $names);
     Audit::log('files.delete', (int)$me['id'], (string)$me['username'], 'file', null, $req->ip(),
         $r['ok'] ? 'ok' : 'error', ['count' => count($names)]);
-    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => ($r['deleted'] ?? 0) . ' item dihapus.'];
+    return ['ok' => $r['ok'], 'error' => $r['error'], 'msg' => ($r['deleted'] ?? 0) . ' items deleted.'];
 });
 
 $fileAction('/files/upload', function (array $me, Request $req): array {
@@ -1560,11 +1560,11 @@ $fileAction('/files/upload', function (array $me, Request $req): array {
             $sz   = is_array($f['size']) ? (int)$f['size'][$i] : (int)$f['size'];
 
             if ($e === UPLOAD_ERR_INI_SIZE || $e === UPLOAD_ERR_FORM_SIZE) {
-                $errs[] = $name . ' (terlalu besar)';
+                $errs[] = $name . ' (too large)';
                 continue;
             }
             if ($e !== UPLOAD_ERR_OK) {
-                $errs[] = $name . ' (upload gagal)';
+                $errs[] = $name . ' (upload failed)';
                 continue;
             }
             if ($sz > FileManager::MAX_UPLOAD) {
@@ -1573,15 +1573,15 @@ $fileAction('/files/upload', function (array $me, Request $req): array {
             }
             $safe = FileManager::validName(basename($name));
             if ($safe === null) {
-                $errs[] = $name . ' (nama tidak valid)';
+                $errs[] = $name . ' (invalid name)';
                 continue;
             }
             if (FileManager::blockedExt($safe)) {
-                $errs[] = $safe . ' (tipe .php diblokir)';
+                $errs[] = $safe . ' (.php type blocked)';
                 continue;
             }
             if ($base === null || !is_dir($base)) {
-                $errs[] = $safe . ' (folder tujuan tidak ada)';
+                $errs[] = $safe . ' (destination folder does not exist)';
                 continue;
             }
             $dest = $base . '/' . $safe;
@@ -1590,43 +1590,43 @@ $fileAction('/files/upload', function (array $me, Request $req): array {
                 @chmod($dest, 0644);
                 $okN++;
             } else {
-                $errs[] = $safe . ' (gagal disimpan)';
+                $errs[] = $safe . ' (failed to save)';
             }
         }
     }
     Audit::log('files.upload', (int)$me['id'], (string)$me['username'], 'file', null, $req->ip(),
         $okN > 0 ? 'ok' : 'error', ['count' => $okN, 'path' => $rel]);
-    $msg = $okN > 0 ? $okN . ' file diunggah.' : null;
+    $msg = $okN > 0 ? $okN . ' file(s) uploaded.' : null;
     if ($errs !== []) {
-        $msg = ($msg ? $msg . ' ' : '') . 'Dilewati: ' . implode('; ', array_slice($errs, 0, 3));
+        $msg = ($msg ? $msg . ' ' : '') . 'Skipped: ' . implode('; ', array_slice($errs, 0, 3));
     }
     return [
         'ok'    => $okN > 0 || $errs === [],
-        'error' => ($okN === 0 && $errs !== []) ? 'Tidak ada file yang terunggah.' : null,
+        'error' => ($okN === 0 && $errs !== []) ? 'No files were uploaded.' : null,
         'msg'   => $msg,
     ];
 });
 
-// --- Software: PHP & Node nyata ---
+// --- Software: real PHP & Node ---
 $router->get('/software', function (Request $req) use ($page, $auth): Response {
     $rows = [];
     foreach (Panel::installedPhp() as $v) {
-        $rows[] = ['PHP-FPM ' . $v, 'terinstall', $v === PHP_VERSION ? 'aktif (default FPM)' : 'tersedia'];
+        $rows[] = ['PHP-FPM ' . $v, 'installed', $v === PHP_VERSION ? 'active (FPM default)' : 'available'];
     }
-    $rows[] = ['Node.js', 'belum', 'Node 22 / 24 — implementasi berikutnya'];
-    $rows[] = ['WP-CLI', trim((string)(shell_exec('wp --version --allow-root 2>/dev/null') ?: 'belum')), 'app manager'];
+    $rows[] = ['Node.js', 'not yet', 'Node 22 / 24 — planned for a future release'];
+    $rows[] = ['WP-CLI', trim((string)(shell_exec('wp --version --allow-root 2>/dev/null') ?: 'not yet')), 'app manager'];
     return $page('section', [
         'active' => '/software', 'title' => 'Software & Runtime',
-        'lead' => 'Pilih versi runtime per domain. Perubahan memakai pool PHP-FPM terpisah.',
+        'lead' => 'Choose the runtime version per domain. Changes use a separate PHP-FPM pool.',
         'icon' => 'package', 'panel' => 'runtimes',
         'cols' => ['Runtime', 'Status', 'Keterangan'],
-        'rows' => $rows, 'empty' => 'Belum ada runtime.',
+        'rows' => $rows, 'empty' => 'No runtimes yet.',
     ]);
 });
 
-// --- Security: SSL nyata (belum ada sertifikat) ---
-// Data halaman Security dipakai bersama oleh GET dan aksi POST supaya
-// kode pemulihan (yang hanya ada sekali) tidak hilang di antara render.
+// --- Security: real SSL (no certificate yet) ---
+// Security page data is shared by the GET and the POST actions so the
+// recovery codes (which exist only once) are not lost between renders.
 $securityView = static function (array $me, array $extra = []) use ($auth): array {
     $u     = (string)$me['username'];
     $certs = Connection::all(
@@ -1638,7 +1638,7 @@ $securityView = static function (array $me, array $extra = []) use ($auth): arra
     return $extra + [
         'active'       => '/security',
         'title'        => 'Security',
-        'lead'         => 'Sertifikat SSL dan autentikasi dua faktor untuk akun Anda.',
+        'lead'         => 'SSL certificates and two-factor authentication for your account.',
         'icon'         => 'shield',
         'certs'        => $certs,
         'totpEnabled'  => Totp::isEnabled($u),
@@ -1668,7 +1668,7 @@ $router->get('/security', function (Request $req) use ($page, $auth, $securityVi
     ]));
 });
 
-// QR dirender di server lewat biner qrencode: rahasia TOTP tidak keluar dari server.
+// The QR is rendered on the server via the qrencode binary: the TOTP secret never leaves the server.
 $router->get('/security/2fa/qr.svg', function (Request $req) use ($auth): Response {
     $me = $auth->user();
     if ($me === null) {
@@ -1680,7 +1680,7 @@ $router->get('/security/2fa/qr.svg', function (Request $req) use ($auth): Respon
     }
     $svg = Totp::qrSvg(Totp::provisioningUri($secret, (string)$me['username']));
     if ($svg === null) {
-        return Response::text('QR tidak bisa dirender di server ini', 500);
+        return Response::text('The QR code cannot be rendered on this server', 500);
     }
     return Response::html($svg)->withHeader('Content-Type', 'image/svg+xml; charset=utf-8')
         ->withHeader('Cache-Control', 'no-store, private')
@@ -1688,8 +1688,8 @@ $router->get('/security/2fa/qr.svg', function (Request $req) use ($auth): Respon
 });
 
 /**
- * Aksi 2FA. Kalau aksi menghasilkan kode pemulihan, halamannya dirender
- * langsung supaya kode itu terlihat sekali lalu hilang (DB hanya menyimpan hash).
+ * 2FA actions. When an action produces recovery codes, the page is rendered
+ * directly so the codes are visible once and then gone (the DB stores hashes only).
  */
 $totpAction = static function (string $route, callable $fn, string $audit)
     use ($auth, $page, $router, $securityView): void {
@@ -1699,7 +1699,7 @@ $totpAction = static function (string $route, callable $fn, string $audit)
             return Response::redirect('/login');
         }
         if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-            return Response::text('419 CSRF tidak valid', 419);
+            return Response::text('419 invalid CSRF', 419);
         }
         $r = $fn((string)$me['username'], $req);
         Audit::log($audit, (int)$me['id'], (string)$me['username'], 'user',
@@ -1719,8 +1719,8 @@ $totpAction = static function (string $route, callable $fn, string $audit)
 };
 
 /**
- * Aksi "ingat perangkat ini": cabut satu perangkat atau semuanya.
- * Semua perangkat ikut dicabut saat password atau 2FA berubah.
+ * "Remember this device" actions: revoke one device or all of them.
+ * All devices are also revoked when the password or 2FA changes.
  */
 $deviceAction = static function (string $route, callable $fn, string $audit)
     use ($auth, $page, $router, $securityView): void {
@@ -1730,7 +1730,7 @@ $deviceAction = static function (string $route, callable $fn, string $audit)
             return Response::redirect('/login');
         }
         if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-            return Response::text('419 CSRF tidak valid', 419);
+            return Response::text('419 invalid CSRF', 419);
         }
         $r = $fn($me, $req);
         Audit::log($audit, (int)$me['id'], (string)$me['username'], 'user',
@@ -1738,8 +1738,8 @@ $deviceAction = static function (string $route, callable $fn, string $audit)
         if (!$r['ok']) {
             return Response::redirect('/security?err=' . rawurlencode((string)$r['error']));
         }
-        // Kalau aksi menghasilkan data sekali-tampil (mis. tautan login), halaman
-        // dirender langsung. Kalau tidak, data itu akan hilang setelah redirect.
+        // If the action produces show-once data (e.g. a login link), the page is
+        // rendered directly. Otherwise that data would be lost after the redirect.
         $once = $r['once'] ?? null;
         if (is_array($once)) {
             return $page('security', $securityView($me, $once + [
@@ -1753,36 +1753,36 @@ $deviceAction = static function (string $route, callable $fn, string $audit)
 $deviceAction('/security/devices/revoke', static function (array $me, Request $req): array {
     $id  = (int)$req->post_('id', '0');
     $own = RememberDevice::listing((int)$me['id']);
-    // ID dicek terhadap daftar milik user ini, jadi tidak bisa mencabut
-    // perangkat orang lain hanya dengan menebak angka.
+    // The ID is checked against this user's own list, so it is not possible to
+    // revoke someone else's device just by guessing a number.
     if ($id < 1 || !in_array($id, array_column($own, 'id'), true)) {
-        return ['ok' => false, 'error' => 'Perangkat tidak ditemukan.'];
+        return ['ok' => false, 'error' => 'Device not found.'];
     }
     RememberDevice::revoke($id);
-    return ['ok' => true, 'error' => null, 'message' => 'Perangkat dicabut.'];
+    return ['ok' => true, 'error' => null, 'message' => 'Device revoked.'];
 }, 'device.revoke');
 
 $deviceAction('/security/devices/revoke-all', static function (array $me, Request $req): array {
     $n = RememberDevice::revokeAll((int)$me['id']);
     return ['ok' => true, 'error' => null,
-        'message' => $n . ' perangkat dicabut dari semua perangkat.'];
+        'message' => $n . ' devices revoked from all devices.'];
 }, 'device.revoke_all');
 
-// Terbitkan tautan login sekali pakai lewat UI, lalu tampilkan tautannya.
-// Setiap user boleh membuat tautan untuk akunnya sendiri, jadi tidak perlu
-// dibatasi admin: yang dipanggil adalah issuance milik $me, bukan username
-// dari request, jadi tidak bisa dibuatkan untuk akun orang lain.
+// Issue a one-time login link through the UI, then display the link.
+// Any user may create a link for their own account, so there is no need to
+// restrict it to admin: the issuance uses $me, not a username from the
+// request, so a link cannot be created for someone else's account.
 $deviceAction('/security/login-link', static function (array $me, Request $req): array {
     $r = LoginLink::issue((string)$me['username'], (string)$req->ip());
     if (empty($r['ok'])) {
         return ['ok' => false, 'error' => (string)$r['error']];
     }
-    // Tautan ditampilkan sekali di respons ini saja. Tidak disimpan di HTML
-    // halaman lain dan tidak ikut query string redirect, jadi tidak bocor lewat
-    // history atau log akses. Yang tersimpan di database tetap hash-nya.
+    // The link is shown once, only in this response. It is not stored in the
+    // HTML of other pages and not carried in the redirect query string, so it
+    // does not leak through history or access logs. The DB stores only its hash.
     return ['ok' => true, 'error' => null,
-        'message' => 'Tautan dibuat. Berlaku ' . LoginLink::TTL_MIN
-            . ' menit dan hangus setelah dipakai.',
+        'message' => 'Link created. Valid for ' . LoginLink::TTL_MIN
+            . ' minutes and expires after use.',
         'once'    => ['loginLink' => (string)$r['token'],
                       'loginLinkPath' => '/login/link/' . (string)$r['token']]];
 }, 'login_link.issue');
@@ -1792,40 +1792,40 @@ $totpAction('/security/2fa/setup', static function (string $u, Request $req): ar
     if (!$r['ok']) {
         return $r + ['message' => null];
     }
-    // Secret tidak pernah lewat query string: disimpan di DB lalu dibaca lagi.
+    // The secret never goes through the query string: it is stored in the DB and read back.
     return ['ok' => true, 'error' => null, 'recovery' => [],
-        'message' => 'Pindai QR lalu masukkan kode dari aplikasi untuk mengaktifkan.'];
+        'message' => 'Scan the QR code, then enter the code from your app to enable it.'];
 }, 'totp.setup');
 
 $totpAction('/security/2fa/activate', static function (string $u, Request $req): array {
     $r = Totp::activate($u, (string)$req->post_('code', ''));
     return $r + ['message' => $r['ok']
-        ? '2FA aktif. Simpan kode pemulihan di bawah.'
+        ? '2FA is active. Save the recovery codes below.'
         : null];
 }, 'totp.activate');
 
 $totpAction('/security/2fa/recovery', static function (string $u, Request $req): array {
     if (!Totp::isEnabled($u)) {
-        return ['ok' => false, 'error' => '2FA belum aktif.', 'message' => null, 'recovery' => []];
+        return ['ok' => false, 'error' => '2FA is not active yet.', 'message' => null, 'recovery' => []];
     }
     return ['ok' => true, 'error' => null, 'recovery' => Totp::regenerateRecovery($u),
-        'message' => 'Kode pemulihan baru dibuat. Simpan sekarang.'];
+        'message' => 'New recovery codes were generated. Save them now.'];
 }, 'totp.recovery');
 
 $totpAction('/security/2fa/disable', static function (string $u, Request $req): array {
     $row = Connection::one('SELECT password_hash FROM users WHERE username = :u', ['u' => $u]);
     if ($row === null
         || !PasswordHasher::verify((string)$req->post_('password', ''), (string)$row['password_hash'])) {
-        return ['ok' => false, 'error' => 'Password salah.', 'message' => null, 'recovery' => []];
+        return ['ok' => false, 'error' => 'Wrong password.', 'message' => null, 'recovery' => []];
     }
-    return Totp::disable($u) + ['message' => '2FA dimatikan.', 'recovery' => []];
+    return Totp::disable($u) + ['message' => '2FA disabled.', 'recovery' => []];
 }, 'totp.disable');
 
 // --- Email, Backups, Account ---
 $router->get('/email', fn (Request $r) => $page('section', [
-    'active' => '/email', 'title' => 'Email', 'lead' => 'Email hosting menunggu IP dedicated (port 25 diblokir di shared IP).',
+    'active' => '/email', 'title' => 'Email', 'lead' => 'Email hosting is waiting for a dedicated IP (port 25 is blocked on the shared IP).',
     'icon' => 'mail', 'panel' => '', 'cols' => [], 'rows' => [],
-    'empty' => 'Fitur email belum aktif di server ini.',
+    'empty' => 'The email feature is not active on this server yet.',
 ]));
 
 $router->get('/backups', function (Request $req) use ($page, $auth): Response {
@@ -1835,17 +1835,17 @@ $router->get('/backups', function (Request $req) use ($page, $auth): Response {
         ['u' => (int)($auth->user()['id'] ?? 0)]
     );
     return $page('section', [
-        'active' => '/backups', 'title' => 'Backup', 'lead' => 'Snapshot dan backup terjadwal untuk domain Anda.',
-        'icon' => 'archive', 'panel' => '', 'cols' => ['Jenis', 'Status', 'Ukuran', 'Dibuat'],
+        'active' => '/backups', 'title' => 'Backup', 'lead' => 'Snapshots and scheduled backups for your domains.',
+        'icon' => 'archive', 'panel' => '', 'cols' => ['Type', 'Status', 'Size', 'Created'],
         'rows' => array_map(static fn (array $r): array => [
             $r['kind'], $r['status'], \Fpanel\Service\Stats::bytes((int)$r['size_bytes']), $r['created_at'],
         ], $rows),
-        'empty' => 'Belum ada backup.',
+        'empty' => 'No backups yet.',
     ]);
 });
 
 $router->get('/account', fn (Request $req) => $page('section', [
-    'active' => '/account', 'title' => 'Profil & Password', 'lead' => 'Kelola akun dan keamanan login Anda.',
+    'active' => '/account', 'title' => 'Profile & Password', 'lead' => 'Manage your account and login security.',
     'icon' => 'user-round', 'panel' => 'form-account', 'err' => $req->query('error'), 'ok' => $req->query('ok'), 'cols' => [], 'rows' => [],
     'empty' => '',
 ]));
@@ -1856,7 +1856,7 @@ $router->post('/account/password', function (Request $req) use ($auth, $csrfToke
         return Response::redirect('/login');
     }
     if (!Csrf::check($req->cookie(Csrf::COOKIE), $req->post_('_csrf'))) {
-        return Response::text('419 CSRF tidak valid', 419);
+        return Response::text('419 invalid CSRF', 419);
     }
     $cur = (string)$req->post_('current_password', '');
     $new = (string)$req->post_('new_password', '');
@@ -1864,12 +1864,12 @@ $router->post('/account/password', function (Request $req) use ($auth, $csrfToke
 
     $hash = Connection::value('SELECT password_hash FROM users WHERE id = :u', ['u' => (int)$me['id']]);
     if (!is_string($hash) || !password_verify($cur, $hash)) {
-        return Response::redirect('/account?error=' . rawurlencode('Password saat ini salah.'));
+        return Response::redirect('/account?error=' . rawurlencode('The current password is wrong.'));
     }
     if ($new !== $cfm) {
-        return Response::redirect('/account?error=' . rawurlencode('Konfirmasi password tidak cocok.'));
+        return Response::redirect('/account?error=' . rawurlencode('The password confirmation does not match.'));
     }
-    $v = Validator::password($new);           // null = lolos, string = pesan galat
+    $v = Validator::password($new);           // null = passed, string = error message
     if ($v !== null) {
         return Response::redirect('/account?error=' . rawurlencode($v));
     }
@@ -1877,7 +1877,7 @@ $router->post('/account/password', function (Request $req) use ($auth, $csrfToke
         'h' => password_hash($new, PASSWORD_ARGON2ID), 'u' => (int)$me['id'],
     ]);
     Audit::log('auth.password_change', (int)$me['id'], (string)$me['username'], 'user', (int)$me['id'], $req->ip());
-    return Response::redirect('/account?ok=' . rawurlencode('Password berhasil diganti.'));
+    return Response::redirect('/account?ok=' . rawurlencode('Password changed successfully.'));
 });
 
 $res = $router->dispatch($request)

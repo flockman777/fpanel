@@ -1,15 +1,15 @@
 <?php
 /**
- * WordPress Manager — memasang dan mengelola instalasi WordPress.
+ * WordPress Manager — installing and managing WordPress installations.
  *
  * @var string $csrf
  * @var array $me, array $s
- * @var array $sites   instalasi milik user
- * @var array $versions versi WP yang bisa dipilih
- * @var array $domains  domain PHP milik user
- * @var string $latest   versi terbaru
- * @var array|null $job  status job instalasi terakhir
- * @var bool $running    masih ada instalasi berjalan
+ * @var array $sites   installations owned by the user
+ * @var array $versions WP versions that can be chosen
+ * @var array $domains  PHP domains owned by the user
+ * @var string $latest   latest version
+ * @var array|null $job  status of the last install job
+ * @var bool $running    an installation is still running
  * @var string|null $error, string|null $ok
  */
 $e = static fn (mixed $v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -21,8 +21,8 @@ $latest   = (string)($latest ?? ($versions[0] ?? ''));
 $job      = (array)($job ?? []);
 $running  = (bool)($running ?? false);
 
-// Hitung berapa instalasi yang punya core lebih lama dari versi terbaru, supaya
-// badge di tabcomputed sekali di server, bukan di loop.
+// Count how many installations have a core older than the latest version, so the
+// badge is computed once on the server, not inside the loop.
 $outdated = 0;
 foreach ($sites as $w) {
     if ($latest !== '' && version_compare((string)$w['core_version'], $latest, '<')) {
@@ -37,28 +37,28 @@ foreach ($sites as $w) {
 <main class="px-4 py-5 sm:px-6 lg:pl-[264px]">
   <div class="mx-auto max-w-6xl space-y-4">
 
-    <!-- ===== kepala halaman =====
-         Tombol "Pasang WordPress" selalu terlihat di kanan atas. Versi
-         sebelumnya memakai tab, dan panel installmentya disembunyikan sampai
-         JS aktif -- kalau JS lambat atau gagal, user tidak pernah menemukan
-         tombol install sama sekali. -->
+    <!-- ===== page header =====
+         The "Install WordPress" button is always visible in the top right. The
+         previous version used tabs, and the install panel stayed hidden until
+         JS was active -- if JS was slow or failed, the user never found the
+         install button at all. -->
     <div class="flex flex-wrap items-start gap-3">
       <div class="min-w-0 flex-1">
         <img src="/assets/img/wordpress-standard.png" alt="WordPress"
              width="176" height="60" class="h-11 w-auto">
         <p class="mt-1 text-sm text-slate-500">
-          Pasang WordPress ke domain PHP. Database dan user dibuat otomatis, siap dalam 1-2 menit.
+          Install WordPress on a PHP domain. The database and user are created automatically, ready in 1-2 minutes.
         </p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
         <?php if ($running): ?>
           <span class="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 text-xs font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
-            <i data-lucide="loader" class="h-3.5 w-3.5 animate-spin"></i>Instalasi berjalan
+            <i data-lucide="loader" class="h-3.5 w-3.5 animate-spin"></i>Installation running
           </span>
         <?php endif; ?>
-        <a href="#pasang" id="wp-install-link"
+        <a href="#install" id="wp-install-link"
            class="btn-primary h-9 px-3 text-sm <?= $domains === [] ? 'pointer-events-none opacity-50' : '' ?>">
-          <i data-lucide="download" class="h-4 w-4"></i><span>Pasang WordPress</span>
+          <i data-lucide="download" class="h-4 w-4"></i><span>Install WordPress</span>
         </a>
       </div>
     </div>
@@ -71,7 +71,7 @@ foreach ($sites as $w) {
       <?php endif; ?>
     <?php endforeach; ?>
 
-    <!-- ===== progres instalasi ===== -->
+    <!-- ===== installation progress ===== -->
     <?php if ($job !== []): ?>
       <?php
         $state = (string)($job['state'] ?? '');
@@ -89,8 +89,8 @@ foreach ($sites as $w) {
           </span>
           <div class="min-w-0 flex-1">
             <p class="text-sm font-medium text-slate-900 dark:text-slate-100">
-              <?= $running ? 'Memasang WordPress' : ($done ? 'Instalasi selesai' : 'Instalasi gagal') ?>
-              <span class="font-normal text-slate-500">di <?= $e((string)($job['domain'] ?? '')) ?></span>
+              <?= $running ? 'Installing WordPress' : ($done ? 'Installation complete' : 'Installation failed') ?>
+              <span class="font-normal text-slate-500">at <?= $e((string)($job['domain'] ?? '')) ?></span>
             </p>
             <p class="mt-0.5 text-xs text-slate-500">
               <?= $e((string)($job['step'] ?? '')) ?>
@@ -98,35 +98,35 @@ foreach ($sites as $w) {
                 &middot; mulai <?= $e((string)$job['started']) ?> UTC
               <?php endif; ?>
               <?php if (!empty($job['finished'])): ?>
-                &middot; selesai <?= $e((string)$job['finished']) ?> UTC
+                &middot; finished <?= $e((string)$job['finished']) ?> UTC
               <?php endif; ?>
             </p>
           </div>
           <?php if (!$running): ?>
-            <a href="/wordpress" class="btn-icon" title="Tutup"><i data-lucide="x" class="h-4 w-4"></i></a>
+            <a href="/wordpress" class="btn-icon" title="Close"><i data-lucide="x" class="h-4 w-4"></i></a>
           <?php endif; ?>
         </div>
       </section>
     <?php endif; ?>
 
-    <!-- ===== daftar instalasi ===== -->
+    <!-- ===== installation list ===== -->
     <section class="space-y-3">
       <?php if ($sites === []): ?>
         <div class="card p-8 text-center">
           <span class="mx-auto grid h-12 w-12 place-items-center overflow-hidden rounded-xl ring-1 ring-slate-900/5 dark:ring-white/10">
             <img src="/assets/img/wordpress-wmark.png" alt="" width="48" height="48" class="h-12 w-12 opacity-70">
           </span>
-          <p class="mt-3 text-sm font-medium text-slate-800 dark:text-slate-100">Belum ada WordPress</p>
+          <p class="mt-3 text-sm font-medium text-slate-800 dark:text-slate-100">No WordPress sites yet</p>
           <p class="mx-auto mt-1 max-w-md text-xs text-slate-500">
-            Buat domain bertipe <strong>PHP</strong> dulu, lalu pasang WordPress di sini. Database
-            dan user database dibuat otomatis.
+            Create a <strong>PHP</strong> domain first, then install WordPress here. The database
+            and its user are created automatically.
           </p>
           <div class="mt-4 flex justify-center gap-2">
             <a href="/domains" class="btn-secondary h-9 px-3 text-sm">
-              <i data-lucide="globe" class="h-4 w-4"></i><span>Buat domain</span>
+              <i data-lucide="globe" class="h-4 w-4"></i><span>Create domain</span>
             </a>
-            <a href="#pasang" class="btn-primary h-9 px-3 text-sm">
-              <i data-lucide="download" class="h-4 w-4"></i><span>Pasang WordPress</span>
+            <a href="#install" class="btn-primary h-9 px-3 text-sm">
+              <i data-lucide="download" class="h-4 w-4"></i><span>Install WordPress</span>
             </a>
           </div>
         </div>
@@ -134,7 +134,7 @@ foreach ($sites as $w) {
         <?php if (count($sites) > 1): ?>
           <div class="relative">
             <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"></i>
-            <input type="search" id="wp-filter" placeholder="Cari instalasi berdasarkan domain..."
+            <input type="search" id="wp-filter" placeholder="Search installations by domain..."
                    autocomplete="off" class="input h-9 w-full pl-9 text-sm">
           </div>
         <?php endif; ?>
@@ -157,7 +157,7 @@ foreach ($sites as $w) {
                   <?= $e($dname) ?>
                 </a>
                 <p class="truncate text-[11px] text-slate-500">
-                  <?= $e((string)$w['domain_type']) ?> &middot; dibuat <?= $e(substr((string)$w['created_at'], 0, 10)) ?>
+                  <?= $e((string)$w['domain_type']) ?> &middot; created <?= $e(substr((string)$w['created_at'], 0, 10)) ?>
                 </p>
               </div>
             </div>
@@ -170,7 +170,7 @@ foreach ($sites as $w) {
               </span>
               <?php if ($newer): ?>
                 <span class="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
-                  ada <?= $e($latest) ?>
+                  latest <?= $e($latest) ?>
                 </span>
               <?php endif; ?>
               <span class="rounded px-1.5 py-0.5 text-[11px] font-medium <?= $stage
@@ -182,46 +182,46 @@ foreach ($sites as $w) {
 
             <div class="mt-3 flex items-center gap-1 border-t border-slate-100 pt-3 dark:border-slate-800">
               <a href="https://<?= $e($dname) ?>/" target="_blank" rel="noopener"
-                 class="btn-icon" title="Buka situs"><i data-lucide="external-link" class="h-4 w-4"></i></a>
+                 class="btn-icon" title="Open site"><i data-lucide="external-link" class="h-4 w-4"></i></a>
               <a href="/wordpress/<?= (int)$w['id'] ?>/manage"
-                 class="btn-icon" title="Kelola instalasi ini"><i data-lucide="sliders-horizontal" class="h-4 w-4"></i></a>
+                 class="btn-icon" title="Manage this installation"><i data-lucide="sliders-horizontal" class="h-4 w-4"></i></a>
               <a href="https://<?= $e($dname) ?>/wp-admin/" target="_blank" rel="noopener"
-                 class="btn-icon" title="Buka wp-admin"><i data-lucide="layout-dashboard" class="h-4 w-4"></i></a>
+                 class="btn-icon" title="Open wp-admin"><i data-lucide="layout-dashboard" class="h-4 w-4"></i></a>
               <span class="flex-1"></span>
               <form method="post" action="/wordpress/forget" class="inline"
-                    onsubmit="return confirm('Hapus dari daftar? File dan database tidak akan dihapus.')">
+                    onsubmit="return confirm('Remove from the list? Files and database will not be deleted.')">
                 <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
                 <input type="hidden" name="id" value="<?= (int)$w['id'] ?>">
                 <button class="btn-icon text-rose-600 hover:text-rose-700 dark:text-rose-400"
-                        title="Hapus dari daftar"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
+                        title="Remove from the list"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
               </form>
             </div>
           </article>
           <?php endforeach; ?>
         </div>
-        <p class="hidden text-center text-sm text-slate-500" id="wp-empty">Tidak ada instalasi yang cocok.</p>
+        <p class="hidden text-center text-sm text-slate-500" id="wp-empty">No matching installations.</p>
       <?php endif; ?>
     </section>
 
-    <!-- ===== pasang baru =====
-         Sengaja tidak memakai tab: panel ini terbuka selalu supaya tombol
-         install di header tidak pernah mengarah ke tempat yang tersembunyi. -->
-    <section id="pasang" class="card overflow-hidden scroll-mt-4">
+    <!-- ===== new install =====
+         Deliberately no tabs: this panel is always open so the install
+         button in the header never points at a hidden place. -->
+    <section id="install" class="card overflow-hidden scroll-mt-4">
       <div class="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
-        <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Pasang WordPress baru</h2>
-        <p class="mt-0.5 text-xs text-slate-500">Database dan user database dibuat otomatis oleh panel.</p>
+        <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Install a new WordPress</h2>
+        <p class="mt-0.5 text-xs text-slate-500">The database and its user are created automatically by the panel.</p>
       </div>
       <?php if ($domains === []): ?>
         <div class="p-8 text-center">
           <span class="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800">
             <i data-lucide="globe" class="h-5 w-5"></i>
           </span>
-          <p class="mt-3 text-sm font-medium text-slate-800 dark:text-slate-100">Belum ada domain PHP</p>
+          <p class="mt-3 text-sm font-medium text-slate-800 dark:text-slate-100">No PHP domains yet</p>
           <p class="mx-auto mt-1 max-w-md text-xs text-slate-500">
-            WordPress butuh domain bertipe <strong>PHP</strong>. Buat dulu di halaman Domains.
+            WordPress needs a <strong>PHP</strong> domain. Create one first on the Domains page.
           </p>
           <a href="/domains" class="btn-primary mx-auto mt-4 inline-flex h-9 items-center gap-2 px-3 text-sm">
-            <i data-lucide="plus" class="h-4 w-4"></i><span>Buat domain</span>
+            <i data-lucide="plus" class="h-4 w-4"></i><span>Create domain</span>
           </a>
         </div>
       <?php else: ?>
@@ -230,7 +230,7 @@ foreach ($sites as $w) {
 
           <div class="p-4">
             <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">1. Target</h2>
-            <p class="mt-0.5 text-xs text-slate-500">Ke domain mana WordPress akan dipasang.</p>
+            <p class="mt-0.5 text-xs text-slate-500">Which domain WordPress will be installed on.</p>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
               <label class="block">
                 <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Domain</span>
@@ -241,11 +241,11 @@ foreach ($sites as $w) {
                 </select>
               </label>
               <label class="block">
-                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Versi WordPress</span>
+                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">WordPress version</span>
                 <select name="version" class="input h-9 w-full text-sm">
                   <?php foreach ($versions as $v): ?>
                     <option value="<?= $e((string)$v) ?>" <?= (string)$v === $latest ? 'selected' : '' ?>>
-                      <?= $e((string)$v) ?><?= (string)$v === $latest ? ' (terbaru)' : '' ?>
+                      <?= $e((string)$v) ?><?= (string)$v === $latest ? ' (latest)' : '' ?>
                     </option>
                   <?php endforeach; ?>
                 </select>
@@ -254,26 +254,26 @@ foreach ($sites as $w) {
           </div>
 
           <div class="p-4">
-            <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">2. Akun admin</h2>
-            <p class="mt-0.5 text-xs text-slate-500">Dipakai untuk masuk ke wp-admin.</p>
+            <h2 class="text-sm font-semibold text-slate-900 dark:text-slate-100">2. Admin account</h2>
+            <p class="mt-0.5 text-xs text-slate-500">Used to sign in to wp-admin.</p>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
               <label class="block">
-                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Judul situs</span>
-                <input name="title" maxlength="120" placeholder="Contoh: Toko Saya" class="input h-9 w-full text-sm">
+                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Site title</span>
+                <input name="title" maxlength="120" placeholder="Example: My Shop" class="input h-9 w-full text-sm">
               </label>
               <label class="block">
-                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Username admin</span>
+                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Admin username</span>
                 <input name="admin_user" required maxlength="60" placeholder="admin" autocomplete="off"
                        class="input h-9 w-full text-sm">
               </label>
               <label class="block">
-                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password admin</span>
+                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Admin password</span>
                 <input type="password" name="admin_password" required minlength="8" maxlength="72"
                        autocomplete="new-password" class="input h-9 w-full text-sm">
-                <span class="mt-1 block text-[11px] text-slate-500">Minimal 8 karakter. Disimpan hanya di hash WordPress.</span>
+                <span class="mt-1 block text-[11px] text-slate-500">At least 8 characters. Stored only as a hash in WordPress.</span>
               </label>
               <label class="block">
-                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Email admin</span>
+                <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Admin email</span>
                 <input type="email" name="admin_email" required maxlength="120" class="input h-9 w-full text-sm">
               </label>
               <label class="flex items-center gap-2 sm:col-span-2">
@@ -288,22 +288,22 @@ foreach ($sites as $w) {
 
           <div class="flex flex-wrap items-center gap-3 p-4">
             <button class="btn-primary h-9 px-4 text-sm" <?= $running ? 'disabled' : '' ?>>
-              <i data-lucide="download" class="h-4 w-4"></i><span>Pasang WordPress</span>
+              <i data-lucide="download" class="h-4 w-4"></i><span>Install WordPress</span>
             </button>
-            <span class="text-xs text-slate-500">Unduhan core sekitar 30 MB, bisa memakan waktu 1-2 menit.</span>
+            <span class="text-xs text-slate-500">The core download is about 30 MB and can take 1-2 minutes.</span>
           </div>
         </form>
       <?php endif; ?>
     </section>
 
     <p class="text-xs text-slate-500">
-      Kredensial database disimpan di <code class="font-mono">wp-config.php</code> di docroot domain,
-      sama seperti panel hosting lain. Hapus file itu dari backup publik.
+      Database credentials are stored in <code class="font-mono">wp-config.php</code> in the domain docroot,
+      just like other hosting panels. Keep that file out of public backups.
     </p>
   </div>
 </main>
 <script>
-  // Filter Installs: disembunyikan kartu yang tidak cocok, bukan reload halaman.
+  // Install filter: hide the cards that do not match, instead of reloading the page.
   (function () {
     var input = document.getElementById('wp-filter');
     var list = document.getElementById('wp-list');
@@ -323,8 +323,8 @@ foreach ($sites as $w) {
     });
   })();
 
-  // Installer jalan di luar request HTTP, jadi halaman disegarkan sendiri
-  // selama masih ada job berjalan (setiap 6 detik).
+  // The installer runs outside the HTTP request, so the page refreshes itself
+  // while a job is still running (every 6 seconds).
   (function () {
     var el = document.getElementById('wp-job');
     if (!el) { return; }

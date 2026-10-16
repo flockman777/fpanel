@@ -5,10 +5,10 @@ return [
         'name'     => 'fpanel',
         'debug'    => (getenv('FPANEL_APP_DEBUG') ?: '0') === '1',
         'timezone' => 'Asia/Jakarta',
-        // Domain utama panel, dipakai untuk link absolut dan redirect.
-        // Kosong = pakai host dari permintaan (web) / tidak ada (CLI).
-        // Installer mengisinya lewat config/local.php sesuai --domain.
-        // Port 8090 hanya fallback saat panel belum punya sertifikat.
+        // Primary panel domain, used for absolute links and redirects.
+        // Empty = use the host from the request (web) / none (CLI).
+        // The installer fills it in via config/local.php based on --domain.
+        // Port 8090 is only a fallback while the panel has no certificate.
         'base_url' => getenv('FPANEL_BASE_URL') ?: '',
     ],
     'db' => [
@@ -31,11 +31,11 @@ return [
         'snippet'   => '/etc/nginx/snippets/fpanel',
     ],
     'php' => [
-        // Versi yang diizinkan untuk pool. Urut dari yang paling lama.
+        // Versions allowed for pools. Sorted from the oldest.
         'versions'  => ['7.4', '8.1', '8.2', '8.3', '8.4'],
         'default'   => '8.3',
         'pool_dir'  => '/etc/php',
-        // extension yang bisa dimatikan lewat PHP_INI_SCAN_DIR per-domain
+        // extensions that can be disabled via PHP_INI_SCAN_DIR per domain
         'togglable' => [
             'imagick', 'redis', 'memcached', 'apcu', 'bcmath', 'bz2',
             'calendar', 'ctype', 'curl', 'dom', 'exif', 'fileinfo',
@@ -56,7 +56,7 @@ return [
         'port_to'   => 21999,
     ],
     'mail' => [
-        // Port 25/465/587 diblokir FPanel -> hanya relay pihak ketiga.
+        // Ports 25/465/587 are blocked by FPanel -> third-party relay only.
         'relay' => [
             'host' => getenv('FPANEL_MAIL_RELAY_HOST') ?: '',
             'port' => (int)(getenv('FPANEL_MAIL_RELAY_PORT') ?: 587),
@@ -69,8 +69,8 @@ return [
         'api_token' => getenv('FPANEL_CF_API_TOKEN') ?: '',
         'zone_id'   => getenv('FPANEL_CF_ZONE_ID') ?: '',
     ],
-    // Pendaftaran akun Let's Encrypt. Kosong = pakai admin@<host base_url>,
-    // sehingga instalasi baru otomatis memakai domainnya sendiri.
+    // Let's Encrypt account registration. Empty = use admin@<host base_url>,
+    // so a fresh installation automatically uses its own domain.
     'letsencrypt' => [
         'email' => '',
     ],
