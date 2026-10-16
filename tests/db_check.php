@@ -1,15 +1,15 @@
 <?php
 /**
- * Assertion level-service untuk modul MariaDB.
+ * Service-level assertions for the MariaDB module.
  *
- * Dipanggil dari tests/run.sh. Semua objek uji memakai awalan "uji" supaya
- * bisa dibersihkan dengan satu pola, dan supaya tidak pernah menyentuh
- * database milik user sungguhan.
+ * Called from tests/run.sh. All test objects use the "uji" prefix so they
+ * can be cleaned up with one pattern, and never touch
+ * databases belonging to real users.
  *
- * Format output: satu baris per assertion.
- *   ok<TAB>nama
- *   no<TAB>nama<TAB>ringkasan
- * Dipisah TAB supaya run.sh tidak perlu parses spasi (nama assertion mengandung spasi).
+ * Output format: one line per assertion.
+ *   ok<TAB>name
+ *   no<TAB>name<TAB>summary
+ * TAB-separated so run.sh does not need to parse spaces (assertion names contain spaces).
  */
 declare(strict_types=1);
 
@@ -28,7 +28,7 @@ function no(string $name, mixed $got, mixed $want): void
     echo NO . $name . "\t" . $one($got) . "\t" . $one($want) . "\n";
 }
 
-/** Bandingkan nilai nyata dengan yang diharapkan. */
+/** Compare the actual value with the expected one. */
 function is_(string $name, mixed $expected, mixed $actual): void
 {
     if ((string)$expected === (string)$actual) {
@@ -38,7 +38,7 @@ function is_(string $name, mixed $expected, mixed $actual): void
     no($name, $actual, $expected);
 }
 
-/** Kredensial service untuk user uji spesifik, hasil decrypt app-key. */
+/** Service credentials for a specific test user, decrypted with the app key. */
 function creds(int $dbId, string $name): ?string
 {
     $r = MariaDb::reveal('admin', $dbId, (int)Connection::value(
@@ -49,8 +49,8 @@ function creds(int $dbId, string $name): ?string
 
 // --------------------------------------------------------------------- setup
 
-// Bersihkan sisa run sebelumnya, supaya suite yang terputus di tengah tidak
-// menyebabkan quota penuh atau nama bentrok pada run berikutnya.
+// Clean up leftovers from a previous run, so a suite interrupted midway does
+// not cause a full quota or name clashes on the next run.
 foreach (['uji_svc', 'uji_kuota', 'uji_bocor'] as $stale) {
     $id = (int)Connection::value('SELECT id FROM databases WHERE name = :n', ['n' => $stale]);
     if ($id > 0) {
@@ -59,58 +59,58 @@ foreach (['uji_svc', 'uji_kuota', 'uji_bocor'] as $stale) {
 }
 
 $res = MariaDb::health();
-is_('MariaDB hidup', 1, $res['ok'] ? 1 : 0);
+is_('MariaDB alive', 1, $res['ok'] ? 1 : 0);
 
-// --------------------------------------------------------------- validasi nama
-// NamaPhysical selalu diawali "admin_", jadi yang diuji di sini adalah nama
-// logis yang diketik user di form.
+// ---------------------------------------------------------------- name validation
+// NamaPhysical always starts with "admin_", so what is tested here is the
+// logical name typed by the user in the form.
 $bad = [
-    'nama db huruf besar ditolak'    => 'Toko',
-    'nama db ada spasi ditolak'     => 'tokoThesis',
-    'nama db traversal ditolak'     => '../../etc',
-    'nama db backtick ditolak'      => 'a`b',
-    'nama db tanda kutip ditolak'   => "a'b",
-    'nama db kosong ditolak'        => '',
-    'nama db sistem mysql ditolak'  => 'mysql',
-    'nama db semicolon ditolak'     => 'a;DROP',
+    'db name with uppercase rejected'  => 'Toko',
+    'db name with space rejected'     => 'tokoThesis',
+    'db name traversal rejected'      => '../../etc',
+    'db name with backtick rejected'  => 'a`b',
+    'db name with quote rejected'     => "a'b",
+    'empty db name rejected'          => '',
+    'system db name mysql rejected'   => 'mysql',
+    'db name with semicolon rejected' => 'a;DROP',
 ];
 foreach ($bad as $label => $input) {
     $r = MariaDb::create('admin', $input, 'uji_app');
     is_($label, 0, $r['ok'] ? 1 : 0);
 }
-is_('nama user >16 karakter ditolak', 0,
+is_('user name >16 chars rejected', 0,
     MariaDb::create('admin', 'uji_svc', 'abcdefghijklmnopqrstuvwxyz')['ok'] ? 1 : 0);
-is_('nama user huruf besar ditolak', 0,
+is_('user name with uppercase rejected', 0,
     MariaDb::create('admin', 'uji_svc', 'UjiApp')['ok'] ? 1 : 0);
-is_('privilege tak dikenal ditolak', 0,
+is_('unknown privilege rejected', 0,
     MariaDb::create('admin', 'uji_svc', 'uji_app', 'FILE')['ok'] ? 1 : 0);
 
 // ------------------------------------------------------------------- create
 $r = MariaDb::create('admin', 'uji_svc', 'uji_app');
 if (!$r['ok']) {
-    no('create: ok', (string)$r['error'], 'berhasil');
-    echo "ok\tcreate: baris SQLite ada\n";   // placeholder agar tidak cascada gagal
+    no('create: ok', (string)$r['error'], 'successful');
+    echo "ok\tcreate: SQLite row exists\n";   // placeholder so it does not cascade into failures
 } else {
     ok('create: ok');
     $dbId = (int)$r['db_id'];
 
-    is_('create: baris SQLite ada', 1, Connection::value(
+    is_('create: SQLite row exists', 1, Connection::value(
         'SELECT COUNT(*) FROM databases WHERE id = :i', ['i' => $dbId]));
-    is_('create: db fisik ada di MariaDB', 1, MariaDb::serverExists('admin', 'uji_svc') ? 1 : 0);
-    is_('create: user fisik ada di MariaDB', 1, MariaDb::serverHasUser('admin', 'uji_app') ? 1 : 0);
-    is_('create: password acak terkirim balik', 1, strlen((string)$r['password']) >= 16 ? 1 : 0);
+    is_('create: physical db exists in MariaDB', 1, MariaDb::serverExists('admin', 'uji_svc') ? 1 : 0);
+    is_('create: physical user exists in MariaDB', 1, MariaDb::serverHasUser('admin', 'uji_app') ? 1 : 0);
+    is_('create: random password sent back', 1, strlen((string)$r['password']) >= 16 ? 1 : 0);
 
-    // Password harus benar-benar bisa dipakai, bukan cuma disimpan.
+    // The password must really be usable, not merely stored.
     $pw = creds($dbId, 'uji_app');
-    is_('password_db bisa dibuka (reveal)', 1, $pw !== null ? 1 : 0);
-    is_('reveal sama dengan hasil create', 1, $pw === $r['password'] ? 1 : 0);
+    is_('password_db can be revealed', 1, $pw !== null ? 1 : 0);
+    is_('reveal matches the create result', 1, $pw === $r['password'] ? 1 : 0);
 
     $cipher = (string)Connection::value('SELECT password_hash FROM db_users WHERE database_id = :d',
         ['d' => $dbId]);
-    is_('password_db disimpan terenkripsi, bukan plaintext', 1,
+    is_('password_db stored encrypted, not plaintext', 1,
         ($pw !== null && $cipher !== $pw && !str_contains($cipher, (string)$pw)) ? 1 : 0);
 
-    // Login beneran pakai kredensial yang panel berikan ke user.
+    // Real login using the credentials the panel gives the user.
     $usable = 0;
     try {
         $pdo = new PDO('mysql:host=localhost;dbname=admin_uji_svc', 'admin_uji_app', (string)$pw, [
@@ -122,9 +122,9 @@ if (!$r['ok']) {
     } catch (Throwable $e) {
         $usable = 0;
     }
-    is_('password_db hasil panel bisa login & baca/tulis MariaDB', 1, $usable);
+    is_('password_db from the panel can log in & read/write MariaDB', 1, $usable);
 
-    // User DB tidak boleh menyentuh database sistem.
+    // A DB user must not touch system databases.
     $blocked = 0;
     try {
         (new PDO('mysql:host=localhost;dbname=mysql', 'admin_uji_app', (string)$pw, [
@@ -134,14 +134,14 @@ if (!$r['ok']) {
     } catch (Throwable $e) {
         $blocked = 1;
     }
-    is_('user DB tidak bisa akses database sistem', 1, $blocked);
+    is_('DB user cannot access a system database', 1, $blocked);
 
-    is_('nama db duplikat ditolak', 0, MariaDb::create('admin', 'uji_svc', 'uji_lain')['ok'] ? 1 : 0);
+    is_('duplicate db name rejected', 0, MariaDb::create('admin', 'uji_svc', 'uji_lain')['ok'] ? 1 : 0);
 
     // ------------------------------------------------- user tambahan + privilege
     $ro  = MariaDb::addUser('admin', $dbId, 'uji_ro', 'READ ONLY');
     is_('addUser READ ONLY: ok', 1, $ro['ok'] ? 1 : 0);
-    is_('addUser RO: user fisik ada di MariaDB', 1, MariaDb::serverHasUser('admin', 'uji_ro') ? 1 : 0);
+    is_('addUser RO: physical user exists in MariaDB', 1, MariaDb::serverHasUser('admin', 'uji_ro') ? 1 : 0);
 
     $roPw = creds($dbId, 'uji_ro');
     $denied = 0;
@@ -152,65 +152,65 @@ if (!$r['ok']) {
     } catch (Throwable $e) {
         $denied = 1;
     }
-    is_('addUser RO: INSERT benar-benar ditolak MariaDB', 1, $denied);
+    is_('addUser RO: INSERT really rejected by MariaDB', 1, $denied);
 
-    is_('addUser nama duplikat ditolak', 0,
+    is_('addUser duplicate name rejected', 0,
         MariaDb::addUser('admin', $dbId, 'uji_ro')['ok'] ? 1 : 0);
-    is_('addUser nama invalid ditolak', 0,
+    is_('addUser invalid name rejected', 0,
         MariaDb::addUser('admin', $dbId, 'ro-2')['ok'] ? 1 : 0);
 
-    // --------------------------------------------- user terakhir tidak boleh dihapus
-    // Aturan: user terakhir dari sebuah database tidak boleh dihapus, karena
-    // database-nya jadi tidak bisa dipakai aplikasi sama sekali. Selagi masih
-    // ada user lain, menghapus satu user tetap boleh.
+    // --------------------------------------------- last user must not be deleted
+    // Rule: the last user of a database must not be deleted, because
+    // the database would then be unusable for any application. As long as
+    // another user exists, deleting one user is still allowed.
     $mainId = (int)Connection::value('SELECT id FROM db_users WHERE database_id = :d AND name = :n',
         ['d' => $dbId, 'n' => 'uji_app']);
-    is_('hapus user pertama dari 2 user: boleh', 1,
+    is_('delete first of 2 users: allowed', 1,
         MariaDb::deleteUser('admin', $dbId, $mainId)['ok'] ? 1 : 0);
-    is_('user pertama benar-benar hilang', 0, Connection::value(
+    is_('first user really gone', 0, Connection::value(
         'SELECT COUNT(*) FROM db_users WHERE id = :i', ['i' => $mainId]));
-    is_('user fisik ikut hilang dari MariaDB', 0, MariaDb::serverHasUser('admin', 'uji_app') ? 1 : 0);
+    is_('physical user gone from MariaDB too', 0, MariaDb::serverHasUser('admin', 'uji_app') ? 1 : 0);
 
     $roId2 = (int)Connection::value('SELECT id FROM db_users WHERE database_id = :d AND name = :n',
         ['d' => $dbId, 'n' => 'uji_ro']);
-    is_('hapus user TERAKHIR ditolak', 0,
+    is_('delete LAST user rejected', 0,
         MariaDb::deleteUser('admin', $dbId, $roId2)['ok'] ? 1 : 0);
-    is_('user terakhir tetap ada setelah penolakan', 1, Connection::value(
+    is_('last user still present after the rejection', 1, Connection::value(
         'SELECT COUNT(*) FROM db_users WHERE id = :i', ['i' => $roId2]));
-    is_('user terakhir masih ada di MariaDB', 1, MariaDb::serverHasUser('admin', 'uji_ro') ? 1 : 0);
+    is_('last user still present in MariaDB', 1, MariaDb::serverHasUser('admin', 'uji_ro') ? 1 : 0);
 
     // ------------------------------------------------------------------ IDOR
-    // uujirole dibuat tests/run.sh sebagai user non-admin.
+    // uujirole is created by tests/run.sh as a non-admin user.
     $other = (string)Connection::value(
         "SELECT username FROM users WHERE role <> 'admin' ORDER BY id LIMIT 1");
     if ($other === '') {
-        is_('IDOR: user non-admin tersedia untuk uji', 0, 1);
+        is_('IDOR: non-admin user available for the test', 0, 1);
     } else {
-        ok('IDOR: user non-admin tersedia untuk uji');
-        // Pakai $roId2 (user yang benar-benar masih ada) supaya ini menguji
-        // isolasi tenant, bukan sekadar "id tidak ditemukan".
-        is_('IDOR reveal db orang lain ditolak', 0, MariaDb::reveal($other, $dbId, $roId2)['ok'] ? 1 : 0);
-        is_('IDOR delete db orang lain ditolak', 0, MariaDb::delete($other, $dbId)['ok'] ? 1 : 0);
-        is_('IDOR addUser db orang lain ditolak', 0, MariaDb::addUser($other, $dbId, 'x')['ok'] ? 1 : 0);
-        is_('IDOR deleteUser db orang lain ditolak', 0, MariaDb::deleteUser($other, $dbId, $roId2)['ok'] ? 1 : 0);
-        is_('IDOR db orang lain masih utuh', 1, MariaDb::reveal('admin', $dbId, $roId2)['ok'] ? 1 : 0);
+        ok('IDOR: non-admin user available for the test');
+        // Use $roId2 (a user that really still exists) so this tests
+        // tenant isolation, not merely "id not found".
+        is_('IDOR reveal of another user db rejected', 0, MariaDb::reveal($other, $dbId, $roId2)['ok'] ? 1 : 0);
+        is_('IDOR delete of another user db rejected', 0, MariaDb::delete($other, $dbId)['ok'] ? 1 : 0);
+        is_('IDOR addUser on another user db rejected', 0, MariaDb::addUser($other, $dbId, 'x')['ok'] ? 1 : 0);
+        is_('IDOR deleteUser on another user db rejected', 0, MariaDb::deleteUser($other, $dbId, $roId2)['ok'] ? 1 : 0);
+        is_('IDOR another user db still intact', 1, MariaDb::reveal('admin', $dbId, $roId2)['ok'] ? 1 : 0);
     }
 
-    // -------------------------------------------------- listing lalu hapus database
+    // -------------------------------------------------- listing then delete the db
     $listing = MariaDb::listing('admin');
-    is_('listing: db uji muncul', 1, count(array_filter(
+    is_('listing: test db shows up', 1, count(array_filter(
         (array)$listing['databases'], static fn (array $d): bool => $d['name'] === 'uji_svc')));
 
-    is_('hapus database: ok', 1, MariaDb::delete('admin', $dbId)['ok'] ? 1 : 0);
-    is_('db fisik hilang dari MariaDB', 0, MariaDb::serverExists('admin', 'uji_svc') ? 1 : 0);
-    is_('semua user fisik ikut hilang', 0, MariaDb::serverHasUser('admin', 'uji_app') ? 1 : 0);
-    is_('baris SQLite ikut terhapus', 0, Connection::value(
+    is_('delete database: ok', 1, MariaDb::delete('admin', $dbId)['ok'] ? 1 : 0);
+    is_('physical db gone from MariaDB', 0, MariaDb::serverExists('admin', 'uji_svc') ? 1 : 0);
+    is_('all physical users gone as well', 0, MariaDb::serverHasUser('admin', 'uji_app') ? 1 : 0);
+    is_('SQLite row deleted as well', 0, Connection::value(
         'SELECT COUNT(*) FROM databases WHERE id = :i', ['i' => $dbId]));
 }
 
 // -------------------------------------------------------------------- cleanup
-is_('cleanup: tidak ada sisa db uji', 0,
+is_('cleanup: no leftover test db', 0,
     Connection::value("SELECT COUNT(*) FROM databases WHERE name LIKE 'uji_%'"));
-is_('cleanup: tidak ada sisa user uji', 0,
+is_('cleanup: no leftover test users', 0,
     Connection::value("SELECT COUNT(*) FROM db_users WHERE name LIKE 'uji_%'"));
-is_('cleanup: tidak ada sisa objek MariaDB uji', 0, MariaDb::serverExists('admin', 'uji_svc') ? 1 : 0);
+is_('cleanup: no leftover MariaDB test objects', 0, MariaDb::serverExists('admin', 'uji_svc') ? 1 : 0);
